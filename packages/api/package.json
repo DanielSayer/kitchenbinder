@@ -10,7 +10,9 @@
       "default": "./src/*.ts"
     }
   },
-  "scripts": {},
+  "scripts": {
+    "dev": "tsx watch --env-file=../../apps/web/.env src/import-worker.ts"
+  },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.59",
     "@fontsource/nunito": "^5.3.0",

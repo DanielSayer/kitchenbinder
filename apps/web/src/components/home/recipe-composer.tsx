@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { Pencil, Plus, RefreshCw, X } from "lucide-react";
 import { type SubmitEvent, useEffect, useRef, useState } from "react";
 import { authClient } from "@/lib/auth-client";
@@ -163,7 +163,9 @@ function AccountComposer({
   }
   const progress =
     result?.kind === "queued"
-      ? "Your recipe is queued. You can leave this page and return later."
+      ? (result.queuedForMs ?? 0) >= 30_000
+        ? `Still waiting to start after ${Math.floor((result.queuedForMs ?? 0) / 1000)} seconds. This is taking longer than expected. Your request is saved; check Recent imports for updates.`
+        : "Your recipe is queued. You can leave this page and return later."
       : result?.kind === "processing" && result.stage === "fetching"
         ? "Reading the recipe page. Your progress is saved."
         : result?.kind === "processing" && result.stage === "saving"
@@ -227,6 +229,13 @@ function AccountComposer({
             error={error}
             saved={result?.kind === "saved" ? result : undefined}
           />
+          {busy && pending && (
+            <p className="composer-footnote">
+              <Link to="/recipes/imports">Check import status</Link>
+              <br />
+              Import reference: {pending.id}
+            </p>
+          )}
           {pending && (
             <div className="composer-toolbar">
               {busy && create.isError && !admissionRejected && (

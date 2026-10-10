@@ -2,6 +2,7 @@ import { lookup } from "node:dns/promises";
 import http from "node:http";
 import https from "node:https";
 import ipaddr from "ipaddr.js";
+import { logImport } from "../import-diagnostics";
 
 export const PAGE_ERROR =
   "Couldn't read this page. Paste the recipe text instead.";
@@ -32,6 +33,7 @@ export async function fetchPage(
   input: string,
   signal = AbortSignal.timeout(15000),
   redirects = 0,
+  importId?: string,
 ): Promise<string> {
   const url = recipeUrl(input);
   const hostname = url.hostname.replace(/^\[|\]$/g, "");
@@ -60,6 +62,14 @@ export async function fetchPage(
       },
       (response) => {
         const status = response.statusCode ?? 500;
+        if (importId)
+          logImport({
+            event: "import_page_response",
+            importId,
+            hostname,
+            status,
+            redirect: redirects,
+          });
         if (
           status >= 300 &&
           status < 400 &&
@@ -67,11 +77,16 @@ export async function fetchPage(
           redirects < 3
         ) {
           response.resume();
-          fetchPage(
-            new URL(response.headers.location, url).href,
-            signal,
-            redirects + 1,
-          ).then(resolve, reject);
+          try {
+            fetchPage(
+              new URL(response.headers.location, url).href,
+              signal,
+              redirects + 1,
+              importId,
+            ).then(resolve, reject);
+          } catch (error) {
+            reject(error);
+          }
           return;
         }
         if (

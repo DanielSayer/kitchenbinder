@@ -23,7 +23,11 @@ export const importInputSchema = z.strictObject({
   groupId: z.uuid().nullable(),
 });
 export const importStatusSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("queued"), id: z.uuid() }),
+  z.object({
+    kind: z.literal("queued"),
+    id: z.uuid(),
+    queuedForMs: z.number().nonnegative().optional(),
+  }),
   z.object({
     kind: z.literal("processing"),
     id: z.uuid(),

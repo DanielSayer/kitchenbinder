@@ -85,6 +85,7 @@ export async function generateRecipe(
 export async function prepareRecipeInput(
   input: string,
   capturedSourceUrl?: string,
+  importId?: string,
 ) {
   let sourceUrl: string | null = capturedSourceUrl ?? null;
   let content = input;
@@ -93,10 +94,10 @@ export async function prepareRecipeInput(
       sourceUrl = recipeUrl(
         input.startsWith("www.") ? `https://${input}` : input,
       ).href;
-      content = extractPage(await fetchPage(sourceUrl));
+      content = extractPage(await fetchPage(sourceUrl, undefined, 0, importId));
       if (content.length < 80) throw new Error(PAGE_ERROR);
-    } catch {
-      throw new TRPCError({ code: "BAD_REQUEST", message: PAGE_ERROR });
+    } catch (cause) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: PAGE_ERROR, cause });
     }
   }
   return { content, sourceUrl };

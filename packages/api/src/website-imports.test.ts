@@ -139,6 +139,27 @@ describe("website durable imports", () => {
       { id: item.id, state: "saved", recipeId: null, title: null },
     ]);
   });
+  it("reports a durable queue wait across page reloads without claiming the job", async () => {
+    const item = input();
+    await submitWebsiteImport(account, item);
+    await db
+      .update(recipeImport)
+      .set({ createdAt: new Date(Date.now() - 60_000) })
+      .where(eq(recipeImport.id, item.id));
+    const status = await importStatus(account, item.id);
+    expect(status).toMatchObject({
+      kind: "queued",
+      id: item.id,
+      queuedForMs: expect.any(Number),
+    });
+    if (status.kind !== "queued") throw new Error("Expected a queued import");
+    expect(status.queuedForMs).toBeGreaterThanOrEqual(60_000);
+    const [job] = await db
+      .select()
+      .from(recipeImport)
+      .where(eq(recipeImport.id, item.id));
+    expect(job?.startedAt).toBeNull();
+  });
   it("hides completed recipe titles and links after group access is lost", async () => {
     const groupId = randomUUID();
     await db

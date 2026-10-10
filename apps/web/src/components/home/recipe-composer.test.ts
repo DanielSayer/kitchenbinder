@@ -123,3 +123,29 @@ it("keeps an uncertain request recoverable", async () => {
   expect(screen.getByRole("button", { name: "Check again" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Cancel request" })).toBeTruthy();
 });
+
+it("shows a stalled queue with its reference while preserving the existing request", async () => {
+  const status = {
+    kind: "queued",
+    id: "00000000-0000-4000-8000-000000000001",
+    queuedForMs: 65_000,
+  };
+  createImport.mockResolvedValue(status);
+  readStatus.mockResolvedValue(status);
+  showComposer();
+  await waitFor(() =>
+    expect(
+      screen.getByText(/Still waiting to start after 65 seconds/),
+    ).toBeTruthy(),
+  );
+  expect(screen.getByText(/Import reference:/).textContent).toContain(
+    status.id,
+  );
+  expect(
+    screen
+      .getByRole("button", { name: "Working on it" })
+      .hasAttribute("disabled"),
+  ).toBe(true);
+  expect(createImport).toHaveBeenCalledTimes(1);
+  expect(discardImport).not.toHaveBeenCalled();
+});

@@ -29,6 +29,7 @@ import {
   importInputSchema,
   websiteImportSchema,
 } from "./import-contract";
+import { importFailure, logImport } from "./import-diagnostics";
 import {
   generateRecipe,
   prepareRecipeInput,
@@ -93,7 +94,11 @@ export async function importStatus(
     throw new TRPCError({ code: "NOT_FOUND", message: "Import not found." });
   switch (job.state) {
     case "queued":
-      return { kind: "queued", id };
+      return {
+        kind: "queued",
+        id,
+        queuedForMs: Math.max(0, Date.now() - job.createdAt.getTime()),
+      };
     case "fetching":
       return { kind: "processing", id, stage: "fetching" };
     case "processing":
@@ -243,7 +248,7 @@ export function discardWebsiteImport(userId: string, value: unknown) {
 
 async function submitJob(userId: string, input: JobInput) {
   const fingerprint = fingerprintOf(input);
-  await db.transaction(async (tx) => {
+  const admitted = await db.transaction(async (tx) => {
     // Serialize admissions and retries per account before checking the job or quota.
     await tx
       .select({ id: user.id })
@@ -319,7 +324,14 @@ async function submitJob(userId: string, input: JobInput) {
       fingerprint,
       usageBucket,
     });
+    return true;
   });
+  if (admitted)
+    logImport({
+      event: "import_queued",
+      importId: input.id,
+      sourceKind: input.sourceKind,
+    });
   return importStatus(userId, input.id);
 }
 
@@ -392,12 +404,26 @@ export async function processNextImport(
     return { ...next, workerToken: claimToken };
   });
   if (!job) return false;
+  const started = Date.now();
+  let stage: "fetching" | "generating" = "fetching";
+  let stageStarted = started;
+  logImport({
+    event: "import_claimed",
+    importId: job.id,
+    sourceKind: job.sourceKind,
+    queueMs: Math.max(0, started - job.createdAt.getTime()),
+  });
+  logImport({ event: "import_stage_started", importId: job.id, stage });
   let generationStarted = false;
   try {
     if (job.groupId) await requireGroup(db, job.groupId, job.userId);
     const prepared =
       job.sourceKind === "website"
-        ? await prepareRecipeInput(job.input, job.sourceUrl ?? undefined)
+        ? await prepareRecipeInput(
+            job.input,
+            job.sourceUrl ?? undefined,
+            job.id,
+          )
         : { content: job.input, sourceUrl: job.sourceUrl };
     const tags = await availableTags(job.userId);
     // A missing provider key must fail before reserving spend or consuming AI usage.
@@ -424,12 +450,27 @@ export async function processNextImport(
       return claimed;
     });
     if (!claimed.length) return true;
+    logImport({
+      event: "import_stage_completed",
+      importId: job.id,
+      stage,
+      elapsedMs: Date.now() - stageStarted,
+    });
+    stage = "generating";
+    stageStarted = Date.now();
+    logImport({ event: "import_stage_started", importId: job.id, stage });
     generationStarted = true;
     const result = await generate(
       prepared.content,
       tags,
       prepared.sourceUrl ?? undefined,
     );
+    logImport({
+      event: "import_stage_completed",
+      importId: job.id,
+      stage,
+      elapsedMs: Date.now() - stageStarted,
+    });
     // A save failure retries this checkpoint, never generation.
     await db
       .update(recipeImport)
@@ -452,6 +493,14 @@ export async function processNextImport(
       );
   } catch (error) {
     await failImport(job.id, job.workerToken, error, !generationStarted);
+    logImport({
+      event: "import_failed",
+      importId: job.id,
+      stage,
+      elapsedMs: Date.now() - stageStarted,
+      usageReleased: !generationStarted,
+      failure: importFailure(error),
+    });
     return true;
   }
   await saveReady(job.id);
@@ -485,67 +534,100 @@ async function failImport(
 }
 
 async function saveReady(id: string) {
-  await db.transaction(async (tx) => {
-    const [job] = await tx
-      .select()
-      .from(recipeImport)
-      .where(and(eq(recipeImport.id, id), eq(recipeImport.state, "ready")))
-      .for("update");
-    if (!job?.generated) return;
-    if (job.groupId) {
-      await lockGroup(tx, job.groupId);
-      try {
-        await requireGroup(tx, job.groupId, job.userId);
-      } catch {
+  const started = Date.now();
+  logImport({ event: "import_stage_started", importId: id, stage: "saving" });
+  const saved = await db
+    .transaction(async (tx) => {
+      const [job] = await tx
+        .select()
+        .from(recipeImport)
+        .where(and(eq(recipeImport.id, id), eq(recipeImport.state, "ready")))
+        .for("update");
+      if (!job?.generated) return;
+      if (job.groupId) {
+        await lockGroup(tx, job.groupId);
+        try {
+          await requireGroup(tx, job.groupId, job.userId);
+        } catch (error) {
+          await tx
+            .update(recipeImport)
+            .set({
+              state: "failed",
+              generated: null,
+              error:
+                "Group access changed. Start a new attempt and choose a collection you can write to.",
+            })
+            .where(eq(recipeImport.id, id));
+          return { kind: "failed", failure: importFailure(error) } as const;
+        }
+      }
+      const [existing] = await tx
+        .select({ id: recipe.id })
+        .from(recipe)
+        .where(eq(recipe.id, id));
+      if (existing) {
         await tx
           .update(recipeImport)
           .set({
             state: "failed",
             generated: null,
-            error:
-              "Group access changed. Start a new attempt and choose a collection you can write to.",
+            error: "This recipe ID is already in use. Start another import.",
           })
           .where(eq(recipeImport.id, id));
-        return;
+        return {
+          kind: "failed",
+          failure: { type: "RecipeIdConflict" },
+        } as const;
       }
-    }
-    const [existing] = await tx
-      .select({ id: recipe.id })
-      .from(recipe)
-      .where(eq(recipe.id, id));
-    if (existing) {
+      const inserted = await persistRecipe(
+        tx,
+        {
+          id,
+          userId: job.userId,
+          groupId: job.groupId,
+          title: job.generated.content.title,
+          content: job.generated.content,
+          sourceUrl: job.sourceUrl,
+          origin: job.generated.origin ?? "imported",
+        },
+        job.generated.tagIds,
+      );
       await tx
         .update(recipeImport)
         .set({
-          state: "failed",
+          state: inserted ? "saved" : "failed",
           generated: null,
-          error: "This recipe ID is already in use. Start another import.",
+          error: inserted
+            ? null
+            : "This recipe ID is already in use. Start another import.",
         })
         .where(eq(recipeImport.id, id));
-      return;
-    }
-    const inserted = await persistRecipe(
-      tx,
-      {
-        id,
-        userId: job.userId,
-        groupId: job.groupId,
-        title: job.generated.content.title,
-        content: job.generated.content,
-        sourceUrl: job.sourceUrl,
-        origin: job.generated.origin ?? "imported",
-      },
-      job.generated.tagIds,
-    );
-    await tx
-      .update(recipeImport)
-      .set({
-        state: inserted ? "saved" : "failed",
-        generated: null,
-        error: inserted
-          ? null
-          : "This recipe ID is already in use. Start another import.",
-      })
-      .where(eq(recipeImport.id, id));
-  });
+      return inserted
+        ? ({ kind: "saved" } as const)
+        : ({ kind: "failed", failure: { type: "RecipeIdConflict" } } as const);
+    })
+    .catch((error: unknown) => {
+      logImport({
+        event: "import_save_retry",
+        importId: id,
+        elapsedMs: Date.now() - started,
+        failure: importFailure(error),
+      });
+      throw error;
+    });
+  if (saved?.kind === "saved")
+    logImport({
+      event: "import_saved",
+      importId: id,
+      elapsedMs: Date.now() - started,
+    });
+  else if (saved?.kind === "failed")
+    logImport({
+      event: "import_failed",
+      importId: id,
+      stage: "saving",
+      elapsedMs: Date.now() - started,
+      usageReleased: false,
+      failure: saved.failure,
+    });
 }

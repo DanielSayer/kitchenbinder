@@ -30,6 +30,12 @@
       "persistent": true,
       "env": ["WXT_PREP_SHEET_ORIGIN", "WXT_EXTENSION_PUBLIC_KEY"]
     },
+    "web#dev": {
+      "with": ["@prep-sheet/api#dev"],
+      "cache": false,
+      "persistent": true,
+      "env": ["WXT_PREP_SHEET_ORIGIN", "WXT_EXTENSION_PUBLIC_KEY"]
+    },
     "db:push": {
       "cache": false,
       "interactive": true

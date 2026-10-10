@@ -84,6 +84,7 @@ function AccountImports({ userId }: { userId: string }) {
                 <time dateTime={new Date(job.createdAt).toISOString()}>
                   {new Date(job.createdAt).toLocaleString()}
                 </time>
+                <small>Import reference: {job.id}</small>
                 {job.state === "failed" && (
                   <p className="recent-imports-error">
                     {job.error ||
@@ -95,7 +96,12 @@ function AccountImports({ userId }: { userId: string }) {
                 )}
               </div>
               <div className="recent-imports-actions">
-                <span role="status">{labels[job.state]}</span>
+                <span role="status">
+                  {job.state === "queued" &&
+                  Date.now() - new Date(job.createdAt).getTime() >= 30_000
+                    ? "Waiting to start"
+                    : labels[job.state]}
+                </span>
                 {job.state === "saved" && job.recipeId && (
                   <Link
                     className="text-button"

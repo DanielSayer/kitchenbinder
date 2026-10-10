@@ -114,7 +114,11 @@ Local development automatically retires service workers left by other projects o
 
 ## Durable imports and AI allowance
 
-Run `pnpm worker:imports` alongside the website. Website creation and extension imports both enqueue jobs; HTTP requests never generate recipes. Supervise the worker in production and restart it on failure. Deploy the website and worker together. Stop old workers before upgrading.
+`pnpm dev` and `pnpm dev:web` start the import worker alongside the website. The worker watches its source and restarts after changes. For a separately hosted website, run `pnpm worker:imports` alongside it. Website creation and extension imports both enqueue jobs; HTTP requests never generate recipes. Supervise the worker in production and restart it on failure. Deploy the website and worker together. Stop old workers before upgrading.
+
+The worker writes JSON diagnostics to its terminal. `import_worker_started` confirms startup; a heartbeat every 30 seconds reports queued/active counts and the oldest queue wait. Each import logs its reference ID, queue wait, stage starts and durations, page response hosts/statuses/redirect counts, and its saved or failed outcome. Failure diagnostics include only error type, safe error code and HTTP status, never exception messages, recipe text, full URLs, credentials or account IDs. Use the import reference shown below the composer or on Recent imports to find its events. A request stuck at `queued` has not reached the page fetch or AI provider. Check for a worker startup/heartbeat first.
+
+To retain diagnostics locally in PowerShell when running a separate worker, use `pnpm worker:imports | Tee-Object -FilePath import-worker.log`. Log files are ignored by Git.
 
 For an existing database, apply `packages/db/src/upgrades/reliable-imports.sql` before deploying. It only adds columns and makes the source URL nullable. New databases can use the normal `pnpm db:push` setup.
 
