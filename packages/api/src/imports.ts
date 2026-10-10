@@ -17,6 +17,7 @@ import {
   lt,
   sql,
 } from "drizzle-orm";
+import { refreshBillingIfStale } from "./billing/polar";
 import { pricing } from "./billing/policy";
 import {
   checkAiAllowance,
@@ -248,6 +249,12 @@ export function discardWebsiteImport(userId: string, value: unknown) {
 
 async function submitJob(userId: string, input: JobInput) {
   const fingerprint = fingerprintOf(input);
+  const [existing] = await db
+    .select({ id: recipeImport.id })
+    .from(recipeImport)
+    .where(eq(recipeImport.id, input.id));
+  // Recover admitted requests even if the billing provider is unavailable.
+  if (!existing) await refreshBillingIfStale(userId);
   const admitted = await db.transaction(async (tx) => {
     // Serialize admissions and retries per account before checking the job or quota.
     await tx

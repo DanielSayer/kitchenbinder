@@ -31,7 +31,7 @@ Credits are reserved at admission and released only when preparation fails befor
 
 Pro is required to create households, issue invitations and receive ownership. Free accounts can join, read and contribute to existing households within their own recipe and AI caps. Downgrades do not strand existing shared recipes or prevent housekeeping actions.
 
-Paid access expires at the verified period end even if a webhook is missed. Cancellation at period end retains access until then; revocation removes it after sync. A missed renewal webhook may temporarily show Free until Refresh plan or a webhook succeeds. Account deletion is blocked until Polar confirms no active, trial, past-due, paused or other unfinished subscription. Operators must also handle Polar's retained customer and tax records according to the applicable retention policy.
+Paid access expires at the verified period end even if a webhook is missed. Cancellation at period end retains access until then; revocation removes it after sync. Before admitting a new import, accounts with billing history automatically reconcile expired paid access or stale Free state with Polar. Confirmed Free state is cached for one minute. Reconciliation commits before quota checks, and a provider outage asks the user to retry without admitting an import or consuming credits. Existing imports remain recoverable during an outage. Settings also refreshes the plan on opening. Account deletion is blocked until Polar confirms no active, trial, past-due, paused or other unfinished subscription. Operators must also handle Polar's retained customer and tax records according to the applicable retention policy.
 
 ## AI spending cutoff
 

@@ -97,6 +97,42 @@ export async function syncBilling(tx: Database, userId: string) {
   return saved;
 }
 
+// Commit reconciliation separately so a quota rejection cannot roll it back.
+export async function refreshBillingIfStale(userId: string) {
+  if (!billingEnabled()) return;
+  await db.transaction(async (tx) => {
+    await lockAccount(tx, userId);
+    const [account] = await tx
+      .select()
+      .from(billingAccount)
+      .where(eq(billingAccount.userId, userId));
+    if (
+      !account ||
+      (!account.customerId && !account.trialUsed && account.status === "free")
+    )
+      return;
+    const now = new Date();
+    if (allowance(account.status, account.validUntil, now).tier === "pro")
+      return;
+    // Recheck expired paid access immediately, but cache confirmed Free state.
+    if (
+      account.status === "free" &&
+      account.syncedAt &&
+      now.getTime() - account.syncedAt.getTime() < 60_000
+    )
+      return;
+    try {
+      await syncBilling(tx, userId);
+    } catch (cause) {
+      throw new TRPCError({
+        code: "PRECONDITION_FAILED",
+        message: "Couldn't verify your plan. Please try again shortly.",
+        cause,
+      });
+    }
+  });
+}
+
 export async function startCheckout(account: {
   id: string;
   email: string;
