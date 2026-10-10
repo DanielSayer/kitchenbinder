@@ -94,8 +94,13 @@ function AccountComposer({
     trpc.recipes.importStatus.queryOptions(
       { id: pending?.id ?? "00000000-0000-4000-8000-000000000000" },
       {
-        enabled: !!pending && !!userId,
+        enabled:
+          !!pending &&
+          !!userId &&
+          (create.isSuccess || (create.isError && !admissionRejected)),
         retry: false,
+        // Progress errors have inline feedback, including recovery before admission.
+        meta: { errorToast: false },
         refetchInterval: (query) => {
           if (admissionRejected && !query.state.data) return false;
           const kind = query.state.data?.kind;

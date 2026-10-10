@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import {
   cleanup,
   fireEvent,
@@ -9,7 +9,9 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { createElement } from "react";
+import { toast } from "sonner";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { createQueryClient } from "@/utils/query-client";
 import { importDraftKey, writePendingImport } from "./import-draft";
 import { RecipeComposer } from "./recipe-composer";
 
@@ -18,6 +20,7 @@ const { createImport, discardImport, readStatus } = vi.hoisted(() => ({
   discardImport: vi.fn(),
   readStatus: vi.fn(),
 }));
+vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
 
 vi.mock("@/lib/auth-client", () => ({
   authClient: {
@@ -72,8 +75,10 @@ beforeEach(() => {
 afterEach(cleanup);
 
 function showComposer() {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  const client = createQueryClient();
+  client.setDefaultOptions({
+    queries: { retry: false },
+    mutations: { retry: false },
   });
   return render(
     createElement(
@@ -99,6 +104,8 @@ it("stops showing progress after a quota rejection and keeps the draft", async (
   );
   expect(screen.queryByText(/Creating your recipe/)).toBeNull();
   expect(screen.queryByRole("button", { name: "Check again" })).toBeNull();
+  expect(readStatus).not.toHaveBeenCalled();
+  expect(toast.error).not.toHaveBeenCalled();
   const polls = readStatus.mock.calls.length;
   await new Promise((resolve) => setTimeout(resolve, 2200));
   expect(readStatus).toHaveBeenCalledTimes(polls);
@@ -122,6 +129,74 @@ it("keeps an uncertain request recoverable", async () => {
   expect(screen.getByText(/Creating your recipe/)).toBeTruthy();
   expect(screen.getByRole("button", { name: "Check again" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Cancel request" })).toBeTruthy();
+  await waitFor(() => expect(readStatus).toHaveBeenCalled());
+  expect(toast.error).not.toHaveBeenCalled();
+});
+
+it("waits for admission before checking progress", async () => {
+  const status = {
+    kind: "queued",
+    id: "00000000-0000-4000-8000-000000000001",
+    queuedForMs: 0,
+  };
+  let accept: (() => void) | undefined;
+  createImport.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        accept = () => resolve(status);
+      }),
+  );
+  readStatus.mockResolvedValue(status);
+  showComposer();
+  await waitFor(() => expect(createImport).toHaveBeenCalledOnce());
+  expect(readStatus).not.toHaveBeenCalled();
+  if (!accept) throw new Error("Admission did not start");
+  accept();
+  await waitFor(() => expect(readStatus).toHaveBeenCalledOnce());
+  expect(screen.getByText(/Your recipe is queued/)).toBeTruthy();
+  expect(toast.error).not.toHaveBeenCalled();
+});
+
+it("recovers a lost admission response without a not-found toast", async () => {
+  createImport.mockRejectedValue(new Error("Connection lost."));
+  readStatus
+    .mockRejectedValueOnce(
+      Object.assign(new Error("Import not found."), {
+        data: { code: "NOT_FOUND" },
+      }),
+    )
+    .mockResolvedValue({
+      kind: "saved",
+      id: "00000000-0000-4000-8000-000000000001",
+      recipeId: "00000000-0000-4000-8000-000000000001",
+      title: "Lemon pasta",
+    });
+  showComposer();
+  await waitFor(() => expect(readStatus).toHaveBeenCalledOnce());
+  expect(toast.error).not.toHaveBeenCalled();
+  await waitFor(
+    () => expect(screen.getByText("Added to your collection!")).toBeTruthy(),
+    { timeout: 4000 },
+  );
+  expect(toast.error).not.toHaveBeenCalled();
+  expect(createImport).toHaveBeenCalledOnce();
+});
+
+it("shows progress failures inline without duplicating them in a toast", async () => {
+  createImport.mockResolvedValue({
+    kind: "queued",
+    id: "00000000-0000-4000-8000-000000000001",
+    queuedForMs: 0,
+  });
+  readStatus.mockRejectedValue(new Error("Network unavailable."));
+  showComposer();
+  await waitFor(() =>
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Couldn't check progress.",
+    ),
+  );
+  expect(toast.error).not.toHaveBeenCalled();
+  expect(screen.getByText(/Your recipe is queued/)).toBeTruthy();
 });
 
 it("shows a stalled queue with its reference while preserving the existing request", async () => {
