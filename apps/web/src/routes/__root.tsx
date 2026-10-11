@@ -8,6 +8,7 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import type { TRPCOptionsProxy } from "@trpc/tanstack-react-query";
+import { AccountQueryBoundary } from "../components/account-query-boundary";
 import { CollectionProvider } from "../components/groups/collection-context";
 import Header from "../components/header";
 import { getSiteOrigin } from "../functions/get-site-origin";
@@ -127,10 +128,12 @@ function RootDocument() {
         </a>
 
         <div className="app-shell">
-          <CollectionProvider>
-            <Header />
-            <Outlet />
-          </CollectionProvider>
+          <AccountQueryBoundary>
+            <CollectionProvider>
+              <Header />
+              <Outlet />
+            </CollectionProvider>
+          </AccountQueryBoundary>
         </div>
 
         <Toaster richColors theme="light" />
