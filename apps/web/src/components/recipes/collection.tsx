@@ -13,15 +13,16 @@ import {
   Tags as TagsIcon,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ErrorNotice, LoadingState } from "@/components/feedback";
 import { useTRPC } from "@/utils/trpc";
 import { CollectionSelect, useCollection } from "../groups/collection-context";
 import { AddRecipesButton } from "../shopping/add-recipes";
 import { BulkTagDialog } from "./bulk-tag-dialog";
 import { EmptyCollection } from "./empty-collection";
+import { RecipePagination, recipePageSize, useRecipePage } from "./pagination";
 import { RecipeCard } from "./recipe-card";
-import { filterAndSortRecipes, type RecipeSort } from "./recipe-list";
+import type { RecipeSort } from "./recipe-list";
 import { SortDropdown } from "./sort-dropdown";
 import { TagChoices } from "./tag-choices";
 
@@ -30,7 +31,6 @@ const collectionRoute = getRouteApi("/_auth/recipes/");
 export function Collection() {
   const trpc = useTRPC();
   const { groupId, name } = useCollection();
-  const query = useQuery(trpc.recipes.list.queryOptions({ groupId }));
   const filters = collectionRoute.useSearch();
   const navigate = collectionRoute.useNavigate();
   const search = filters.q ?? "";
@@ -42,6 +42,37 @@ export function Collection() {
   const activeTags = selectedTags.filter((id) =>
     tags.data?.some((tag) => tag.id === id),
   );
+  const listFilters = {
+    groupId,
+    search,
+    favouritesOnly,
+    unratedOnly,
+    neverCooked: filters.neverCooked,
+    cookedBefore: filters.cookedBefore,
+    tagIds: activeTags,
+    sort,
+  };
+  const { page, setPage } = useRecipePage(
+    JSON.stringify({ ...listFilters, tagIds: selectedTags }),
+    filters.page ?? 0,
+  );
+  const goToPage = useCallback(
+    (next: number) => {
+      setPage(next);
+      void navigate({
+        search: (old) => ({ ...old, page: next || undefined }),
+        replace: true,
+        resetScroll: true,
+      });
+    },
+    [setPage, navigate],
+  );
+  const query = useQuery(
+    trpc.recipes.list.queryOptions(
+      { ...listFilters, page, pageSize: recipePageSize },
+      { enabled: tags.isSuccess },
+    ),
+  );
   const filterCount =
     activeTags.length +
     Number(favouritesOnly) +
@@ -52,26 +83,24 @@ export function Collection() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [bulkDialog, setBulkDialog] = useState(false);
   const [selectedRecipeIds, setSelectedRecipeIds] = useState<string[]>([]);
+  const priorGroup = useRef(groupId);
 
   useEffect(() => {
-    void groupId;
+    if (priorGroup.current !== groupId) {
+      priorGroup.current = groupId;
+      void navigate({
+        search: (old) => ({ ...old, page: undefined }),
+        replace: true,
+        resetScroll: false,
+      });
+    }
     setBulkMode(false);
     setBulkDialog(false);
     setSelectedRecipeIds([]);
-  }, [groupId]);
+  }, [groupId, navigate]);
 
-  const recipes = filterAndSortRecipes(
-    query.isError ? [] : (query.data ?? []),
-    {
-      search,
-      favouritesOnly,
-      unratedOnly,
-      neverCooked: filters.neverCooked,
-      cookedBefore: filters.cookedBefore,
-      tagIds: activeTags,
-      sort,
-    },
-  );
+  const recipes = query.isError ? [] : (query.data?.items ?? []);
+  const total = query.data?.total ?? 0;
   const visibleIds = recipes.map((recipe) => recipe.id);
   const allVisibleSelected =
     visibleIds.length > 0 &&
@@ -87,7 +116,7 @@ export function Collection() {
     sort?: RecipeSort;
   }) =>
     void navigate({
-      search: (old) => ({ ...old, ...next }),
+      search: (old) => ({ ...old, ...next, page: undefined }),
       replace: true,
       resetScroll: false,
     });
@@ -132,9 +161,11 @@ export function Collection() {
       <div className="collection-toolbar">
         <div className="collection-count">
           <span>
-            {recipes.length} {recipes.length === 1 ? "recipe" : "recipes"}
+            {query.isPending
+              ? "Loading recipes..."
+              : `${total} ${total === 1 ? "recipe" : "recipes"}`}
           </span>
-          {!bulkMode && query.isSuccess && query.data.length > 0 && (
+          {!bulkMode && query.isSuccess && total > 0 && (
             <button
               type="button"
               className="button button-small button-outline"
@@ -193,7 +224,7 @@ export function Collection() {
               }
             >
               <CheckCheck size={17} aria-hidden="true" />
-              {allVisibleSelected ? "Deselect all" : "Select all"}
+              {allVisibleSelected ? "Deselect page" : "Select page"}
             </button>
             <button
               type="button"
@@ -316,7 +347,9 @@ export function Collection() {
       />
       {tags.isPending && <p role="status">Loading tags...</p>}
 
-      <LoadingState pending={query.isPending}>
+      <LoadingState
+        pending={tags.isPending || (tags.isSuccess && query.isPending)}
+      >
         <ErrorNotice
           message={query.error?.message}
           retry={() => void query.refetch()}
@@ -363,6 +396,9 @@ export function Collection() {
             />
           ))}
         </div>
+        {query.isSuccess && (
+          <RecipePagination page={page} total={total} setPage={goToPage} />
+        )}
       </LoadingState>
       {bulkDialog && (
         <BulkTagDialog

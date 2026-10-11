@@ -382,6 +382,17 @@
   min-height: 44px;
   font-size: 14px;
 }
+@media (max-width: 600px) {
+  .shopping-picker .shopping-picker-footer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+  .shopping-picker-footer > .button-primary {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+}
 .collection-page .collection-toolbar-controls {
   display: grid;
   grid-template-columns: minmax(160px, 1fr) auto auto;

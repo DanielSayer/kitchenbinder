@@ -8,6 +8,11 @@ import { ErrorNotice, LoadingState } from "../feedback";
 import { useCollection } from "../groups/collection-context";
 import { CollectionDropdown } from "../groups/collection-dropdown";
 import { OrganiseDialog } from "../recipes/organise-dialog";
+import {
+  RecipePagination,
+  recipePageSize,
+  useRecipePage,
+} from "../recipes/pagination";
 
 export function AddRecipesButton({
   recipeIds,
@@ -82,25 +87,22 @@ export function RecipePicker({ onClose }: { onClose: () => void }) {
   const trpc = useTRPC();
   const client = useQueryClient();
   const { groups } = useCollection();
-  const recipes = useQuery(trpc.shopping.recipes.queryOptions());
   const list = useQuery(trpc.shopping.list.queryOptions());
   const [search, setSearch] = useState("");
   const [collection, setCollection] = useState("all");
+  const { page, setPage } = useRecipePage(JSON.stringify([search, collection]));
+  const recipes = useQuery(
+    trpc.shopping.recipes.queryOptions({
+      search,
+      collection,
+      page,
+      pageSize: recipePageSize,
+    }),
+  );
   const [selected, setSelected] = useState<string[]>([]);
   const existing = new Set(list.data?.map((item) => item.recipeId));
-  const availableIds = new Set(recipes.data?.map((item) => item.id));
-  const validSelection = selected.filter(
-    (id) => availableIds.has(id) && !existing.has(id),
-  );
-  const shown =
-    recipes.data?.filter(
-      (recipe) =>
-        (collection === "all" ||
-          (recipe.groupId ?? "personal") === collection) &&
-        recipe.title
-          .toLocaleLowerCase()
-          .includes(search.trim().toLocaleLowerCase()),
-    ) ?? [];
+  const validSelection = selected.filter((id) => !existing.has(id));
+  const shown = recipes.isError ? [] : (recipes.data?.items ?? []);
   const add = useMutation(
     trpc.shopping.addRecipes.mutationOptions({
       onSuccess: async () => {
@@ -201,6 +203,14 @@ export function RecipePicker({ onClose }: { onClose: () => void }) {
               )}
             </div>
           )}
+          {recipes.isSuccess && (
+            <RecipePagination
+              page={page}
+              total={recipes.data.total}
+              setPage={setPage}
+              disabled={add.isPending}
+            />
+          )}
         </LoadingState>
         <ErrorNotice
           message={add.error?.message}
@@ -215,6 +225,16 @@ export function RecipePicker({ onClose }: { onClose: () => void }) {
           {validSelection.length} selected
           {validSelection.length > 100 ? ". Choose up to 100." : ""}
         </span>
+        {selected.length > 0 && (
+          <button
+            type="button"
+            className="text-button"
+            disabled={add.isPending}
+            onClick={() => setSelected([])}
+          >
+            Clear selection
+          </button>
+        )}
         <button
           type="button"
           className="button button-primary"

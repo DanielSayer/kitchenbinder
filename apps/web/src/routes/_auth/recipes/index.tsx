@@ -11,6 +11,7 @@ type CollectionSearch = {
   cookedBefore?: string;
   tags?: string;
   sort?: RecipeSort;
+  page?: number;
 };
 
 export const Route = createFileRoute("/_auth/recipes/")({
@@ -30,9 +31,9 @@ export const Route = createFileRoute("/_auth/recipes/")({
     cookedBefore: z.iso.date().safeParse(search.cookedBefore).data,
     tags:
       typeof search.tags === "string" && search.tags ? search.tags : undefined,
-    sort: recipeSorts.includes(search.sort as RecipeSort)
-      ? (search.sort as RecipeSort)
-      : undefined,
+    sort: z.enum(recipeSorts).safeParse(search.sort).data,
+    page: z.coerce.number().int().min(0).max(1_000_000).safeParse(search.page)
+      .data,
   }),
   component: Collection,
 });

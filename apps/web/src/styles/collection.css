@@ -3,6 +3,18 @@
   margin: 0 auto;
   padding: 32px var(--page-gutter) 64px;
 }
+.recipe-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 24px;
+  font-size: 13px;
+  font-weight: 800;
+}
+.recipe-pagination button {
+  min-height: 44px;
+}
 .deleted-recipes {
   list-style: none;
   padding: 0;

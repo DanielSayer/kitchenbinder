@@ -1,5 +1,6 @@
-import type { RecipeContent } from "@prep-sheet/db/recipe-content";
+import type { AppRouter } from "@prep-sheet/api/routers/index";
 import { Link } from "@tanstack/react-router";
+import type { inferRouterOutputs } from "@trpc/server";
 import { BookOpen, Check, Clock } from "lucide-react";
 import { FavouriteButton } from "./favourite-button";
 import { RatingControl } from "./rating-control";
@@ -9,16 +10,10 @@ export function RecipeCard({
   recipe,
   selection,
 }: {
-  recipe: {
-    id: string;
-    title: string;
-    content: RecipeContent;
-    isFavourite: boolean;
-    rating: number | null;
-  };
+  recipe: inferRouterOutputs<AppRouter>["recipes"]["list"]["items"][number];
   selection?: { selected: boolean; toggle: () => void };
 }) {
-  const time = recipeTimeSummary(recipe.content);
+  const time = recipeTimeSummary(recipe);
 
   return (
     <article className="recipe-card" data-selected={selection?.selected}>
@@ -66,8 +61,8 @@ export function RecipeCard({
         )}
       </h2>
       <p>
-        {recipe.content.description ||
-          `${recipe.content.ingredients.length} ${recipe.content.ingredients.length === 1 ? "ingredient" : "ingredients"}`}
+        {recipe.description ||
+          `${recipe.ingredientCount} ${recipe.ingredientCount === 1 ? "ingredient" : "ingredients"}`}
       </p>
 
       <div className="recipe-card-bottom">

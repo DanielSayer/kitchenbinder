@@ -9,6 +9,11 @@ import { ErrorNotice, LoadingState } from "../feedback";
 import { useCollection } from "../groups/collection-context";
 import { CollectionDropdown } from "../groups/collection-dropdown";
 import { OrganiseDialog } from "../recipes/organise-dialog";
+import {
+  RecipePagination,
+  recipePageSize,
+  useRecipePage,
+} from "../recipes/pagination";
 import { dateLabel } from "./dates";
 
 const draftSchema = z.object({
@@ -58,7 +63,6 @@ export function MealEditor({
   const { data: session } = authClient.useSession();
   const key = `meal-draft:${session?.user.id ?? "guest"}:${duplicate ? "copy" : "edit"}:${meal?.id ?? date}`;
   const planner = useQuery(trpc.planner.get.queryOptions());
-  const recipes = useQuery(trpc.shopping.recipes.queryOptions());
   const { groups } = useCollection();
   const [draft, setDraft] = useState(() => {
     try {
@@ -82,6 +86,21 @@ export function MealEditor({
     stepHeading.current?.focus();
   }, [step]);
   const [collection, setCollection] = useState("all");
+  const { page, setPage } = useRecipePage(JSON.stringify([search, collection]));
+  const recipes = useQuery(
+    trpc.shopping.recipes.queryOptions({
+      search,
+      collection,
+      page,
+      pageSize: recipePageSize,
+    }),
+  );
+  const selected = useQuery(
+    trpc.shopping.recipe.queryOptions(
+      { id: draft.recipeId },
+      { enabled: draft.kind === "recipe" && !!draft.recipeId },
+    ),
+  );
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(planner.data?.revision);
   useEffect(() => {
@@ -97,9 +116,7 @@ export function MealEditor({
   }, [draft, key]);
   const set = (values: Partial<Draft>) =>
     setDraft((current) => ({ ...current, ...values }));
-  const selectedRecipe = recipes.data?.find(
-    (entry) => entry.id === draft.recipeId,
-  );
+  const selectedRecipe = selected.data;
   useEffect(() => {
     if (selectedRecipe) {
       const match = selectedRecipe.servings
@@ -132,13 +149,7 @@ export function MealEditor({
       },
     }),
   );
-  const shown =
-    recipes.data?.filter(
-      (entry) =>
-        (collection === "all" ||
-          (entry.groupId ?? "personal") === collection) &&
-        entry.title.toLowerCase().includes(search.trim().toLowerCase()),
-    ) ?? [];
+  const shown = recipes.isError ? [] : (recipes.data?.items ?? []);
   const sources =
     planner.data?.meals.filter(
       (entry) => entry.kind === "recipe" && entry.date < draft.date,
@@ -324,6 +335,14 @@ export function MealEditor({
                         </p>
                       )}
                     </div>
+                    {recipes.isSuccess && (
+                      <RecipePagination
+                        page={page}
+                        total={recipes.data.total}
+                        setPage={setPage}
+                        disabled={save.isPending}
+                      />
+                    )}
                   </LoadingState>
                 </>
               )}
@@ -340,6 +359,10 @@ export function MealEditor({
                       </strong>
                     </p>
                   )}
+                  <ErrorNotice
+                    message={selected.error?.message}
+                    retry={() => void selected.refetch()}
+                  />
                   <div className="meal-form-grid meal-portions">
                     <label className="shopping-field">
                       Original servings

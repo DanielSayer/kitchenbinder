@@ -6,6 +6,7 @@ import { useTRPC } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
 import { useCollection } from "../groups/collection-context";
 import { OrganiseDialog } from "./organise-dialog";
+import { RecipePagination, recipePageSize, useRecipePage } from "./pagination";
 import { TagChoices } from "./tag-choices";
 
 type TagOption = ComponentProps<typeof TagChoices>["tags"][number];
@@ -95,15 +96,18 @@ export function ApplyTagDialog({
   const trpc = useTRPC();
   const client = useQueryClient();
   const { groups } = useCollection();
-  const recipes = useQuery(trpc.recipes.taggingList.queryOptions());
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<string[]>([]);
-  const choices =
-    recipes.data?.filter((recipe) => !recipe.tagIds.includes(tag.id)) ?? [];
-  const searchTerm = search.trim().toLocaleLowerCase();
-  const shown = choices.filter((recipe) =>
-    recipe.title.toLocaleLowerCase().includes(searchTerm),
+  const { page, setPage } = useRecipePage(JSON.stringify([search, tag.id]));
+  const recipes = useQuery(
+    trpc.recipes.taggingList.queryOptions({
+      search,
+      excludeTagId: tag.id,
+      page,
+      pageSize: recipePageSize,
+    }),
   );
+  const [selected, setSelected] = useState<string[]>([]);
+  const shown = recipes.isError ? [] : (recipes.data?.items ?? []);
   const shownIds = shown.map((recipe) => recipe.id);
   const everyShownSelected =
     shownIds.length > 0 && shownIds.every((id) => selected.includes(id));
@@ -129,22 +133,22 @@ export function ApplyTagDialog({
   return (
     <OrganiseDialog title={`Add ${tag.name} to recipes`} onClose={onClose}>
       <p>Choose up to 100 recipes. Recipes with this tag are hidden.</p>
+      <label className="search-box bulk-recipe-search">
+        <Search size={18} aria-hidden="true" />
+        <span className="sr-only">Search recipes</span>
+        <input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search recipes..."
+        />
+      </label>
       <LoadingState pending={recipes.isPending} label="Loading recipes...">
         <ErrorNotice
           message={recipes.error?.message}
           retry={() => void recipes.refetch()}
         />
-        {choices.length > 0 && (
+        {recipes.isSuccess && shown.length > 0 && (
           <>
-            <label className="search-box bulk-recipe-search">
-              <Search size={18} aria-hidden="true" />
-              <span className="sr-only">Search recipes</span>
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search recipes..."
-              />
-            </label>
             <div className="bulk-recipe-controls">
               <span>
                 {selected.length} {selected.length === 1 ? "recipe" : "recipes"}{" "}
@@ -162,8 +166,18 @@ export function ApplyTagDialog({
                   )
                 }
               >
-                {everyShownSelected ? "Deselect all" : "Select all"}
+                {everyShownSelected ? "Deselect page" : "Select page"}
               </button>
+              {selected.length > 0 && (
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={update.isPending}
+                  onClick={() => setSelected([])}
+                >
+                  Clear selection
+                </button>
+              )}
             </div>
             <ul className="bulk-recipe-list">
               {shown.map((recipe) => (
@@ -197,14 +211,21 @@ export function ApplyTagDialog({
             )}
           </>
         )}
-        {recipes.isSuccess && recipes.data.length === 0 && (
-          <p className="muted">Add a recipe before applying this tag.</p>
+        {recipes.isSuccess && shown.length === 0 && (
+          <p className="muted">
+            {search
+              ? "No recipes match that search."
+              : "No recipes without this tag."}
+          </p>
         )}
-        {recipes.isSuccess &&
-          recipes.data.length > 0 &&
-          choices.length === 0 && (
-            <p className="muted">This tag is already on every recipe.</p>
-          )}
+        {recipes.isSuccess && (
+          <RecipePagination
+            page={page}
+            total={recipes.data.total}
+            setPage={setPage}
+            disabled={update.isPending}
+          />
+        )}
       </LoadingState>
       <ErrorNotice message={update.error?.message} />
       {selected.length > 100 && (
