@@ -2,7 +2,6 @@
 
 import type { AppRouter } from "@prep-sheet/api/routers/index";
 import {
-  QueryClientProvider,
   type QueryKey,
   useQueries,
   useQueryClient,
@@ -10,9 +9,12 @@ import {
 import {
   createMemoryHistory,
   createRootRouteWithContext,
+  createRoute,
   createRouter,
-  RouterContextProvider,
+  Outlet,
+  RouterProvider,
 } from "@tanstack/react-router";
+import { setupRouterSsrQueryIntegration } from "@tanstack/react-router-ssr-query";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { createTRPCClient, httpBatchLink } from "@trpc/client";
 import {
@@ -85,12 +87,14 @@ function privateKeys(trpc: TRPCOptionsProxy<AppRouter>): QueryKey[] {
   ];
 }
 
-function harness({
+async function harness({
   initial = sessionState("A"),
   stale = false,
   cached = true,
   response = (id: string, index: number) => Promise.resolve(`${id}-${index}`),
 } = {}) {
+  // jsdom has no viewport to scroll when the real router navigates.
+  vi.spyOn(window, "scrollTo").mockImplementation(() => {});
   let session = initial;
   const listeners = new Set<() => void>();
   vi.mocked(authClient.useSession).mockImplementation(() =>
@@ -118,12 +122,28 @@ function harness({
   const root = createRootRouteWithContext<{
     queryClient: typeof queryClient;
     trpc: typeof trpc;
-  }>()();
+  }>()({
+    component: () =>
+      createElement(AccountQueryBoundary, { children: createElement(Page) }),
+  });
+  const home = createRoute({
+    getParentRoute: () => root,
+    path: "/",
+    component: () => createElement("p", null, "Home route"),
+  });
+  const other = createRoute({
+    getParentRoute: () => root,
+    path: "/privacy",
+    component: () => createElement("p", null, "Privacy route"),
+  });
   const router = createRouter({
-    routeTree: root,
+    routeTree: root.addChildren([home, other]),
     history: createMemoryHistory({ initialEntries: ["/"] }),
     context: { queryClient, trpc },
+    Wrap: ({ children }) =>
+      createElement(TRPCProvider, { trpcClient, queryClient, children }),
   });
+  setupRouterSsrQueryIntegration({ router, queryClient });
   const renders: { account: string | null; data: (string | undefined)[] }[] =
     [];
   const clients = new Set<typeof queryClient>();
@@ -154,24 +174,12 @@ function harness({
         createElement("p", { key: index }, query.data ?? "Loading"),
       ),
       createElement("p", null, draft?.title ?? "No draft"),
+      createElement(Outlet),
     );
   }
 
-  const tree = () =>
-    createElement(QueryClientProvider, {
-      client: queryClient,
-      children: createElement(TRPCProvider, {
-        trpcClient,
-        queryClient,
-        children: createElement(RouterContextProvider, {
-          router,
-          children: createElement(AccountQueryBoundary, {
-            children: createElement(Page),
-          }),
-        }),
-      }),
-    });
-  const view = render(tree());
+  await router.load();
+  const view = render(createElement(RouterProvider, { router }));
 
   return {
     view,
@@ -189,8 +197,10 @@ function harness({
         });
       });
     },
-    navigate() {
-      view.rerender(tree());
+    async navigate() {
+      await act(async () => {
+        await router.navigate({ to: "/privacy" });
+      });
     },
   };
 }
@@ -198,6 +208,7 @@ function harness({
 afterEach(() => {
   cleanup();
   sessionStorage.clear();
+  vi.restoreAllMocks();
   vi.clearAllMocks();
 });
 
@@ -205,7 +216,7 @@ it.each([false, true])(
   "isolates direct A to B transitions with stale cache = %s, including every render",
   async (stale) => {
     const b = deferred<string>();
-    const app = harness({
+    const app = await harness({
       stale,
       response: (id, index) =>
         id === "B" ? b.promise : Promise.resolve(`${id}-${index}`),
@@ -234,7 +245,7 @@ it.each([false, true])(
 it.each([false, true])(
   "retires A's fresh or stale cache through guest and B, stale = %s",
   async (stale) => {
-    const app = harness({ stale });
+    const app = await harness({ stale });
     app.transition(sessionState(null));
     expect(screen.getByText("Guest")).toBeTruthy();
     expect(screen.queryByText("A-0")).toBeNull();
@@ -253,10 +264,11 @@ it.each([false, true])(
   },
 );
 
-it("keeps same-account caches during session refresh and navigation", () => {
-  const app = harness();
+it("keeps same-account caches during session refresh and navigation", async () => {
+  const app = await harness();
   app.transition({ ...sessionState("A"), isRefetching: true });
-  app.navigate();
+  await app.navigate();
+  expect(screen.getByText("Privacy route")).toBeTruthy();
   expect(screen.getByText("A-0")).toBeTruthy();
   expect(app.requests).not.toHaveBeenCalled();
   expect(app.clients.size).toBe(1);
@@ -264,7 +276,10 @@ it("keeps same-account caches during session refresh and navigation", () => {
 });
 
 it("does not mount authenticated queries until the initial session resolves", async () => {
-  const app = harness({ initial: sessionState(null, true), cached: false });
+  const app = await harness({
+    initial: sessionState(null, true),
+    cached: false,
+  });
   expect(app.requests).not.toHaveBeenCalled();
   app.transition(sessionState("B"));
   await screen.findByText("B-0");
@@ -274,7 +289,7 @@ it("does not mount authenticated queries until the initial session resolves", as
 it("cancels A's queries and isolates late responses and old-client callbacks after B signs in", async () => {
   const a = deferred<string>();
   const b = deferred<string>();
-  const app = harness({
+  const app = await harness({
     cached: false,
     // This transport deliberately ignores the AbortSignal.
     response: (id) => (id === "A" ? a.promise : b.promise),
@@ -303,7 +318,7 @@ it("cancels A's queries and isolates late responses and old-client callbacks aft
   ).toBe(true);
 });
 
-it("remounts account state while preserving account-scoped saved drafts", () => {
+it("remounts account state while preserving account-scoped saved drafts", async () => {
   const fields = recipeFields({
     title: "A saved draft",
     description: "",
@@ -317,7 +332,7 @@ it("remounts account state while preserving account-scoped saved drafts", () => 
   });
   writeRecipeDraft(recipeDraftKey("A"), fields);
   writeRecipeDraft(recipeDraftKey("B"), { ...fields, title: "B saved draft" });
-  const app = harness();
+  const app = await harness();
   expect(screen.getByText("A saved draft")).toBeTruthy();
   app.transition(sessionState("B"));
   expect(screen.queryByText("A saved draft")).toBeNull();
