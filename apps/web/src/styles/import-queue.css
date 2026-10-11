@@ -89,12 +89,59 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 4px 16px;
+  justify-content: space-between;
+  gap: 8px 12px;
   margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
 }
-.import-card-actions .text-button {
-  min-height: 44px;
-  font-size: 13px;
+.import-card-next-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-left: auto;
+}
+.import-card-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 6px 9px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted-ink);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-decoration: none;
+}
+.import-card-action:hover:not(:disabled) {
+  background: #e8ecd9;
+  color: var(--ink);
+}
+.import-card-input {
+  padding-inline: 4px;
+}
+.import-card-open {
+  background: #fffef9;
+  border-color: #b9c5a9;
+  color: var(--green-dark);
+}
+.import-card-dismiss {
+  width: 34px;
+  padding: 6px;
+}
+@media (max-width: 850px), (pointer: coarse) {
+  .import-card-action {
+    min-height: 44px;
+  }
+  .import-card-dismiss {
+    width: 44px;
+  }
 }
 .import-card-note {
   margin-top: 8px;

@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import {
   ArrowRight,
   Check,
+  FileText,
   LoaderCircle,
   Pencil,
   RefreshCw,
@@ -168,64 +169,73 @@ export function ImportQueueCard({
       <div className="import-card-actions">
         <button
           type="button"
-          className="text-button"
+          className="import-card-action import-card-input"
           ref={viewInput}
           onClick={() => setShowInput(true)}
         >
-          View input
+          <FileText size={14} aria-hidden="true" /> View input
         </button>
-        {saved && (
-          <>
-            <Link
-              className="text-button"
-              to="/recipes/$recipeId"
-              params={{ recipeId: saved.recipeId }}
-            >
-              Open recipe <ArrowRight size={17} aria-hidden="true" />
-            </Link>
+        <div className="import-card-next-actions">
+          {saved && (
+            <>
+              <Link
+                className="import-card-action import-card-open"
+                to="/recipes/$recipeId"
+                params={{ recipeId: saved.recipeId }}
+              >
+                Open recipe <ArrowRight size={17} aria-hidden="true" />
+              </Link>
+              <button
+                type="button"
+                className="import-card-action import-card-dismiss"
+                aria-label="Dismiss"
+                title="Dismiss request"
+                onClick={() => onRemove(request.id)}
+              >
+                <X size={16} aria-hidden="true" />
+              </button>
+            </>
+          )}
+          {busy && (create.isError || status.isError) && !admissionRejected && (
             <button
               type="button"
-              className="text-button"
-              onClick={() => onRemove(request.id)}
+              className="import-card-action import-card-open"
+              disabled={create.isPending || status.isFetching}
+              onClick={() =>
+                create.isError ? create.mutate(request) : void status.refetch()
+              }
             >
-              Dismiss
+              <RefreshCw size={17} aria-hidden="true" /> Check again
             </button>
-          </>
-        )}
-        {busy && (create.isError || status.isError) && !admissionRejected && (
-          <button
-            type="button"
-            className="text-button"
-            disabled={create.isPending || status.isFetching}
-            onClick={() =>
-              create.isError ? create.mutate(request) : void status.refetch()
-            }
-          >
-            <RefreshCw size={17} aria-hidden="true" /> Check again
-          </button>
-        )}
-        {(result?.kind === "failed" || rejected) && (
-          <button
-            type="button"
-            className="text-button"
-            disabled={discard.isPending || !canEdit}
-            onClick={() => void editOrCancel(true)}
-          >
-            <Pencil size={17} aria-hidden="true" />{" "}
-            {rejected ? "Edit and try again" : "Edit and retry"}
-          </button>
-        )}
-        {(result?.kind === "failed" || create.isError) && !saved && (
-          <button
-            type="button"
-            className="text-button"
-            disabled={discard.isPending}
-            onClick={() => void editOrCancel(false)}
-          >
-            <X size={17} aria-hidden="true" />{" "}
-            {busy ? "Cancel request" : "Dismiss"}
-          </button>
-        )}
+          )}
+          {(result?.kind === "failed" || rejected) && (
+            <button
+              type="button"
+              className="import-card-action import-card-open"
+              disabled={discard.isPending || !canEdit}
+              onClick={() => void editOrCancel(true)}
+            >
+              <Pencil size={17} aria-hidden="true" />{" "}
+              {rejected ? "Edit and try again" : "Edit and retry"}
+            </button>
+          )}
+          {(result?.kind === "failed" || create.isError) && !saved && (
+            <button
+              type="button"
+              className={
+                busy
+                  ? "import-card-action"
+                  : "import-card-action import-card-dismiss"
+              }
+              aria-label={busy ? "Cancel request" : "Dismiss"}
+              title={busy ? "Cancel request" : "Dismiss request"}
+              disabled={discard.isPending}
+              onClick={() => void editOrCancel(false)}
+            >
+              <X size={17} aria-hidden="true" /> {busy && "Cancel request"}
+            </button>
+          )}
+        </div>
       </div>
       {(result?.kind === "failed" || rejected) && !canEdit && (
         <p className="import-card-note">

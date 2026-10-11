@@ -9,7 +9,7 @@ body .home-page {
   max-width: 1200px;
   padding-top: 48px;
   padding-bottom: 48px;
-  align-items: center;
+  align-items: start;
 }
 .home-entry {
   min-width: 0;
