@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { db } from "@prep-sheet/db";
 import { user } from "@prep-sheet/db/schema/auth";
 import { tag } from "@prep-sheet/db/schema/tag";
-import { eq, inArray, isNull } from "drizzle-orm";
+import { eq, inArray, isNull, sql } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { Context } from "./context";
 import { tagsRouter } from "./routers/tags";
@@ -197,6 +197,62 @@ describe("tag admission and ownership with PostgreSQL", () => {
       if (result.status === "rejected")
         expect(result.reason).toMatchObject(conflict);
   });
+
+  it.each(["create", "rename"])(
+    "maps a PostgreSQL uniqueness failure during %s to a friendly conflict",
+    async (operation) => {
+      const api = caller(userId);
+      const original = await api.create({ name: "Original" });
+      const competing = await api.create({ name: "Competing" });
+      const { pending } = await db.transaction(async (tx) => {
+        // Hold writes after the API's name check so a writer that does not use
+        // the account lock can commit a collision before the API writes.
+        await tx.execute(sql`lock table ${tag} in share mode`);
+        const pending = Promise.allSettled([
+          operation === "create"
+            ? api.create({ name: "Taken" })
+            : api.update({ id: original.id, name: "Taken" }),
+        ]);
+        const statement =
+          operation === "create" ? 'insert into "tag"' : 'update "tag"';
+        await expect
+          .poll(
+            async () => {
+              const result = await db.execute<{ waiting: boolean }>(sql`
+                select exists (
+                  select 1 from pg_stat_activity
+                  where datname = current_database()
+                    and pid <> pg_backend_pid()
+                    and wait_event_type = 'Lock'
+                    and query like ${`${statement}%`}
+                ) as waiting
+              `);
+              return result.rows[0]?.waiting;
+            },
+            { timeout: 5000 },
+          )
+          .toBe(true);
+        await tx
+          .update(tag)
+          .set({ name: "TAKEN" })
+          .where(eq(tag.id, competing.id));
+        return { pending };
+      });
+      expect(await pending).toMatchObject([
+        { status: "rejected", reason: conflict },
+      ]);
+      const remaining = (await api.list()).filter(
+        (item) => item.userId === userId,
+      );
+      expect(remaining).toHaveLength(2);
+      expect(remaining.find((item) => item.id === original.id)).toEqual(
+        original,
+      );
+      expect(remaining.find((item) => item.id === competing.id)?.name).toBe(
+        "TAKEN",
+      );
+    },
+  );
 
   it("rejects create and rename collisions with every global default name", async () => {
     const api = caller(userId);

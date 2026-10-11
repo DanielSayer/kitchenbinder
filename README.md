@@ -69,7 +69,9 @@ Recipe creation passes the user's available tags to the AI and saves only recogn
 
 Collections has an expandable Filters panel. Selected tags must all match and combine with search and favourites. Recipe details keeps tags, favourites and copying under Organise; Edit and Delete are in the recipe actions menu.
 
-Run `pnpm db:push` to add `tag` and `recipe_tag` before running this version against an existing database. The local schema has been updated; other environments need the same schema update. Built-in tags are inserted idempotently when tags are first requested.
+Run `pnpm db:push` to add `tag` and `recipe_tag` before running this version against an existing database. The local schema has been updated; other environments need the same schema update. Built-in tags initialise on first use through one shared promise per process. Their fixed IDs make initialisation idempotent across processes, and a failed initialisation can be retried.
+
+Custom tag creation, renaming and deletion use a transaction under the account lock. The 100-tag limit counts custom tags only. Names are checked against the account's custom tags and global tags using PostgreSQL's case folding, with the same conflict message for creates and renames. Existing accounts above the limit keep their tags but cannot create more until their count falls below 100.
 
 ## Checks
 
