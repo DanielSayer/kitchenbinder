@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import http from "node:http";
 import { db } from "@prep-sheet/db";
 import { user } from "@prep-sheet/db/schema/auth";
 import { aiSpend, billingAccount } from "@prep-sheet/db/schema/billing";
@@ -8,6 +9,7 @@ import { recipe } from "@prep-sheet/db/schema/recipe";
 import { eq, inArray } from "drizzle-orm";
 import {
   afterAll,
+  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -15,6 +17,8 @@ import {
   it,
   vi,
 } from "vitest";
+import { pricing } from "./billing/policy";
+import { usageSummary } from "./billing/usage";
 import {
   discardWebsiteImport,
   importStatus,
@@ -22,6 +26,7 @@ import {
   recentImports,
   submitWebsiteImport,
 } from "./imports";
+import { PAGE_ERROR } from "./recipes/fetch-page";
 import { sampleRecipe } from "./recipes/fixtures";
 import { requireRecipeProvider } from "./recipes/generate";
 import { checkRecipeUsage } from "./recipes/usage";
@@ -40,6 +45,7 @@ const output = {
 };
 
 describe("website durable imports", () => {
+  afterEach(() => vi.restoreAllMocks());
   beforeAll(async () => {
     await db.insert(user).values({
       id: account,
@@ -300,6 +306,136 @@ describe("website durable imports", () => {
     expect(
       await db.select().from(aiSpend).where(eq(aiSpend.importId, item.id)),
     ).toHaveLength(0);
+  });
+  it("fails an asynchronous malformed redirect, releases the last attempt and processes the next job", async () => {
+    // Exercise real asynchronous HTTP response parsing locally. Only transport
+    // is rerouted; fetchPage still validates the public URL and its redirects.
+    const server = http.createServer((request, response) => {
+      if (request.url === "/bad") {
+        response.writeHead(302, { Location: "http://[" });
+        response.end();
+      } else {
+        response.writeHead(200, { "Content-Type": "text/html" });
+        response.end(
+          "<main>Lemon pasta. Boil 200 g pasta in salted water. Drain it, stir in lemon juice and olive oil, and serve warm.</main>",
+        );
+      }
+    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(0, "127.0.0.1", resolve);
+      });
+      const address = server.address();
+      if (!address || typeof address === "string")
+        throw new Error("Expected a local HTTP port");
+      const get = http.get;
+      const transport = vi
+        .spyOn(http, "get")
+        .mockImplementation((url, options, callback) => {
+          const path = new URL(url).pathname;
+          return get(
+            `http://127.0.0.1:${address.port}${path}`,
+            {
+              ...options,
+              lookup: undefined,
+            },
+            callback,
+          );
+        });
+      await db.insert(recipeImport).values(
+        Array.from({ length: pricing.ai.dailyAttemptsPerAccount - 1 }, () => ({
+          id: randomUUID(),
+          userId: account,
+          input: "",
+          fingerprint: "spent",
+          state: "failed" as const,
+          usageBucket: "pro" as const,
+          createdAt: new Date(Date.now() - 120_000),
+        })),
+      );
+      const bad = { ...input(), input: "http://8.8.8.8/bad" };
+      await submitWebsiteImport(account, bad);
+      await expect(
+        db.transaction((tx) => checkRecipeUsage(tx, account)),
+      ).rejects.toMatchObject({ code: "TOO_MANY_REQUESTS" });
+      expect((await usageSummary(db, account)).used).toBe(
+        pricing.ai.dailyAttemptsPerAccount,
+      );
+      const healthy = { ...input(), input: "http://8.8.8.8/healthy" };
+      const generate = vi.fn().mockResolvedValue({
+        ...output,
+        origin: "imported",
+        sourceUrl: healthy.input,
+      });
+
+      expect(await processNextImport(generate)).toBe(true);
+
+      expect(generate).not.toHaveBeenCalled();
+      expect(await importStatus(account, bad.id)).toEqual({
+        kind: "failed",
+        id: bad.id,
+        message: PAGE_ERROR,
+      });
+      const [failed] = await db
+        .select()
+        .from(recipeImport)
+        .where(eq(recipeImport.id, bad.id));
+      expect(failed).toMatchObject({
+        state: "failed",
+        input: "",
+        generated: null,
+        usageReleased: true,
+      });
+      expect(
+        await db.select().from(aiSpend).where(eq(aiSpend.importId, bad.id)),
+      ).toHaveLength(0);
+      expect(
+        await db.select().from(recipe).where(eq(recipe.id, bad.id)),
+      ).toHaveLength(0);
+      expect((await usageSummary(db, account)).used).toBe(
+        pricing.ai.dailyAttemptsPerAccount - 1,
+      );
+      await expect(
+        db.transaction((tx) => checkRecipeUsage(tx, account)),
+      ).resolves.toBeUndefined();
+      expect(await submitWebsiteImport(account, bad)).toMatchObject({
+        kind: "failed",
+        message: PAGE_ERROR,
+      });
+      expect(await submitWebsiteImport(account, healthy)).toMatchObject({
+        kind: "queued",
+      });
+
+      expect(await processNextImport(generate)).toBe(true);
+
+      expect(generate).toHaveBeenCalledTimes(1);
+      expect(generate).toHaveBeenCalledWith(
+        expect.stringContaining("Boil 200 g pasta"),
+        expect.any(Array),
+        healthy.input,
+      );
+      expect(await importStatus(account, healthy.id)).toMatchObject({
+        kind: "saved",
+        recipeId: healthy.id,
+      });
+      expect(
+        await db.select().from(aiSpend).where(eq(aiSpend.importId, healthy.id)),
+      ).toHaveLength(1);
+      expect((await usageSummary(db, account)).used).toBe(
+        pricing.ai.dailyAttemptsPerAccount,
+      );
+      await expect(
+        db.transaction((tx) => checkRecipeUsage(tx, account)),
+      ).rejects.toMatchObject({ code: "TOO_MANY_REQUESTS" });
+      expect(await processNextImport(generate)).toBe(false);
+      expect(transport).toHaveBeenCalledTimes(2);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+        server.closeAllConnections();
+      });
+    }
   });
   it("recovers saving without AI and blocks delayed requests after cancellation", async () => {
     const item = input();
