@@ -61,6 +61,8 @@ export async function fetchPage(
             : callback(null, target.address, target.family),
       },
       (response) => {
+        // Drained redirect/error responses can also emit asynchronous errors.
+        response.on("error", reject);
         const status = response.statusCode ?? 500;
         if (importId)
           logImport({
@@ -84,8 +86,8 @@ export async function fetchPage(
               redirects + 1,
               importId,
             ).then(resolve, reject);
-          } catch (error) {
-            reject(error);
+          } catch (cause) {
+            reject(new Error(PAGE_ERROR, { cause }));
           }
           return;
         }
@@ -107,7 +109,6 @@ export async function fetchPage(
         response.on("end", () =>
           resolve(Buffer.concat(chunks).toString("utf8")),
         );
-        response.on("error", reject);
       },
     );
     request.on("error", reject);
