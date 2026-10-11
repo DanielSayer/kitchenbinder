@@ -11,6 +11,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { accessibleRecipe, type Database } from "../groups/access";
 import { protectedProcedure, router } from "../index";
+import { pickerInput, pickerRecipe, shoppingRecipePage } from "../recipes/list";
 
 const itemText = z.string().trim().min(1).max(2000);
 const itemId = z.object({ id: z.uuid() });
@@ -187,21 +188,12 @@ export const shoppingRouter = router({
       plannedMealId: plannedSources.get(item.id) ?? null,
     }));
   }),
-  recipes: protectedProcedure.query(({ ctx }) =>
-    db
-      .select({
-        id: recipe.id,
-        title: recipe.title,
-        groupId: recipe.groupId,
-        servings: recipe.content,
-      })
-      .from(recipe)
-      .where(accessibleRecipe(ctx.session.user.id))
-      .orderBy(asc(recipe.title))
-      .then((rows) =>
-        rows.map((row) => ({ ...row, servings: row.servings.servings })),
-      ),
-  ),
+  recipes: protectedProcedure
+    .input(pickerInput)
+    .query(({ ctx, input }) => shoppingRecipePage(ctx.session.user.id, input)),
+  recipe: protectedProcedure
+    .input(z.object({ id: z.uuid() }))
+    .query(({ ctx, input }) => pickerRecipe(ctx.session.user.id, input.id)),
   addRecipes: protectedProcedure
     .input(z.object({ recipeIds: z.array(z.uuid()).min(1).max(100) }))
     .mutation(({ ctx, input }) =>

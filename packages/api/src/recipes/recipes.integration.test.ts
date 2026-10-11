@@ -181,7 +181,7 @@ describe("recipes API with PostgreSQL", () => {
       lastCookedOn: "2026-09-01",
     });
     expect(
-      (await owner.recipes.list({ groupId: target.id })).find(
+      (await owner.recipes.list({ groupId: target.id })).items.find(
         (r) => r.id === id,
       ),
     ).toMatchObject({ cookedCount: 2, lastCookedOn: "2026-09-01" });
@@ -191,7 +191,7 @@ describe("recipes API with PostgreSQL", () => {
       lastCookedOn: null,
     });
     expect(
-      (await member.recipes.list({ groupId: target.id })).find(
+      (await member.recipes.list({ groupId: target.id })).items.find(
         (r) => r.id === id,
       ),
     ).toMatchObject({ cookedCount: 0, lastCookedOn: null });
@@ -325,7 +325,7 @@ describe("recipes API with PostgreSQL", () => {
     );
     expect((await owner.recipes.get({ id })).tagIds).toEqual([custom.id]);
     expect(
-      (await owner.recipes.list()).find((r) => r.id === id)?.tagIds,
+      (await owner.recipes.list()).items.find((r) => r.id === id)?.tagIds,
     ).toEqual([custom.id]);
     await expect(
       other.recipes.setTag({ id, tagId: foreign.id, selected: true }),
@@ -344,7 +344,7 @@ describe("recipes API with PostgreSQL", () => {
     });
     expect((await owner.recipes.get(copied)).tagIds).toEqual([custom.id]);
     expect(
-      (await owner.recipes.taggingList()).filter((item) =>
+      (await owner.recipes.taggingList()).items.filter((item) =>
         [id, copied.id].includes(item.id),
       ),
     ).toHaveLength(2);
@@ -403,8 +403,8 @@ describe("recipes API with PostgreSQL", () => {
     expect(saved.content.ingredients).toEqual(sampleRecipe.ingredients);
     await createAndWait(owner, { id, input: "Make lemon pasta" });
     expect(generateRecipe).toHaveBeenCalledTimes(1);
-    expect(await owner.recipes.list()).toHaveLength(1);
-    expect(await other.recipes.list()).toHaveLength(0);
+    expect((await owner.recipes.list()).items).toHaveLength(1);
+    expect((await other.recipes.list()).items).toHaveLength(0);
     await expect(other.recipes.get({ id })).rejects.toMatchObject({
       code: "NOT_FOUND",
     });
@@ -433,7 +433,7 @@ describe("recipes API with PostgreSQL", () => {
     await expect(
       createAndWait(owner, { id: randomUUID(), input: "Make dinner" }),
     ).rejects.toThrow();
-    expect(await owner.recipes.list()).toHaveLength(0);
+    expect((await owner.recipes.list()).items).toHaveLength(0);
   });
 
   it("saves manual recipes without AI, validates content and protects collections", async () => {
@@ -450,7 +450,7 @@ describe("recipes API with PostgreSQL", () => {
     });
     expect((await owner.recipes.createManual(input)).id).toBe(saved.id);
     expect(
-      (await owner.recipes.list()).filter((r) => r.id === saved.id),
+      (await owner.recipes.list()).items.filter((r) => r.id === saved.id),
     ).toHaveLength(1);
     await expect(other.recipes.get({ id: saved.id })).rejects.toMatchObject({
       code: "NOT_FOUND",
@@ -510,7 +510,8 @@ describe("recipes API with PostgreSQL", () => {
     await owner.recipes.setFavourite({ id, isFavourite: true });
     expect((await owner.recipes.get({ id })).isFavourite).toBe(true);
     expect(
-      (await owner.recipes.list()).find((item) => item.id === id)?.isFavourite,
+      (await owner.recipes.list()).items.find((item) => item.id === id)
+        ?.isFavourite,
     ).toBe(true);
     await owner.recipes.setFavourite({ id, isFavourite: false });
     expect((await owner.recipes.get({ id })).isFavourite).toBe(false);
@@ -545,9 +546,9 @@ describe("recipes API with PostgreSQL", () => {
     await owner.recipes.setRating({ id, rating: 5 });
     expect((await owner.recipes.get({ id })).rating).toBe(5);
     expect(
-      (await owner.recipes.list()).find((item) => item.id === id)?.rating,
+      (await owner.recipes.list()).items.find((item) => item.id === id)?.rating,
     ).toBe(5);
-    expect(await other.recipes.list()).toHaveLength(0);
+    expect((await other.recipes.list()).items).toHaveLength(0);
     await owner.recipes.setRating({ id, rating: null });
     expect((await owner.recipes.get({ id })).rating).toBeNull();
     await expect(
@@ -621,7 +622,9 @@ describe("recipes API with PostgreSQL", () => {
       input: "Shared pasta",
       groupId: friends.id,
     });
-    expect(await owner.recipes.list({ groupId: friends.id })).toHaveLength(1);
+    expect(
+      (await owner.recipes.list({ groupId: friends.id })).items,
+    ).toHaveLength(1);
     await member.recipes.setFavourite({ id: shared.id, isFavourite: true });
     await member.recipes.setRating({ id: shared.id, rating: 5 });
     const sharedTag = (await member.tags.list())[0];
@@ -644,7 +647,8 @@ describe("recipes API with PostgreSQL", () => {
     expect((await member.recipes.get({ id: shared.id })).rating).toBe(5);
     expect((await owner.recipes.get({ id: shared.id })).rating).toBeNull();
     expect(
-      (await member.recipes.list({ groupId: friends.id }))[0]?.isFavourite,
+      (await member.recipes.list({ groupId: friends.id })).items[0]
+        ?.isFavourite,
     ).toBe(true);
     await expect(
       outsider.recipes.setFavourite({ id: shared.id, isFavourite: true }),
@@ -652,11 +656,11 @@ describe("recipes API with PostgreSQL", () => {
     await expect(
       outsider.recipes.setRating({ id: shared.id, rating: 4 }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
-    expect(await member.recipes.list()).toHaveLength(0);
-    expect(await owner.recipes.list()).toHaveLength(1);
-    expect(await outsider.recipes.list({ groupId: separate.id })).toHaveLength(
-      0,
-    );
+    expect((await member.recipes.list()).items).toHaveLength(0);
+    expect((await owner.recipes.list()).items).toHaveLength(1);
+    expect(
+      (await outsider.recipes.list({ groupId: separate.id })).items,
+    ).toHaveLength(0);
     await expect(
       outsider.recipes.list({ groupId: friends.id }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
@@ -817,7 +821,9 @@ describe("recipes API with PostgreSQL", () => {
         groupId: target.id,
       }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
-    expect(await owner.recipes.list({ groupId: target.id })).toHaveLength(1);
+    expect(
+      (await owner.recipes.list({ groupId: target.id })).items,
+    ).toHaveLength(1);
     await db.delete(user).where(eq(user.id, ids[3]));
     expect((await owner.recipes.get({ id: saved.id })).userId).toBeNull();
   });

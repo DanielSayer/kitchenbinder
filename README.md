@@ -32,6 +32,8 @@ pnpm dev
 
 Open http://localhost:3001. This MVP uses Drizzle push; no migrations are generated yet.
 
+Recipe collections and pickers use bounded summary pages with server-side search and sorting. Apply `packages/db/src/upgrades/recipe-list.sql` before running this version, including on new databases. See [recipe collection pages](docs/recipe-collections.md) for setup, ordering and measurement details.
+
 Recipe edits require a revision token. Before deploying this update to an existing database, apply `packages/db/src/upgrades/recipe-revisions.sql`. The local database was upgraded during implementation. Saves atomically check and increment the revision. Drafts retain the original fields and revision in tab storage, including after refresh. Saving combines changes to separate fields automatically. Only fields changed differently in both versions require a Mine or Saved choice, followed by one Save recipe action. Ingredients and method are compared as whole sections. Older drafts without an original snapshot require choices for differing fields. Users can view the saved recipe without losing their draft, or save their draft as a personal copy. Every save still checks the revision, including after review. Full version history is not stored.
 
 Recipe favourites and 1–5 star ratings are personal to each user, including in shared collections. Use favourites as a shortlist, sort by highest rated, or filter for recipes you have not rated yet. Run `pnpm db:push` for existing databases to add the `recipe_favourite` and `recipe_rating` tables before running the updated app. Apply the schema separately in other environments.

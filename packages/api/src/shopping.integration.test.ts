@@ -90,7 +90,7 @@ describe("personal shopping list with PostgreSQL", () => {
       other.addRecipes({ recipeIds: [sharedId, personalId] }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect(await other.list()).toEqual([]);
-    expect((await other.recipes()).map((row) => row.id)).not.toContain(
+    expect((await other.recipes()).items.map((row) => row.id)).not.toContain(
       personalId,
     );
   });

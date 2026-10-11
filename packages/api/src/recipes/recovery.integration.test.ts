@@ -88,13 +88,15 @@ describe("recipe recovery with PostgreSQL", () => {
       note: "Keep this note",
     });
     await owner.recipes.delete({ id });
-    expect((await owner.recipes.list()).some((r) => r.id === id)).toBe(false);
-    expect((await owner.recipes.taggingList()).some((r) => r.id === id)).toBe(
+    expect((await owner.recipes.list()).items.some((r) => r.id === id)).toBe(
       false,
     );
-    expect((await owner.shopping.recipes()).some((r) => r.id === id)).toBe(
-      false,
-    );
+    expect(
+      (await owner.recipes.taggingList()).items.some((r) => r.id === id),
+    ).toBe(false);
+    expect(
+      (await owner.shopping.recipes()).items.some((r) => r.id === id),
+    ).toBe(false);
     for (const request of [
       () => owner.recipes.get({ id }),
       () =>
@@ -170,7 +172,9 @@ describe("recipe recovery with PostgreSQL", () => {
     await owner.recipes.setRating({ id, rating: 5 });
     await member.recipes.setRating({ id, rating: 2 });
     await member.recipes.delete({ id });
-    expect(await owner.recipes.list({ groupId: target.id })).toEqual([]);
+    expect((await owner.recipes.list({ groupId: target.id })).items).toEqual(
+      [],
+    );
     expect(
       await owner.recipes.recentlyDeleted({ groupId: target.id }),
     ).toHaveLength(1);

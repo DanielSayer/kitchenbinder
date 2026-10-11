@@ -109,6 +109,21 @@ try {
   }
   console.info(`Test PostgreSQL: ${project} on 127.0.0.1:${port}`);
   run(process.execPath, [drizzle, "push", "--force"], { cwd: dbDir, env });
+  run("docker", [
+    ...composeArgs,
+    "exec",
+    "-T",
+    "postgres",
+    "psql",
+    "-U",
+    "postgres",
+    "-d",
+    "prep_sheet_test",
+    "-v",
+    "ON_ERROR_STOP=1",
+    "-c",
+    readFileSync(join(dbDir, "src/upgrades/recipe-list.sql"), "utf8"),
+  ]);
   const args = process.argv.slice(2);
   exitCode = await runVitest(args[0] === "--" ? args.slice(1) : args, env);
 } finally {

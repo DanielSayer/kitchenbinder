@@ -38,36 +38,22 @@ import {
   submitWebsiteImport,
 } from "../imports";
 import { protectedProcedure, router } from "../index";
+import {
+  collectionInput,
+  cookingSummary,
+  favouriteOf,
+  listRecipes,
+  ratingOf,
+  taggingInput,
+  taggingRecipePage,
+  tagsOf,
+} from "../recipes/list";
 
 const idInput = z.object({ id: z.uuid() });
 const owned = (id: string, userId: string) =>
   and(eq(recipe.id, id), accessibleRecipe(userId));
 const missing = () =>
   new TRPCError({ code: "NOT_FOUND", message: "Recipe not found." });
-
-const favouriteOf = (userId: string) => sql<boolean>`exists (
-  select 1 from ${recipeFavourite}
-  where ${recipeFavourite.recipeId} = ${recipe.id}
-    and ${recipeFavourite.userId} = ${userId}
-)`;
-
-const ratingOf = (userId: string) => sql<number | null>`(
-  select ${recipeRating.rating} from ${recipeRating}
-  where ${recipeRating.recipeId} = ${recipe.id}
-    and ${recipeRating.userId} = ${userId}
-)`;
-
-const tagsOf = (userId: string) => sql<string[]>`coalesce((
-  select json_agg(${recipeTag.tagId}) from ${recipeTag}
-  where ${recipeTag.recipeId} = ${recipe.id} and ${recipeTag.userId} = ${userId}
-), '[]'::json)`;
-
-const cookingSummary = (userId: string) => ({
-  cookedCount: sql<number>`(select count(*)::int from ${recipeCooking} where ${recipeCooking.recipeId} = ${recipe}.${sql.identifier("id")} and ${recipeCooking.userId} = ${userId})`,
-  lastCookedOn: sql<
-    string | null
-  >`(select max(${recipeCooking.cookedOn})::text from ${recipeCooking} where ${recipeCooking.recipeId} = ${recipe}.${sql.identifier("id")} and ${recipeCooking.userId} = ${userId})`,
-});
 
 export async function getRecipe(id: string, userId: string) {
   const [result] = await db
@@ -218,45 +204,11 @@ export const recipesRouter = router({
       return { success: true };
     }),
   list: protectedProcedure
-    .input(z.object({ groupId: z.uuid().nullable().optional() }).optional())
-    .query(async ({ ctx, input }) => {
-      if (input?.groupId)
-        await requireGroup(db, input.groupId, ctx.session.user.id);
-      return db
-        .select({
-          id: recipe.id,
-          title: recipe.title,
-          content: recipe.content,
-          origin: recipe.origin,
-          createdAt: recipe.createdAt,
-          isFavourite: favouriteOf(ctx.session.user.id),
-          rating: ratingOf(ctx.session.user.id),
-          ...cookingSummary(ctx.session.user.id),
-          tagIds: tagsOf(ctx.session.user.id),
-        })
-        .from(recipe)
-        .where(
-          and(
-            accessibleRecipe(ctx.session.user.id),
-            input?.groupId
-              ? eq(recipe.groupId, input.groupId)
-              : isNull(recipe.groupId),
-          ),
-        )
-        .orderBy(desc(recipe.createdAt));
-    }),
-  taggingList: protectedProcedure.query(({ ctx }) =>
-    db
-      .select({
-        id: recipe.id,
-        title: recipe.title,
-        groupId: recipe.groupId,
-        tagIds: tagsOf(ctx.session.user.id),
-      })
-      .from(recipe)
-      .where(accessibleRecipe(ctx.session.user.id))
-      .orderBy(asc(recipe.title)),
-  ),
+    .input(collectionInput)
+    .query(({ ctx, input }) => listRecipes(ctx.session.user.id, input)),
+  taggingList: protectedProcedure
+    .input(taggingInput)
+    .query(({ ctx, input }) => taggingRecipePage(ctx.session.user.id, input)),
   get: protectedProcedure
     .input(idInput)
     .query(({ input, ctx }) => getRecipe(input.id, ctx.session.user.id)),
