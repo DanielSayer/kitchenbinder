@@ -1,10 +1,9 @@
-import { ArrowRight, LoaderCircle, Pencil } from "lucide-react";
-import type { SubmitEvent } from "react";
+import { ArrowRight, Pencil } from "lucide-react";
+import type { Ref, SubmitEvent } from "react";
 
 export function ComposerForm({
   input,
-  pending,
-  locked,
+  inputRef,
   disabled,
   onChange,
   onSubmit,
@@ -12,8 +11,7 @@ export function ComposerForm({
   manualDisabled,
 }: {
   input: string;
-  pending: boolean;
-  locked?: boolean;
+  inputRef?: Ref<HTMLTextAreaElement>;
   disabled: boolean;
   onChange: (value: string) => void;
   onSubmit: (event: SubmitEvent) => void;
@@ -28,9 +26,9 @@ export function ComposerForm({
 
       <textarea
         id="recipe-input"
+        ref={inputRef}
         value={input}
         onChange={(event) => onChange(event.target.value)}
-        disabled={locked ?? pending}
         maxLength={20000}
         placeholder="Paste a recipe or link, or tell us what's for dinner..."
       />
@@ -50,15 +48,7 @@ export function ComposerForm({
           className="button button-primary"
           disabled={disabled}
         >
-          {pending ? (
-            <>
-              <LoaderCircle size={18} className="spin" /> Working on it
-            </>
-          ) : (
-            <>
-              Make a recipe <ArrowRight size={18} aria-hidden="true" />
-            </>
-          )}
+          Make a recipe <ArrowRight size={18} aria-hidden="true" />
         </button>
       </div>
     </form>

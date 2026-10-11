@@ -3,6 +3,7 @@
 @import "./styles/base.css";
 @import "./styles/home.css";
 @import "./styles/feedback.css";
+@import "./styles/import-queue.css";
 @import "./styles/collection.css";
 @import "./styles/login.css";
 @import "./styles/detail.css";
