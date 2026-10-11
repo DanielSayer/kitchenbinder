@@ -1,40 +1,65 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { beforeEach, expect, it, vi } from "vitest";
 import {
   importDraftKey,
-  readPendingImport,
+  readImportQueue,
+  writeImportQueue,
   writePendingImport,
 } from "./import-draft";
 
-describe("import recovery storage", () => {
-  beforeEach(() => {
-    sessionStorage.clear();
-    vi.restoreAllMocks();
+const first = {
+  id: "00000000-0000-4000-8000-000000000001",
+  input: "Make lemon pasta",
+  groupId: null,
+};
+const second = {
+  id: "00000000-0000-4000-8000-000000000002",
+  input: "https://example.com/soup",
+  groupId: "00000000-0000-4000-8000-000000000003",
+};
+
+beforeEach(() => {
+  vi.restoreAllMocks();
+  sessionStorage.clear();
+});
+
+it("recovers a legacy request and migrates without losing its ID or destination", () => {
+  const key = importDraftKey("viewer");
+  writePendingImport(key, second);
+  expect(readImportQueue(key)).toEqual([second]);
+  expect(writeImportQueue(key, [second, first])).toBe(true);
+  expect(sessionStorage.getItem(key)).toBeNull();
+  expect(readImportQueue(key)).toEqual([second, first]);
+});
+
+it("keeps every request separate from other accounts and the next input draft", () => {
+  const key = importDraftKey("viewer");
+  sessionStorage.setItem(`${key}:text`, "An unfinished third recipe");
+  writeImportQueue(key, [first, second]);
+  expect(readImportQueue(key)).toEqual([first, second]);
+  expect(readImportQueue(importDraftKey("other"))).toEqual([]);
+  writeImportQueue(key, [second]);
+  expect(readImportQueue(key)).toEqual([second]);
+  expect(sessionStorage.getItem(`${key}:text`)).toBe(
+    "An unfinished third recipe",
+  );
+});
+
+it("does not retire a recoverable legacy request if queue storage fails", () => {
+  const key = importDraftKey("viewer");
+  writePendingImport(key, first);
+  vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    throw new Error("Storage full");
   });
-  it("recovers the same ID, input and destination and isolates accounts", () => {
-    const pending = {
-      id: crypto.randomUUID(),
-      input: "Make pasta",
-      groupId: crypto.randomUUID(),
-    };
-    expect(writePendingImport(importDraftKey("one"), pending)).toBe(true);
-    expect(readPendingImport(importDraftKey("one"))).toEqual(pending);
-    expect(readPendingImport(importDraftKey("two"))).toBeNull();
-    writePendingImport(importDraftKey("one"), null);
-    expect(readPendingImport(importDraftKey("one"))).toBeNull();
-  });
-  it("rejects corrupt recovery data and reports unavailable storage", () => {
-    sessionStorage.setItem("bad", '{"id":"wrong"}');
-    expect(readPendingImport("bad")).toBeNull();
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-      throw new Error("blocked");
-    });
-    expect(
-      writePendingImport("key", {
-        id: crypto.randomUUID(),
-        input: "Make pasta",
-        groupId: null,
-      }),
-    ).toBe(false);
-  });
+  expect(writeImportQueue(key, [first, second])).toBe(false);
+  expect(readImportQueue(key)).toEqual([first]);
+});
+
+it("rejects invalid or duplicate requests in browser storage", () => {
+  const key = importDraftKey("viewer");
+  sessionStorage.setItem(`${key}:queue`, JSON.stringify([first, first]));
+  expect(readImportQueue(key)).toEqual([]);
+  sessionStorage.setItem(`${key}:queue`, "not JSON");
+  expect(readImportQueue(key)).toEqual([]);
 });
