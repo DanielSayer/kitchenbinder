@@ -12,5 +12,9 @@ export default defineConfig({
   resolve: {
     tsconfigPaths: true,
   },
+  ssr: {
+    // PDFKit resolves private font modules relative to its own package.
+    external: ["@react-pdf/renderer"],
+  },
   plugins: [localCacheRecovery(), tailwindcss(), tanstackStart(), viteReact()],
 });

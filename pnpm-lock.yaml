@@ -151,6 +151,9 @@ importers:
       '@prep-sheet/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@react-pdf/renderer':
+        specifier: ^4.9.0
+        version: 4.9.0(react@19.2.8)
       '@tailwindcss/vite':
         specifier: ^4.3.3
         version: 4.3.3(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13))

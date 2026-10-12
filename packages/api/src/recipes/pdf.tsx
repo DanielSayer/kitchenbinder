@@ -1,4 +1,5 @@
-import { createRequire } from "node:module";
+import nunitoRegular from "@fontsource/nunito/files/nunito-latin-400-normal.woff?inline";
+import nunitoBold from "@fontsource/nunito/files/nunito-latin-800-normal.woff?inline";
 import type { RecipeContent } from "@prep-sheet/db/recipe-content";
 import {
   Document,
@@ -13,20 +14,15 @@ import {
 } from "@react-pdf/renderer";
 import logo from "../../../../apps/web/public/branding/logo-horizontal.png?inline";
 
-const require = createRequire(import.meta.url);
 Font.register({
   family: "Nunito",
   fonts: [
     {
-      src: require.resolve(
-        "@fontsource/nunito/files/nunito-latin-400-normal.woff",
-      ),
+      src: nunitoRegular,
       fontWeight: 400,
     },
     {
-      src: require.resolve(
-        "@fontsource/nunito/files/nunito-latin-800-normal.woff",
-      ),
+      src: nunitoBold,
       fontWeight: 800,
     },
   ],

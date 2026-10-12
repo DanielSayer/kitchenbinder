@@ -1,4 +1,3 @@
-import { recipePdf } from "@prep-sheet/api/recipes/pdf";
 import { getRecipe } from "@prep-sheet/api/routers/recipes";
 import { auth } from "@prep-sheet/auth";
 import { createFileRoute } from "@tanstack/react-router";
@@ -16,6 +15,7 @@ export const Route = createFileRoute("/api/recipes/$recipeId/pdf")({
           return new Response("Recipe not found.", { status: 404 });
         try {
           const recipe = await getRecipe(params.recipeId, session.user.id);
+          const { recipePdf } = await import("@prep-sheet/api/recipes/pdf");
           const pdf = await recipePdf(
             recipe.content,
             recipe.sourceUrl,
