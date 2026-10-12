@@ -9,6 +9,7 @@
   "scripts": {
     "test": "node scripts/test.mjs",
     "test:live": "node scripts/test.mjs packages/api/src/recipes/live.test.ts",
+    "test:production": "node scripts/test.mjs packages/api/src/recipes/production-server.test.ts",
     "dev": "turbo run dev",
     "build": "turbo run build",
     "check-types": "turbo run check-types",

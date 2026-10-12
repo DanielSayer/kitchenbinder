@@ -88,6 +88,8 @@ pnpm check
 
 Use `pnpm test path/to/file.test.ts` to run selected files with the same lifecycle. Run tests through this command rather than invoking Vitest directly; Vitest rejects runs without the wrapper's isolated database marker. Ordinary integration tests use a local placeholder OpenAI key because generation is mocked. `pnpm test:live` uses a real key from `apps/web/.env` or the process environment when `LIVE_AI_TEST=1`.
 
+`pnpm test:production` builds the website, then executes its server entry in a plain Node subprocess against the disposable test database. It checks public and authenticated routes, PDF access isolation, repeated short/long PDF rendering with embedded fonts, and server health after rendering. It also runs as part of `pnpm test`. See [PDF production packaging](docs/pdf-production.md) for runtime dependency requirements.
+
 Integration tests create unique test users, exercise real database operations and remove those users afterwards. PDF fixtures are written under ignored `tmp/pdfs` for visual inspection. If the process is forcibly killed before cleanup, remove the orphaned `prep-sheet-test-*` Compose project and its volume after checking its name with `docker ps -a`.
 
 Group integration coverage includes private/group isolation, shared editing, unauthorised imports and copies, owner permissions, removal and leaving, expired/revoked invites, concurrent invite acceptance, membership changes during recipe generation and preserving contributions after account deletion.
