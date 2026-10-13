@@ -15,7 +15,9 @@ import {
   submitImport,
 } from "./imports";
 
-export async function handleExtensionRequest(request: Request): Promise<Response> {
+export async function handleExtensionRequest(
+  request: Request,
+): Promise<Response> {
   const action = new URL(request.url).pathname.split("/").at(-1);
   if (
     !["collections", "import", "import-status", "discard-import"].includes(

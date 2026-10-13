@@ -59,15 +59,13 @@ describe("extension authentication with PostgreSQL", () => {
   it("authorizes using a real Better Auth session and revokes through website controls", async () => {
     const context = await auth.$context;
     const sessionToken = random();
-    await db
-      .insert(session)
-      .values({
-        id: randomUUID(),
-        token: sessionToken,
-        userId: owner,
-        expiresAt: new Date(Date.now() + 60_000),
-        updatedAt: new Date(),
-      });
+    await db.insert(session).values({
+      id: randomUUID(),
+      token: sessionToken,
+      userId: owner,
+      expiresAt: new Date(Date.now() + 60_000),
+      updatedAt: new Date(),
+    });
     const cookie = `${context.authCookies.sessionToken.name}=${encodeURIComponent(`${sessionToken}.${await makeSignature(sessionToken, env.BETTER_AUTH_SECRET)}`)}`;
     const websiteRequest = (action: string, body: unknown) => {
       const req = request(action, body, new URL(env.BETTER_AUTH_URL).origin);

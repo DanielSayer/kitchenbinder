@@ -52,15 +52,13 @@ describe("recipe recovery with PostgreSQL", () => {
         email: `${id}@example.test`,
       })),
     );
-    await db
-      .insert(billingAccount)
-      .values(
-        users.map((userId) => ({
-          userId,
-          status: "active",
-          validUntil: new Date(Date.now() + 86400000),
-        })),
-      );
+    await db.insert(billingAccount).values(
+      users.map((userId) => ({
+        userId,
+        status: "active",
+        validUntil: new Date(Date.now() + 86400000),
+      })),
+    );
   });
   afterAll(async () => {
     await db.delete(group).where(inArray(group.ownerId, users));
