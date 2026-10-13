@@ -1,0 +1,42 @@
+name: Release checks
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: "true"
+      LIVE_AI_TEST: "0"
+      DATABASE_URL: postgresql://postgres:build_only@127.0.0.1:5432/prep_sheet_build
+      BETTER_AUTH_SECRET: ci-placeholder-secret-not-for-production-123456789
+      BETTER_AUTH_URL: http://localhost:3001
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "26.7.0"
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          run_install: false
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check formatting and lint without writes
+        run: pnpm check
+      - name: Check root and every TypeScript package without cached results
+        run: pnpm check-types
+      - name: Test with disposable PostgreSQL and fresh production artifact
+        run: pnpm test
+      - name: Build web production artifact
+        run: pnpm --filter web build
+      - name: Package Chrome and Edge development extensions
+        run: pnpm package:extension
+      - name: Confirm checks did not modify tracked files
+        run: git diff --exit-code

@@ -40,6 +40,8 @@ Recipe favourites and 1–5 star ratings are personal to each user, including in
 
 ## Implementation
 
+Run the release gate before merging or deploying. See [release checks](docs/release-checks.md) for complete package type coverage, isolated tests, production-artifact checks and CI behaviour.
+
 - TanStack Start, React, tRPC and TanStack Query.
 - Better Auth with Google and Discord. Recipe operations and PDF downloads check personal ownership or current group membership on the server.
 - PostgreSQL JSONB stores the recipe, with separate creator/group/title/source/timestamp columns. Zod validates generation and edits.
