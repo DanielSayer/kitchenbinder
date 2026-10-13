@@ -1,3 +1,7 @@
 {
-  "extends": "@prep-sheet/config/tsconfig.base.json"
+  "extends": "@prep-sheet/config/tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["vitest.config.ts"]
 }

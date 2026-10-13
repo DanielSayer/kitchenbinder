@@ -12,7 +12,7 @@
     "test:production": "node scripts/test.mjs packages/api/src/recipes/production-server.test.ts",
     "dev": "turbo run dev",
     "build": "turbo run build",
-    "check-types": "turbo run check-types",
+    "check-types": "tsc --noEmit && turbo run check-types",
     "dev:web": "turbo run dev -F web --",
     "dev:extension": "turbo run dev -F @prep-sheet/extension --ui=stream",
     "build:extension": "turbo run build -F @prep-sheet/extension --ui=stream",
