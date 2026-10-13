@@ -217,7 +217,7 @@ export async function hasUnfinishedSubscription(userId: string) {
   return false;
 }
 
-export async function handlePolarWebhook(request: Request) {
+export async function handlePolarWebhook(request: Request): Promise<Response> {
   if (!billingEnabled() || !env.POLAR_WEBHOOK_SECRET)
     return new Response("Billing unavailable", { status: 503 });
   let event: ReturnType<typeof validateEvent>;

@@ -65,7 +65,6 @@ describe("social sign-in", () => {
       });
       vi.spyOn(google, "getUserInfo").mockResolvedValue({
         user: {
-          id: "google-test-id",
           name: "Test",
           email: mode === "link" ? "different@example.com" : "test@example.com",
           emailVerified: true,
@@ -122,6 +121,11 @@ describe("social sign-in", () => {
       expect(accounts.some((account) => account.providerId === "google")).toBe(
         mode === "valid-link",
       );
+      if (mode === "valid-link") {
+        expect(
+          accounts.find((account) => account.providerId === "google"),
+        ).toMatchObject({ accountId: "google-test-id" });
+      }
     },
   );
 
@@ -148,6 +152,7 @@ describe("social sign-in", () => {
     const testAuth = setup();
     await expect(
       testAuth.api.linkSocialAccount({
+        headers: new Headers(),
         body: { provider: "google", callbackURL: "/settings" },
       }),
     ).rejects.toMatchObject({ statusCode: 401 });

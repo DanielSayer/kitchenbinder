@@ -210,7 +210,7 @@ describe("personal shopping list with PostgreSQL", () => {
     await owner.checkGroup({ planId: plan.id, groupIndex: 0, bought: true });
     expect(
       (await owner.list())
-        .filter((item) => [flourA, flourB].includes(item.id))
+        .filter((item) => item.id === flourA || item.id === flourB)
         .every((item) => item.status === "bought"),
     ).toBe(true);
     expect((await owner.generated())?.stale).toBe(false);

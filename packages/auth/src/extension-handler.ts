@@ -11,7 +11,9 @@ import {
 } from "./extensions";
 import { auth } from "./index";
 
-export async function handleExtensionRequest(request: Request) {
+export async function handleExtensionRequest(
+  request: Request,
+): Promise<Response> {
   const action = new URL(request.url).pathname.split("/").at(-1);
   const origin = request.headers.get("origin");
   const websiteOrigin = new URL(env.BETTER_AUTH_URL).origin;
