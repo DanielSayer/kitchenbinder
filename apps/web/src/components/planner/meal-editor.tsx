@@ -1,8 +1,7 @@
 import type { Meal } from "@prep-sheet/db/meal-planner";
 import { mealInput } from "@prep-sheet/db/meal-planner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
-import { z } from "zod";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import { useTRPC } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
@@ -16,35 +15,29 @@ import {
 } from "../recipes/pagination";
 import { dateLabel } from "./dates";
 
-const draftSchema = z.object({
-  id: z.uuid(),
-  date: z.string(),
-  slot: z.enum(["", "Breakfast", "Lunch", "Dinner"]),
-  kind: z.enum(["recipe", "leftovers", "out"]),
-  recipeId: z.string(),
-  baseServings: z.string(),
-  cook: z.string(),
-  eat: z.string(),
-  sourceId: z.string(),
-  portions: z.string(),
-  description: z.string(),
-});
-type Draft = z.infer<typeof draftSchema>;
-function initialDraft(date: string, meal?: Meal, recipeId?: string): Draft {
-  return {
-    id: meal?.id ?? crypto.randomUUID(),
-    date: meal?.date ?? date,
-    slot: meal?.slot ?? "",
-    kind: meal?.kind ?? "recipe",
-    recipeId: meal?.kind === "recipe" ? meal.recipeId : (recipeId ?? ""),
-    baseServings: meal?.kind === "recipe" ? String(meal.baseServings) : "",
-    cook: meal?.kind === "recipe" ? String(meal.cook) : "2",
-    eat: meal?.kind === "recipe" ? String(meal.eat) : "2",
-    sourceId: meal?.kind === "leftovers" ? meal.sourceId : "",
-    portions: meal?.kind === "leftovers" ? String(meal.portions) : "2",
-    description: meal?.kind === "out" ? meal.description : "",
-  };
-}
+import {
+  applySavedMealField,
+  conflictValue,
+  initialMealDraft,
+  type MealBaseline,
+  type MealConflict,
+  type MealDraft,
+  mealDraftSchema,
+  mealFieldLabels,
+  mergeMealDraft,
+  parseMealDraft,
+  readMealDraft,
+  type StoredMealDraft,
+} from "./meal-draft";
+
+type Review = {
+  base: MealBaseline;
+  saved: MealDraft | null;
+  savedRecipeTitle: string | null;
+  merged: MealDraft;
+  conflicts: MealConflict[];
+  choices: Partial<Record<MealConflict, "mine" | "saved">>;
+};
 export function MealEditor({
   date,
   meal,
@@ -64,27 +57,63 @@ export function MealEditor({
   const key = `meal-draft:${session?.user.id ?? "guest"}:${duplicate ? "copy" : "edit"}:${meal?.id ?? date}`;
   const planner = useQuery(trpc.planner.get.queryOptions());
   const { groups } = useCollection();
-  const [draft, setDraft] = useState(() => {
-    try {
-      const stored = draftSchema.safeParse(
-        JSON.parse(localStorage.getItem(key) ?? "null"),
-      );
-      if (stored.success) return stored.data;
-    } catch {
-      /* Keep the form usable without browser storage. */
-    }
-    const initial = initialDraft(date, meal, recipeId);
-    return duplicate ? { ...initial, id: crypto.randomUUID(), date } : initial;
+  const [stored, setStored] = useState<StoredMealDraft>(() => {
+    const restored = readMealDraft(key);
+    if (restored) return restored;
+    const current =
+      !duplicate && meal
+        ? (planner.data?.meals.find((entry) => entry.id === meal.id) ?? meal)
+        : undefined;
+    const initial = initialMealDraft(date, current, recipeId);
+    return {
+      version: 2,
+      legacySource: null,
+      fields: duplicate
+        ? {
+            ...initialMealDraft(date, meal, recipeId),
+            id: crypto.randomUUID(),
+            date,
+          }
+        : initial,
+      base:
+        !duplicate && meal
+          ? planner.data
+            ? {
+                kind: "known",
+                revision: planner.data.revision,
+                meal: mealInput.parse(current),
+              }
+            : { kind: "unknown" }
+          : {
+              kind: "known",
+              revision: planner.data?.revision ?? 0,
+              meal: null,
+            },
+    };
   });
+  const draft = stored.fields;
+  const [review, setReview] = useState<Review | null>(null);
+  const [busy, setBusy] = useState(false);
+  const saving = useRef(false);
+  const [storageFailed, setStorageFailed] = useState(false);
+  const setDraft = useCallback(
+    (update: (current: MealDraft) => MealDraft) =>
+      setStored((current) => {
+        const fields = update(current.fields);
+        return fields === current.fields ? current : { ...current, fields };
+      }),
+    [],
+  );
   const [search, setSearch] = useState("");
   const [step, setStep] = useState<"choose" | "details">(
     meal || recipeId ? "details" : "choose",
   );
   const stepHeading = useRef<HTMLHeadingElement>(null);
+  const reviewVisible = review !== null;
   // biome-ignore lint/correctness/useExhaustiveDependencies: Focus the heading when the visible step changes.
   useEffect(() => {
     stepHeading.current?.focus();
-  }, [step]);
+  }, [step, reviewVisible]);
   const [collection, setCollection] = useState("all");
   const { page, setPage } = useRecipePage(JSON.stringify([search, collection]));
   const recipes = useQuery(
@@ -102,19 +131,24 @@ export function MealEditor({
     ),
   );
   const [error, setError] = useState("");
-  const [revision, setRevision] = useState(planner.data?.revision);
-  useEffect(() => {
-    if (revision === undefined && planner.data)
-      setRevision(planner.data.revision);
-  }, [planner.data, revision]);
   useEffect(() => {
     try {
-      localStorage.setItem(key, JSON.stringify(draft));
+      sessionStorage.setItem(key, JSON.stringify(stored));
+      setStorageFailed(false);
     } catch {
-      /* Keep the draft in memory. */
+      setStorageFailed(true);
     }
-  }, [draft, key]);
-  const set = (values: Partial<Draft>) =>
+  }, [stored, key]);
+  useEffect(() => {
+    if (!storageFailed) return;
+    function warn(event: BeforeUnloadEvent) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [storageFailed]);
+  const set = (values: Partial<MealDraft>) =>
     setDraft((current) => ({ ...current, ...values }));
   const selectedRecipe = selected.data;
   useEffect(() => {
@@ -129,13 +163,29 @@ export function MealEditor({
             : { ...current, baseServings: match[1] ?? "" },
         );
     }
-  }, [selectedRecipe]);
+  }, [selectedRecipe, setDraft]);
   const discard = () => {
     try {
-      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+      if (
+        stored.legacySource !== null &&
+        localStorage.getItem(key) === stored.legacySource
+      )
+        localStorage.removeItem(key);
     } catch {
       /* Optional storage. */
     }
+    onClose();
+  };
+  const close = () => {
+    if (saving.current || save.isPending) return;
+    if (
+      storageFailed &&
+      !window.confirm(
+        "This draft could not be stored. Close and lose these changes?",
+      )
+    )
+      return;
     onClose();
   };
   const save = useMutation(
@@ -161,383 +211,520 @@ export function MealEditor({
       : draft.kind === "leftovers"
         ? Boolean(draft.sourceId)
         : true;
-  const submit = () => {
-    const common = { id: draft.id, date: draft.date, slot: draft.slot };
-    const result = mealInput.safeParse(
-      draft.kind === "recipe"
-        ? {
-            ...common,
-            kind: "recipe",
-            recipeId: draft.recipeId,
-            baseServings: Number(draft.baseServings),
-            cook: Number(draft.cook),
-            eat: Number(draft.eat),
-          }
-        : draft.kind === "leftovers"
-          ? {
-              ...common,
-              kind: "leftovers",
-              sourceId: draft.sourceId,
-              portions: Number(draft.portions),
-            }
-          : { ...common, kind: "out", description: draft.description },
-    );
-    if (!result.success) {
-      setError(result.error.issues[0]?.message ?? "Check the meal details.");
-      return;
+  const submit = async () => {
+    if (saving.current || save.isPending) return;
+    let next = draft;
+    let base = stored.base;
+    if (review) {
+      next = review.merged;
+      for (const field of review.conflicts) {
+        const choice = review.choices[field];
+        if (!choice) return;
+        if (choice === "saved" && review.saved)
+          next = applySavedMealField(next, review.saved, field);
+      }
+      base = review.base;
     }
-    if (revision === undefined) return;
+    saving.current = true;
+    setBusy(true);
     setError("");
-    save.mutate({ revision, meal: result.data });
+    save.reset();
+    try {
+      // Always fetch before merging. A cached revision cannot authorise old fields.
+      const fresh = await planner.refetch({ throwOnError: true });
+      if (!fresh.data)
+        throw new Error(
+          "Couldn't load the latest plan. Your draft is still here.",
+        );
+      const savedMeal = fresh.data.meals.find((entry) => entry.id === next.id);
+      const saved = savedMeal ? mealInput.parse(savedMeal) : null;
+      const merged = mergeMealDraft(base, next, saved);
+      const freshBase: MealBaseline = {
+        kind: "known",
+        revision: fresh.data.revision,
+        meal: saved,
+      };
+      if (merged.conflicts.length) {
+        setReview({
+          ...merged,
+          base: freshBase,
+          saved: saved ? initialMealDraft(saved.date, saved) : null,
+          choices: {},
+          savedRecipeTitle:
+            savedMeal?.kind === "recipe" ? savedMeal.title : null,
+        });
+        return;
+      }
+      const result = parseMealDraft(merged.merged);
+      if (!result.success) {
+        setError(result.error.issues[0]?.message ?? "Check the meal details.");
+        return;
+      }
+      // Preserve the agreed draft and its matching base even if the next request fails.
+      setStored({ ...stored, fields: merged.merged, base: freshBase });
+      setReview(null);
+      await save.mutateAsync({
+        revision: fresh.data.revision,
+        meal: result.data,
+      });
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Couldn't save. Your draft is still here.",
+      );
+    } finally {
+      saving.current = false;
+      setBusy(false);
+    }
+  };
+  const reviewValue = (fields: MealDraft, field: MealConflict) => {
+    const source = planner.data?.meals.find(
+      (entry) => entry.id === fields.sourceId,
+    );
+    const title =
+      fields.recipeId === draft.recipeId ? selectedRecipe?.title : null;
+    const savedTitle =
+      fields.recipeId === review?.saved?.recipeId
+        ? review.savedRecipeTitle
+        : null;
+    return conflictValue(fields, field, {
+      recipe:
+        title ??
+        savedTitle ??
+        (meal?.kind === "recipe" && meal.recipeId === fields.recipeId
+          ? meal.title
+          : "Recipe unavailable"),
+      source:
+        source?.kind === "recipe"
+          ? `${source.title} on ${dateLabel(source.date)}`
+          : "Cooking session unavailable",
+    });
   };
   return (
     <OrganiseDialog
       title={duplicate ? "Duplicate meal" : meal ? "Edit meal" : "Add meal"}
       className="meal-dialog meal-editor-dialog"
-      onClose={() => {
-        if (!save.isPending) onClose();
-      }}
+      onClose={close}
     >
       <form
         onSubmit={(event) => {
           event.preventDefault();
           if (!selectionReady) return;
           if (step === "choose") setStep("details");
-          else submit();
+          else void submit();
         }}
       >
-        <fieldset disabled={save.isPending} className="meal-form">
-          <div className="meal-step-heading">
-            <p className="muted">Step {step === "choose" ? "1" : "2"} of 2</p>
-            <h3 ref={stepHeading} tabIndex={-1}>
-              {step === "choose" ? "Choose a meal" : "Meal details"}
-            </h3>
-          </div>
-          {step === "details" && (
-            <div className="meal-form-grid">
-              <label className="shopping-field">
-                Date
-                <input
-                  type="date"
-                  required
-                  min="2000-01-01"
-                  max="2100-12-31"
-                  value={draft.date}
-                  onChange={(event) => set({ date: event.target.value })}
-                />
-              </label>
-              <CollectionDropdown
-                label="Meal"
-                value={draft.slot}
-                options={[
-                  { value: "", label: "Any time" },
-                  ...["Breakfast", "Lunch", "Dinner"].map((value) => ({
-                    value,
-                    label: value,
-                  })),
-                ]}
-                onValueChange={(value) => {
-                  const slot = draftSchema.shape.slot.safeParse(value);
-                  if (slot.success) set({ slot: slot.data });
-                }}
-              />
-            </div>
-          )}
-          {step === "choose" && (
-            <fieldset className="meal-types" aria-label="Entry type">
-              {(
-                [
-                  { value: "recipe", label: "Recipe" },
-                  { value: "leftovers", label: "Leftovers" },
-                  { value: "out", label: "Eating out" },
-                ] satisfies { value: Draft["kind"]; label: string }[]
-              ).map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  aria-pressed={draft.kind === option.value}
-                  onClick={() => set({ kind: option.value })}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </fieldset>
-          )}
-          {draft.kind === "recipe" && (
-            <>
-              {step === "choose" && (
-                <>
-                  <div className="meal-form-grid">
-                    <label className="shopping-field">
-                      Search recipes
-                      <input
-                        value={search}
-                        onChange={(event) => setSearch(event.target.value)}
-                        placeholder="Recipe name"
-                      />
-                    </label>
-                    <CollectionDropdown
-                      label="Collection"
-                      value={collection}
-                      onValueChange={setCollection}
-                      options={[
-                        { value: "all", label: "All collections" },
-                        { value: "personal", label: "Personal collection" },
-                        ...(groups.data?.map((group) => ({
-                          value: group.id,
-                          label: group.name,
-                        })) ?? []),
-                      ]}
-                    />
-                  </div>
-                  <LoadingState pending={recipes.isPending}>
-                    <ErrorNotice
-                      message={recipes.error?.message || groups.error?.message}
-                      retry={() => {
-                        void recipes.refetch();
-                        void groups.refetch();
-                      }}
-                    />
-                    <div className="meal-recipe-options">
-                      {shown.map((entry) => (
-                        <label
-                          className="shopping-recipe-choice"
-                          key={entry.id}
-                        >
-                          <input
-                            type="radio"
-                            name="recipe"
-                            checked={draft.recipeId === entry.id}
-                            onChange={() =>
-                              set({ recipeId: entry.id, baseServings: "" })
-                            }
-                          />
+        <fieldset disabled={save.isPending || busy} className="meal-form">
+          {review ? (
+            <section
+              className="recipe-review"
+              aria-labelledby="meal-review-heading"
+            >
+              <h3 id="meal-review-heading" tabIndex={-1} ref={stepHeading}>
+                Review changed meal
+              </h3>
+              <p>
+                The saved plan changed. Choose what to keep before saving. Your
+                draft is still stored.
+              </p>
+              {review.conflicts.map((field) => (
+                <fieldset key={field}>
+                  <legend>{mealFieldLabels[field]}</legend>
+                  {(["mine", "saved"] as const)
+                    .filter(
+                      (choice) => field !== "deleted" || choice === "mine",
+                    )
+                    .map((choice) => (
+                      <label className="shopping-recipe-choice" key={choice}>
+                        <input
+                          type="radio"
+                          name={`review-${field}`}
+                          checked={review.choices[field] === choice}
+                          onChange={() =>
+                            setReview(
+                              (current) =>
+                                current && {
+                                  ...current,
+                                  choices: {
+                                    ...current.choices,
+                                    [field]: choice,
+                                  },
+                                },
+                            )
+                          }
+                        />
+                        <span>
+                          <strong>
+                            {choice === "mine" ? "My draft" : "Saved meal"}
+                          </strong>{" "}
                           <span>
-                            <strong>{entry.title}</strong>
-                            <small>
-                              {entry.groupId
-                                ? (groups.data?.find(
-                                    (group) => group.id === entry.groupId,
-                                  )?.name ?? "Shared collection")
-                                : "Personal collection"}
-                            </small>
-                            <small>
-                              {entry.servings
-                                ? `Original yield: ${entry.servings}`
-                                : "Yield not specified"}
-                            </small>
+                            {reviewValue(
+                              choice === "saved" && review.saved
+                                ? review.saved
+                                : review.merged,
+                              field,
+                            )}
                           </span>
-                        </label>
-                      ))}
-                      {recipes.isSuccess && !shown.length && (
-                        <p className="muted">
-                          No recipes found. Try another search or collection.
-                        </p>
-                      )}
-                    </div>
-                    {recipes.isSuccess && (
-                      <RecipePagination
-                        page={page}
-                        total={recipes.data.total}
-                        setPage={setPage}
-                        disabled={save.isPending}
-                      />
-                    )}
-                  </LoadingState>
-                </>
-              )}
-              {step === "details" && (
-                <>
-                  {draft.recipeId && (
-                    <p className="meal-selected">
-                      Selected:{" "}
-                      <strong>
-                        {selectedRecipe?.title ??
-                          (meal?.kind === "recipe"
-                            ? meal.title
-                            : "Recipe unavailable")}
-                      </strong>
-                    </p>
-                  )}
-                  <ErrorNotice
-                    message={selected.error?.message}
-                    retry={() => void selected.refetch()}
-                  />
-                  <div className="meal-form-grid meal-portions">
-                    <label className="shopping-field">
-                      Original servings
-                      <input
-                        type="number"
-                        min="1"
-                        max="100"
-                        required
-                        value={draft.baseServings}
-                        onChange={(event) =>
-                          set({ baseServings: event.target.value })
-                        }
-                      />
-                    </label>
-                    <label className="shopping-field">
-                      Cook
-                      <input
-                        type="number"
-                        min="1"
-                        max="100"
-                        required
-                        value={draft.cook}
-                        onChange={(event) => set({ cook: event.target.value })}
-                      />
-                    </label>
-                    <label className="shopping-field">
-                      Eat now
-                      <input
-                        type="number"
-                        min="1"
-                        max={draft.cook || "100"}
-                        required
-                        value={draft.eat}
-                        onChange={(event) => set({ eat: event.target.value })}
-                      />
-                    </label>
-                  </div>
-                  <p className="muted">
-                    Ingredients scale from the original servings. Save{" "}
-                    {Math.max(0, Number(draft.cook) - Number(draft.eat))}{" "}
-                    portions for leftovers.
-                  </p>
-                </>
-              )}
-            </>
-          )}
-          {draft.kind === "leftovers" && (
-            <>
-              {step === "choose" && (
-                <>
-                  <p className="muted">
-                    Choose an earlier meal. Leftovers add no shopping
-                    ingredients.
-                  </p>
-                  <div className="meal-recipe-options">
-                    {sources.map(
-                      (source) =>
-                        source.kind === "recipe" && (
-                          <label
-                            className="shopping-recipe-choice"
-                            key={source.id}
-                          >
-                            <input
-                              type="radio"
-                              name="source"
-                              checked={draft.sourceId === source.id}
-                              onChange={() => set({ sourceId: source.id })}
-                            />
-                            <span>
-                              <strong>{source.title}</strong>
-                              <small>
-                                {dateLabel(source.date)} ·{" "}
-                                {source.cook - source.eat} saved portions
-                              </small>
-                            </span>
-                          </label>
-                        ),
-                    )}
-                  </div>
-                  {!sources.length && (
+                        </span>
+                      </label>
+                    ))}
+                  {field === "deleted" && (
                     <p>
-                      Add a recipe on an earlier day and save some portions
-                      first.
+                      This meal was deleted. Saving recreates it. Close to keep
+                      the draft without recreating it.
                     </p>
                   )}
-                </>
-              )}
+                </fieldset>
+              ))}
+            </section>
+          ) : (
+            <>
+              <div className="meal-step-heading">
+                <p className="muted">
+                  Step {step === "choose" ? "1" : "2"} of 2
+                </p>
+                <h3 ref={stepHeading} tabIndex={-1}>
+                  {step === "choose" ? "Choose a meal" : "Meal details"}
+                </h3>
+              </div>
               {step === "details" && (
-                <>
-                  <p className="meal-selected">
-                    <strong>
-                      {selectedSource?.kind === "recipe"
-                        ? selectedSource.title
-                        : "Leftovers"}
-                    </strong>
-                  </p>
+                <div className="meal-form-grid">
                   <label className="shopping-field">
-                    Portions to use
+                    Date
                     <input
-                      type="number"
-                      min="1"
-                      max="100"
+                      type="date"
                       required
-                      value={draft.portions}
-                      onChange={(event) =>
-                        set({ portions: event.target.value })
-                      }
+                      min="2000-01-01"
+                      max="2100-12-31"
+                      value={draft.date}
+                      onChange={(event) => set({ date: event.target.value })}
                     />
                   </label>
+                  <CollectionDropdown
+                    label="Meal"
+                    value={draft.slot}
+                    options={[
+                      { value: "", label: "Any time" },
+                      ...["Breakfast", "Lunch", "Dinner"].map((value) => ({
+                        value,
+                        label: value,
+                      })),
+                    ]}
+                    onValueChange={(value) => {
+                      const slot = mealDraftSchema.shape.slot.safeParse(value);
+                      if (slot.success) set({ slot: slot.data });
+                    }}
+                  />
+                </div>
+              )}
+              {step === "choose" && (
+                <fieldset className="meal-types" aria-label="Entry type">
+                  {(
+                    [
+                      { value: "recipe", label: "Recipe" },
+                      { value: "leftovers", label: "Leftovers" },
+                      { value: "out", label: "Eating out" },
+                    ] satisfies { value: MealDraft["kind"]; label: string }[]
+                  ).map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      aria-pressed={draft.kind === option.value}
+                      onClick={() => set({ kind: option.value })}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </fieldset>
+              )}
+              {draft.kind === "recipe" && (
+                <>
+                  {step === "choose" && (
+                    <>
+                      <div className="meal-form-grid">
+                        <label className="shopping-field">
+                          Search recipes
+                          <input
+                            value={search}
+                            onChange={(event) => setSearch(event.target.value)}
+                            placeholder="Recipe name"
+                          />
+                        </label>
+                        <CollectionDropdown
+                          label="Collection"
+                          value={collection}
+                          onValueChange={setCollection}
+                          options={[
+                            { value: "all", label: "All collections" },
+                            { value: "personal", label: "Personal collection" },
+                            ...(groups.data?.map((group) => ({
+                              value: group.id,
+                              label: group.name,
+                            })) ?? []),
+                          ]}
+                        />
+                      </div>
+                      <LoadingState pending={recipes.isPending}>
+                        <ErrorNotice
+                          message={
+                            recipes.error?.message || groups.error?.message
+                          }
+                          retry={() => {
+                            void recipes.refetch();
+                            void groups.refetch();
+                          }}
+                        />
+                        <div className="meal-recipe-options">
+                          {shown.map((entry) => (
+                            <label
+                              className="shopping-recipe-choice"
+                              key={entry.id}
+                            >
+                              <input
+                                type="radio"
+                                name="recipe"
+                                checked={draft.recipeId === entry.id}
+                                onChange={() =>
+                                  set({ recipeId: entry.id, baseServings: "" })
+                                }
+                              />
+                              <span>
+                                <strong>{entry.title}</strong>
+                                <small>
+                                  {entry.groupId
+                                    ? (groups.data?.find(
+                                        (group) => group.id === entry.groupId,
+                                      )?.name ?? "Shared collection")
+                                    : "Personal collection"}
+                                </small>
+                                <small>
+                                  {entry.servings
+                                    ? `Original yield: ${entry.servings}`
+                                    : "Yield not specified"}
+                                </small>
+                              </span>
+                            </label>
+                          ))}
+                          {recipes.isSuccess && !shown.length && (
+                            <p className="muted">
+                              No recipes found. Try another search or
+                              collection.
+                            </p>
+                          )}
+                        </div>
+                        {recipes.isSuccess && (
+                          <RecipePagination
+                            page={page}
+                            total={recipes.data.total}
+                            setPage={setPage}
+                            disabled={save.isPending}
+                          />
+                        )}
+                      </LoadingState>
+                    </>
+                  )}
+                  {step === "details" && (
+                    <>
+                      {draft.recipeId && (
+                        <p className="meal-selected">
+                          Selected:{" "}
+                          <strong>
+                            {selectedRecipe?.title ??
+                              (meal?.kind === "recipe"
+                                ? meal.title
+                                : "Recipe unavailable")}
+                          </strong>
+                        </p>
+                      )}
+                      <ErrorNotice
+                        message={selected.error?.message}
+                        retry={() => void selected.refetch()}
+                      />
+                      <div className="meal-form-grid meal-portions">
+                        <label className="shopping-field">
+                          Original servings
+                          <input
+                            type="number"
+                            min="1"
+                            max="100"
+                            required
+                            value={draft.baseServings}
+                            onChange={(event) =>
+                              set({ baseServings: event.target.value })
+                            }
+                          />
+                        </label>
+                        <label className="shopping-field">
+                          Cook
+                          <input
+                            type="number"
+                            min="1"
+                            max="100"
+                            required
+                            value={draft.cook}
+                            onChange={(event) =>
+                              set({ cook: event.target.value })
+                            }
+                          />
+                        </label>
+                        <label className="shopping-field">
+                          Eat now
+                          <input
+                            type="number"
+                            min="1"
+                            max={draft.cook || "100"}
+                            required
+                            value={draft.eat}
+                            onChange={(event) =>
+                              set({ eat: event.target.value })
+                            }
+                          />
+                        </label>
+                      </div>
+                      <p className="muted">
+                        Ingredients scale from the original servings. Save{" "}
+                        {Math.max(0, Number(draft.cook) - Number(draft.eat))}{" "}
+                        portions for leftovers.
+                      </p>
+                    </>
+                  )}
                 </>
               )}
+              {draft.kind === "leftovers" && (
+                <>
+                  {step === "choose" && (
+                    <>
+                      <p className="muted">
+                        Choose an earlier meal. Leftovers add no shopping
+                        ingredients.
+                      </p>
+                      <div className="meal-recipe-options">
+                        {sources.map(
+                          (source) =>
+                            source.kind === "recipe" && (
+                              <label
+                                className="shopping-recipe-choice"
+                                key={source.id}
+                              >
+                                <input
+                                  type="radio"
+                                  name="source"
+                                  checked={draft.sourceId === source.id}
+                                  onChange={() => set({ sourceId: source.id })}
+                                />
+                                <span>
+                                  <strong>{source.title}</strong>
+                                  <small>
+                                    {dateLabel(source.date)} ·{" "}
+                                    {source.cook - source.eat} saved portions
+                                  </small>
+                                </span>
+                              </label>
+                            ),
+                        )}
+                      </div>
+                      {!sources.length && (
+                        <p>
+                          Add a recipe on an earlier day and save some portions
+                          first.
+                        </p>
+                      )}
+                    </>
+                  )}
+                  {step === "details" && (
+                    <>
+                      <p className="meal-selected">
+                        <strong>
+                          {selectedSource?.kind === "recipe"
+                            ? selectedSource.title
+                            : "Leftovers"}
+                        </strong>
+                      </p>
+                      <label className="shopping-field">
+                        Portions to use
+                        <input
+                          type="number"
+                          min="1"
+                          max="100"
+                          required
+                          value={draft.portions}
+                          onChange={(event) =>
+                            set({ portions: event.target.value })
+                          }
+                        />
+                      </label>
+                    </>
+                  )}
+                </>
+              )}
+              {draft.kind === "out" && step === "details" && (
+                <label className="shopping-field">
+                  Description, optional
+                  <input
+                    value={draft.description}
+                    maxLength={200}
+                    placeholder="Dinner with friends"
+                    onChange={(event) =>
+                      set({ description: event.target.value })
+                    }
+                  />
+                </label>
+              )}
+              {draft.kind === "out" && step === "choose" && (
+                <p className="muted">Meals out add no shopping ingredients.</p>
+              )}
             </>
-          )}
-          {draft.kind === "out" && step === "details" && (
-            <label className="shopping-field">
-              Description, optional
-              <input
-                value={draft.description}
-                maxLength={200}
-                placeholder="Dinner with friends"
-                onChange={(event) => set({ description: event.target.value })}
-              />
-            </label>
-          )}
-          {draft.kind === "out" && step === "choose" && (
-            <p className="muted">Meals out add no shopping ingredients.</p>
           )}
           <ErrorNotice
             message={error || save.error?.message || planner.error?.message}
           />
-          {save.error?.data?.code === "CONFLICT" && (
-            <button
-              type="button"
-              className="text-button"
-              onClick={async () => {
-                const fresh = await planner.refetch();
-                if (fresh.data) {
-                  setRevision(fresh.data.revision);
-                  save.reset();
-                }
-              }}
-            >
-              Refresh plan, keeping this draft
-            </button>
+          {storageFailed && (
+            <p role="status">
+              Draft could not be saved in this browser. Keep this page open
+              until you save your meal.
+            </p>
           )}
           <div className="organise-dialog-footer">
             <button
               type="button"
               className="button button-outline"
               onClick={
-                step === "choose"
-                  ? discard
-                  : () => {
-                      setError("");
-                      setStep("choose");
-                    }
+                review
+                  ? () => setReview(null)
+                  : step === "choose"
+                    ? discard
+                    : () => {
+                        setError("");
+                        setStep("choose");
+                      }
               }
             >
-              {step === "choose" ? "Cancel" : "Back"}
+              {review
+                ? "Back to editing"
+                : step === "choose"
+                  ? "Cancel"
+                  : "Back"}
             </button>
             <button
               type="submit"
               className="button button-primary"
               disabled={
                 save.isPending ||
+                busy ||
+                review?.conflicts.some((field) => !review.choices[field]) ||
                 planner.isPending ||
                 planner.isError ||
                 !selectionReady
               }
             >
-              {save.isPending
+              {save.isPending || busy
                 ? "Saving..."
-                : step === "choose"
-                  ? "Continue"
-                  : "Save meal"}
+                : review
+                  ? "Save reviewed meal"
+                  : step === "choose"
+                    ? "Continue"
+                    : "Save meal"}
             </button>
           </div>
         </fieldset>
