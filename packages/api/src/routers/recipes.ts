@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { db } from "@prep-sheet/db";
 import { recipeContentSchema } from "@prep-sheet/db/recipe-content";
 import { user } from "@prep-sheet/db/schema/auth";
@@ -387,13 +388,30 @@ export const recipesRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const userId = ctx.session.user.id;
+      const manualRequestHash = createHash("sha256")
+        .update(
+          JSON.stringify({ groupId: input.groupId, content: input.content }),
+        )
+        .digest("hex");
       await db.transaction(async (tx) => {
         await lockAccount(tx, userId);
         const [existing] = await tx
-          .select({ id: recipe.id })
+          .select({
+            id: recipe.id,
+            userId: recipe.userId,
+            manualRequestHash: recipe.manualRequestHash,
+          })
           .from(recipe)
           .where(eq(recipe.id, input.id));
-        if (!existing) await checkRecipeCapacity(tx, userId);
+        if (existing && existing.userId !== userId) throw missing();
+        if (existing && existing.manualRequestHash !== manualRequestHash)
+          throw new TRPCError({
+            code: "CONFLICT",
+            message:
+              "This save ID belongs to an earlier submission. Recover that save before applying your changes. Your draft has not been saved.",
+          });
+        if (existing) return;
+        await checkRecipeCapacity(tx, userId);
         if (input.groupId) {
           await lockGroup(tx, input.groupId);
           await requireGroup(tx, input.groupId, userId);
@@ -406,6 +424,7 @@ export const recipesRouter = router({
             groupId: input.groupId,
             title: input.content.title,
             content: input.content,
+            manualRequestHash,
             origin: "manual",
             sourceUrl: null,
           })
@@ -414,7 +433,7 @@ export const recipesRouter = router({
       const saved = await getRecipe(input.id, userId);
       if (
         saved.userId !== userId ||
-        saved.groupId !== input.groupId ||
+        saved.manualRequestHash !== manualRequestHash ||
         saved.origin !== "manual"
       )
         throw new TRPCError({

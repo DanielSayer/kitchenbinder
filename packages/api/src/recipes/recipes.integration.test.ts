@@ -436,6 +436,61 @@ describe("recipes API with PostgreSQL", () => {
     expect((await owner.recipes.list()).items).toHaveLength(0);
   });
 
+  it("binds manual retries to their immutable submission, including concurrent and legacy requests", async () => {
+    const api = caller(ids[0]);
+    const input = { id: randomUUID(), groupId: null, content: sampleRecipe };
+    // A lost response is equivalent to dropping this first successful return value.
+    await api.recipes.createManual(input);
+    await expect(
+      api.recipes.createManual({
+        ...input,
+        content: { ...sampleRecipe, title: "Newer draft" },
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    expect((await api.recipes.get({ id: input.id })).content).toEqual(
+      sampleRecipe,
+    );
+    await api.recipes.update({
+      id: input.id,
+      expectedRevision: 1,
+      content: { ...sampleRecipe, notes: "Edited after creation" },
+    });
+    const recovered = await api.recipes.createManual(input);
+    expect(recovered.revision).toBe(2);
+    expect(recovered.content.notes).toBe("Edited after creation");
+    await expect(
+      api.recipes.createManual({ ...input, content: recovered.content }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    const concurrent = { ...input, id: randomUUID() };
+    const attempts = await Promise.allSettled([
+      api.recipes.createManual(concurrent),
+      api.recipes.createManual({
+        ...concurrent,
+        content: { ...sampleRecipe, title: "Racing draft" },
+      }),
+    ]);
+    expect(
+      attempts.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      attempts.find((result) => result.status === "rejected"),
+    ).toMatchObject({ reason: { code: "CONFLICT" } });
+    const legacy = { ...input, id: randomUUID() };
+    await db.insert(recipe).values({
+      id: legacy.id,
+      userId: ids[0],
+      title: sampleRecipe.title,
+      content: sampleRecipe,
+      origin: "manual",
+    });
+    await expect(api.recipes.createManual(legacy)).rejects.toMatchObject({
+      code: "CONFLICT",
+    });
+    await db
+      .delete(recipe)
+      .where(inArray(recipe.id, [input.id, concurrent.id, legacy.id]));
+  });
+
   it("saves manual recipes without AI, validates content and protects collections", async () => {
     const owner = caller(ids[0]);
     const other = caller(ids[1]);

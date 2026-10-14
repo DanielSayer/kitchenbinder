@@ -1,0 +1,161 @@
+import { createReadStream } from "node:fs";
+import { realpath, stat } from "node:fs/promises";
+import { createServer } from "node:http";
+import { extname, resolve, sep } from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { fileURLToPath } from "node:url";
+import { verifyRelease } from "./release-environment.mjs";
+
+const origin = await verifyRelease();
+const root = await realpath(
+  fileURLToPath(new URL("../apps/web/dist/client/", import.meta.url)),
+);
+const { default: application } = await import(
+  "../apps/web/dist/server/server.js"
+);
+const port = Number(process.env.PORT ?? 3001);
+const grace = Number(process.env.SHUTDOWN_TIMEOUT_MS ?? 30_000);
+if (
+  !Number.isInteger(port) ||
+  port < 0 ||
+  port > 65535 ||
+  !Number.isInteger(grace) ||
+  grace < 1
+) {
+  throw new Error("Invalid PORT or SHUTDOWN_TIMEOUT_MS");
+}
+const types = {
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".webmanifest": "application/manifest+json",
+  ".txt": "text/plain; charset=utf-8",
+};
+let stopping = false;
+const server = createServer(async (incoming, outgoing) => {
+  const abort = new AbortController();
+  outgoing.on("close", () => {
+    if (!outgoing.writableFinished) abort.abort();
+  });
+  try {
+    if (stopping) {
+      outgoing.writeHead(503, { connection: "close" }).end();
+      return;
+    }
+    // The configured public origin supplies protocol/host. Untrusted forwarded
+    // headers and Host cannot change auth redirects or SSR request origin.
+    const target = new URL(incoming.url ?? "/", origin);
+    const url = new URL(origin);
+    url.pathname = target.pathname;
+    url.search = target.search;
+    if (["GET", "HEAD"].includes(incoming.method ?? "")) {
+      const candidate = resolve(root, `.${decodeURIComponent(url.pathname)}`);
+      if (candidate.startsWith(root + sep)) {
+        let file;
+        try {
+          file = await realpath(candidate);
+        } catch (error) {
+          if (error.code !== "ENOENT" && error.code !== "ENOTDIR") throw error;
+        }
+        if (file?.startsWith(root + sep) && (await stat(file)).isFile()) {
+          outgoing.writeHead(200, {
+            "content-type": types[extname(file)] ?? "application/octet-stream",
+            "cache-control": url.pathname.startsWith("/assets/")
+              ? "public, max-age=31536000, immutable"
+              : "public, max-age=0, must-revalidate",
+            "x-content-type-options": "nosniff",
+          });
+          if (incoming.method === "HEAD") outgoing.end();
+          else
+            await pipeline(createReadStream(file), outgoing, {
+              signal: abort.signal,
+            });
+          return;
+        }
+      }
+      if (url.pathname.startsWith("/assets/")) {
+        outgoing.writeHead(404).end();
+        return;
+      }
+    }
+    const headers = new Headers();
+    for (const [name, value] of Object.entries(incoming.headers)) {
+      if (Array.isArray(value))
+        for (const item of value) headers.append(name, item);
+      else if (value !== undefined) headers.set(name, value);
+    }
+    headers.set("host", new URL(origin).host);
+    for (const name of [
+      "forwarded",
+      "x-forwarded-host",
+      "x-forwarded-proto",
+      "x-forwarded-port",
+    ])
+      headers.delete(name);
+    const hasBody = !["GET", "HEAD"].includes(incoming.method ?? "");
+    const response = await application.fetch(
+      new Request(url, {
+        method: incoming.method,
+        headers,
+        signal: abort.signal,
+        ...(hasBody ? { body: Readable.toWeb(incoming), duplex: "half" } : {}),
+      }),
+    );
+    for (const [name, value] of response.headers) {
+      if (name !== "set-cookie") outgoing.setHeader(name, value);
+    }
+    if (response.headers.getSetCookie().length)
+      outgoing.setHeader("set-cookie", response.headers.getSetCookie());
+    outgoing.writeHead(response.status);
+    if (response.body && incoming.method !== "HEAD") {
+      await pipeline(Readable.fromWeb(response.body), outgoing, {
+        signal: abort.signal,
+      });
+    } else {
+      await response.body?.cancel();
+      outgoing.end();
+    }
+  } catch {
+    // Never log request URLs, cookies or exception messages.
+    if (!abort.signal.aborted)
+      console.error(JSON.stringify({ event: "web_request_failed" }));
+    if (!outgoing.headersSent) outgoing.writeHead(500).end();
+    else outgoing.destroy();
+  }
+});
+server.requestTimeout = 120_000;
+server.headersTimeout = 30_000;
+server.listen(port, process.env.HOST ?? "0.0.0.0", () => {
+  console.info(
+    JSON.stringify({ event: "web_started", port: server.address().port }),
+  );
+});
+function stop() {
+  if (stopping) return;
+  stopping = true;
+  console.info(JSON.stringify({ event: "web_stopping" }));
+  const timer = setTimeout(() => {
+    server.closeAllConnections();
+    console.error(JSON.stringify({ event: "web_shutdown_timeout" }));
+    process.exit(1);
+  }, grace);
+  timer.unref();
+  server.close(() => {
+    console.info(JSON.stringify({ event: "web_stopped" }));
+    // Auth and API pools are owned inside the SSR bundle. All requests have
+    // drained; process exit closes their idle database connections.
+    process.exit(0);
+  });
+}
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.once(signal, stop);
+}
+// IPC also lets supervisors and Windows release tests request a graceful stop.
+process.on("message", (message) => {
+  if (message === "shutdown") stop();
+});

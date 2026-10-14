@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { db } from "@prep-sheet/db";
+import { recipeContentSchema } from "@prep-sheet/db/recipe-content";
 import { user } from "@prep-sheet/db/schema/auth";
 import { group, groupMember } from "@prep-sheet/db/schema/group";
 import { recipeImport } from "@prep-sheet/db/schema/import";
@@ -15,8 +16,11 @@ import {
   inArray,
   isNull,
   lt,
+  lte,
+  or,
   sql,
 } from "drizzle-orm";
+import { z } from "zod";
 import { refreshBillingIfStale } from "./billing/polar";
 import { pricing } from "./billing/policy";
 import {
@@ -24,7 +28,12 @@ import {
   checkRecipeCapacity,
   reserveAiSpend,
 } from "./billing/usage";
-import { accessibleRecipe, lockGroup, requireGroup } from "./groups/access";
+import {
+  accessibleRecipe,
+  type Database,
+  lockGroup,
+  requireGroup,
+} from "./groups/access";
 import {
   type ImportStatus,
   importInputSchema,
@@ -342,6 +351,80 @@ async function submitJob(userId: string, input: JobInput) {
   return importStatus(userId, input.id);
 }
 
+const saveAttemptLimit = 5;
+const claimTimeoutMs = 180_000;
+const checkpointSchema = z.object({
+  content: recipeContentSchema,
+  tagIds: z.array(z.string().uuid()),
+  origin: z.enum(["imported", "generated"]).optional(),
+});
+
+type SaveClaim = Pick<
+  typeof recipeImport.$inferSelect,
+  "id" | "saveAttempts"
+> & {
+  workerToken: string;
+};
+
+async function retrySave(
+  database: Database,
+  claim: SaveClaim,
+  error: unknown,
+  started: number,
+) {
+  const exhausted = claim.saveAttempts >= saveAttemptLimit;
+  const delayMs = exhausted ? 0 : 5000 * 2 ** (claim.saveAttempts - 1);
+  const updated = await database
+    .update(recipeImport)
+    .set({
+      state: exhausted ? "failed" : "ready",
+      saveClaimedAt: null,
+      workerToken: null,
+      nextSaveAttemptAt: new Date(Date.now() + delayMs),
+      error: exhausted
+        ? "The generated recipe could not be saved after five attempts. Start a new import or contact support with this import reference."
+        : null,
+      // Keep generated output and spent usage even when the retry budget is exhausted.
+    })
+    .where(
+      and(
+        eq(recipeImport.id, claim.id),
+        eq(recipeImport.state, "ready"),
+        eq(recipeImport.workerToken, claim.workerToken),
+      ),
+    )
+    .returning({ id: recipeImport.id })
+    .catch((retryError: unknown) => {
+      logImport({
+        event: "import_save_retry_failed",
+        importId: claim.id,
+        attempt: claim.saveAttempts,
+        saveFailure: importFailure(error),
+        failure: importFailure(retryError),
+      });
+      throw retryError;
+    });
+  if (!updated.length) return;
+  if (exhausted)
+    logImport({
+      event: "import_failed",
+      importId: claim.id,
+      stage: "saving",
+      elapsedMs: Date.now() - started,
+      usageReleased: false,
+      failure: importFailure(error),
+    });
+  else
+    logImport({
+      event: "import_save_retry",
+      importId: claim.id,
+      attempt: claim.saveAttempts,
+      delayMs,
+      elapsedMs: Date.now() - started,
+      failure: importFailure(error),
+    });
+}
+
 // A dedicated process awaits this function. No work is launched by HTTP handlers.
 export async function processNextImport(
   generate = generateRecipe,
@@ -349,15 +432,6 @@ export async function processNextImport(
     ? requireRecipeProvider
     : () => {},
 ) {
-  const [ready] = await db
-    .select({ id: recipeImport.id })
-    .from(recipeImport)
-    .where(eq(recipeImport.state, "ready"))
-    .limit(1);
-  if (ready) {
-    await saveReady(ready.id);
-    return true;
-  }
   // Do not replay an AI call whose outcome was lost with its worker. Keep the ID terminal.
   await db
     .update(recipeImport)
@@ -370,36 +444,90 @@ export async function processNextImport(
     .where(
       and(
         eq(recipeImport.state, "processing"),
-        lt(recipeImport.startedAt, new Date(Date.now() - 180_000)),
+        lt(recipeImport.startedAt, new Date(Date.now() - claimTimeoutMs)),
       ),
     );
   // Fetching is safe to repeat; a call that reached AI is never replayed.
   await db
     .update(recipeImport)
-    .set({ state: "queued", startedAt: null })
+    .set({ state: "queued", startedAt: null, workerToken: null })
     .where(
       and(
         eq(recipeImport.state, "fetching"),
-        lt(recipeImport.startedAt, new Date(Date.now() - 180_000)),
+        lt(recipeImport.startedAt, new Date(Date.now() - claimTimeoutMs)),
       ),
     );
   const job = await db.transaction(async (tx) => {
     // Serialize claims across every worker, not just this process.
     await tx.execute(sql`select pg_advisory_xact_lock(728193041)`);
+    // A terminated saver leaves a durable lease. Skip rows held by live save transactions.
+    const abandoned = await tx
+      .select()
+      .from(recipeImport)
+      .where(
+        and(
+          eq(recipeImport.state, "ready"),
+          lt(recipeImport.saveClaimedAt, new Date(Date.now() - claimTimeoutMs)),
+        ),
+      )
+      .limit(100)
+      .for("update", { skipLocked: true });
+    for (const claim of abandoned) {
+      if (claim.workerToken)
+        await retrySave(
+          tx,
+          { ...claim, workerToken: claim.workerToken },
+          Object.assign(new Error(), { name: "SaveClaimExpired" }),
+          Date.now(),
+        );
+    }
     const [active] = await tx
       .select({ total: count() })
       .from(recipeImport)
       .where(inArray(recipeImport.state, ["fetching", "processing"]));
-    if ((active?.total ?? 0) >= pricing.ai.concurrentAttempts) return null;
+    const queuedEligible = (active?.total ?? 0) < pricing.ai.concurrentAttempts;
     const [next] = await tx
       .select()
       .from(recipeImport)
-      .where(eq(recipeImport.state, "queued"))
-      .orderBy(asc(recipeImport.createdAt))
+      .where(
+        or(
+          and(
+            eq(recipeImport.state, "ready"),
+            isNull(recipeImport.saveClaimedAt),
+            lt(recipeImport.saveAttempts, saveAttemptLimit),
+            lte(recipeImport.nextSaveAttemptAt, new Date()),
+          ),
+          ...(queuedEligible ? [eq(recipeImport.state, "queued")] : []),
+        ),
+      )
+      // Retries rejoin behind work that was already eligible, including queued work.
+      .orderBy(
+        asc(
+          sql`case when ${recipeImport.state} = 'ready' then ${recipeImport.nextSaveAttemptAt} else ${recipeImport.createdAt} end`,
+        ),
+        asc(recipeImport.createdAt),
+        asc(recipeImport.id),
+      )
       .limit(1)
       .for("update", { skipLocked: true });
     if (!next) return null;
     const claimToken = randomUUID();
+    if (next.state === "ready") {
+      await tx
+        .update(recipeImport)
+        .set({
+          workerToken: claimToken,
+          saveClaimedAt: new Date(),
+          saveAttempts: next.saveAttempts + 1,
+        })
+        .where(eq(recipeImport.id, next.id));
+      return {
+        kind: "save",
+        id: next.id,
+        workerToken: claimToken,
+        saveAttempts: next.saveAttempts + 1,
+      } as const;
+    }
     await tx
       .update(recipeImport)
       .set({
@@ -408,9 +536,13 @@ export async function processNextImport(
         workerToken: claimToken,
       })
       .where(eq(recipeImport.id, next.id));
-    return { ...next, workerToken: claimToken };
+    return { kind: "generate", ...next, workerToken: claimToken } as const;
   });
   if (!job) return false;
+  if (job.kind === "save") {
+    await saveReady(job);
+    return true;
+  }
   const started = Date.now();
   let stage: "fetching" | "generating" = "fetching";
   let stageStarted = started;
@@ -422,6 +554,7 @@ export async function processNextImport(
   });
   logImport({ event: "import_stage_started", importId: job.id, stage });
   let generationStarted = false;
+  let saveClaim: SaveClaim | undefined;
   try {
     if (job.groupId) await requireGroup(db, job.groupId, job.userId);
     const prepared =
@@ -479,10 +612,13 @@ export async function processNextImport(
       elapsedMs: Date.now() - stageStarted,
     });
     // A save failure retries this checkpoint, never generation.
-    await db
+    const [checkpointed] = await db
       .update(recipeImport)
       .set({
         state: "ready",
+        saveAttempts: 1,
+        saveClaimedAt: new Date(),
+        nextSaveAttemptAt: new Date(),
         input: "",
         sourceUrl: result.sourceUrl,
         generated: {
@@ -497,7 +633,10 @@ export async function processNextImport(
           eq(recipeImport.workerToken, job.workerToken),
           eq(recipeImport.state, "processing"),
         ),
-      );
+      )
+      .returning({ id: recipeImport.id });
+    if (checkpointed)
+      saveClaim = { id: job.id, workerToken: job.workerToken, saveAttempts: 1 };
   } catch (error) {
     await failImport(job.id, job.workerToken, error, !generationStarted);
     logImport({
@@ -510,7 +649,7 @@ export async function processNextImport(
     });
     return true;
   }
-  await saveReady(job.id);
+  if (saveClaim) await saveReady(saveClaim);
   return true;
 }
 
@@ -540,7 +679,8 @@ async function failImport(
     );
 }
 
-async function saveReady(id: string) {
+async function saveReady(claim: SaveClaim) {
+  const { id } = claim;
   const started = Date.now();
   logImport({ event: "import_stage_started", importId: id, stage: "saving" });
   const saved = await db
@@ -548,9 +688,32 @@ async function saveReady(id: string) {
       const [job] = await tx
         .select()
         .from(recipeImport)
-        .where(and(eq(recipeImport.id, id), eq(recipeImport.state, "ready")))
+        .where(
+          and(
+            eq(recipeImport.id, id),
+            eq(recipeImport.state, "ready"),
+            eq(recipeImport.workerToken, claim.workerToken),
+          ),
+        )
         .for("update");
-      if (!job?.generated) return;
+      if (!job) return;
+      const checkpoint = checkpointSchema.safeParse(job.generated);
+      if (!checkpoint.success) {
+        await tx
+          .update(recipeImport)
+          .set({
+            state: "failed",
+            saveClaimedAt: null,
+            workerToken: null,
+            error:
+              "The generated recipe checkpoint is missing or invalid. Start a new import or contact support with this import reference.",
+          })
+          .where(eq(recipeImport.id, id));
+        return {
+          kind: "failed",
+          failure: { type: "InvalidCheckpoint" },
+        } as const;
+      }
       if (job.groupId) {
         await lockGroup(tx, job.groupId);
         try {
@@ -560,6 +723,8 @@ async function saveReady(id: string) {
             .update(recipeImport)
             .set({
               state: "failed",
+              saveClaimedAt: null,
+              workerToken: null,
               generated: null,
               error:
                 "Group access changed. Start a new attempt and choose a collection you can write to.",
@@ -577,6 +742,8 @@ async function saveReady(id: string) {
           .update(recipeImport)
           .set({
             state: "failed",
+            saveClaimedAt: null,
+            workerToken: null,
             generated: null,
             error: "This recipe ID is already in use. Start another import.",
           })
@@ -592,17 +759,19 @@ async function saveReady(id: string) {
           id,
           userId: job.userId,
           groupId: job.groupId,
-          title: job.generated.content.title,
-          content: job.generated.content,
+          title: checkpoint.data.content.title,
+          content: checkpoint.data.content,
           sourceUrl: job.sourceUrl,
-          origin: job.generated.origin ?? "imported",
+          origin: checkpoint.data.origin ?? "imported",
         },
-        job.generated.tagIds,
+        checkpoint.data.tagIds,
       );
       await tx
         .update(recipeImport)
         .set({
           state: inserted ? "saved" : "failed",
+          saveClaimedAt: null,
+          workerToken: null,
           generated: null,
           error: inserted
             ? null
@@ -613,14 +782,9 @@ async function saveReady(id: string) {
         ? ({ kind: "saved" } as const)
         : ({ kind: "failed", failure: { type: "RecipeIdConflict" } } as const);
     })
-    .catch((error: unknown) => {
-      logImport({
-        event: "import_save_retry",
-        importId: id,
-        elapsedMs: Date.now() - started,
-        failure: importFailure(error),
-      });
-      throw error;
+    .catch(async (error: unknown) => {
+      // The failed recipe transaction rolled back; release only our durable claim.
+      await retrySave(db, claim, error, started);
     });
   if (saved?.kind === "saved")
     logImport({

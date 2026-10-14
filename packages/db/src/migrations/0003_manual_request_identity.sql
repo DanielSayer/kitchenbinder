@@ -1,0 +1,1 @@
+ALTER TABLE "recipe" ADD COLUMN "manual_request_hash" text;

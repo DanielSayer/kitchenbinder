@@ -6,12 +6,36 @@ import { importFailure, logImport } from "./import-diagnostics";
 import { processNextImport } from "./imports";
 
 let stopping = false;
-process.on("SIGINT", () => {
+const idleAbort = new AbortController();
+const shutdownTimeout = Number(
+  process.env.WORKER_SHUTDOWN_TIMEOUT_MS ?? 180_000,
+);
+if (!Number.isInteger(shutdownTimeout) || shutdownTimeout < 1) {
+  throw new Error("Invalid WORKER_SHUTDOWN_TIMEOUT_MS");
+}
+let shutdownTimer: ReturnType<typeof globalThis.setTimeout> | undefined;
+function stop() {
+  if (stopping) return;
   stopping = true;
+  idleAbort.abort();
+  shutdownTimer = globalThis.setTimeout(() => {
+    process.stderr.write('{"event":"import_worker_shutdown_timeout"}\n');
+    process.exit(1);
+  }, shutdownTimeout);
+  shutdownTimer.unref();
+}
+process.on("SIGINT", stop);
+process.on("SIGTERM", stop);
+process.on("message", (message) => {
+  if (message === "shutdown") stop();
 });
-process.on("SIGTERM", () => {
-  stopping = true;
-});
+async function idle(delay: number) {
+  try {
+    await setTimeout(delay, undefined, { signal: idleAbort.signal });
+  } catch (error) {
+    if (!(error instanceof Error && error.name === "AbortError")) throw error;
+  }
+}
 let checkingQueue = false;
 async function heartbeat() {
   if (checkingQueue || stopping) return;
@@ -61,18 +85,20 @@ try {
   await heartbeat();
   while (!stopping) {
     try {
-      if (!(await processNextImport())) await setTimeout(2000);
+      if (!(await processNextImport())) await idle(2000);
     } catch (error) {
       logImport({
         event: "import_worker_retry",
         delayMs: 5000,
         failure: importFailure(error),
       });
-      await setTimeout(5000);
+      await idle(5000);
     }
   }
 } finally {
   clearInterval(heartbeatTimer);
   await db.$client.end();
+  clearTimeout(shutdownTimer);
   logImport({ event: "import_worker_stopped", pid: process.pid });
+  process.disconnect?.();
 }

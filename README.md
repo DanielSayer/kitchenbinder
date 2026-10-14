@@ -30,7 +30,14 @@ pnpm db:push
 pnpm dev
 ```
 
-Open http://localhost:3001. This MVP uses Drizzle push; no migrations are generated yet.
+Open http://localhost:3001. Drizzle push remains available for disposable development
+schemas. Production now uses versioned migrations, including the recipe collation.
+For a new database with local configuration, run
+`node --env-file=apps/web/.env packages/db/scripts/migrate.mjs` instead of push.
+Existing schemas require explicit, verified adoption. See the
+[deployment and rollback runbook](docs/deployment.md) before using these commands
+outside development. The historical feature-specific upgrade notes below describe
+the legacy schema; the runbook replaces those individual production steps.
 
 Recipe collections and pickers use bounded summary pages with server-side search and sorting. Apply `packages/db/src/upgrades/recipe-list.sql` before running this version, including on new databases. See [recipe collection pages](docs/recipe-collections.md) for setup, ordering and measurement details.
 
@@ -86,7 +93,7 @@ pnpm build
 pnpm check
 ```
 
-`pnpm test` starts one fresh PostgreSQL 18 container for the whole Vitest run. It assigns a free loopback port, creates a separate Docker volume, pushes the current Drizzle schema, and passes the test `DATABASE_URL` to every Vitest worker. The wrapper removes the container and volume after success or failure. Docker Desktop must be running. The development container and its data are not part of this Compose project.
+`pnpm test` starts one fresh PostgreSQL 18 container for the whole Vitest run. It assigns a free loopback port, creates a separate Docker volume, applies the complete versioned migrations, and passes the test `DATABASE_URL` to every Vitest worker. The wrapper removes the container and volume after success or failure. Docker Desktop must be running. The development container and its data are not part of this Compose project.
 
 Use `pnpm test path/to/file.test.ts` to run selected files with the same lifecycle. Run tests through this command rather than invoking Vitest directly; Vitest rejects runs without the wrapper's isolated database marker. Ordinary integration tests use a local placeholder OpenAI key because generation is mocked. `pnpm test:live` uses a real key from `apps/web/.env` or the process environment when `LIVE_AI_TEST=1`.
 
@@ -116,7 +123,7 @@ Live checks use API credits. The regular test suite never makes paid AI requests
 
 ## Before deployment
 
-Use a Supabase PostgreSQL connection, check the PostgreSQL version and pooling settings, and create the initial migration. Add the deployed Discord callback URL and update `BETTER_AUTH_URL`. Review sign-up and generation limits before making the app publicly reachable. Local Docker data does not automatically sync to Supabase.
+Use the [deployment runbook](docs/deployment.md) to provision or explicitly adopt PostgreSQL 18 with the versioned migrations, verify the database, and supervise the web and import worker from the same release. Configure the deployed sign-in callbacks and `BETTER_AUTH_URL`. Review sign-up and generation limits before making the app publicly reachable. Local Docker data does not automatically sync to a hosted database.
 
 Local development automatically retires service workers left by other projects on the same origin, including the old Korex worker on port 3001. The dev server serves a replacement when the browser updates that worker; it unregisters itself, clears Workbox caches and reloads its controlled tabs. Prep Sheet also removes leftover registrations when its development page loads. Cookies, local storage and session storage are preserved. HTML responses use `Cache-Control: no-store`, and Vite fails if port 3001 is occupied instead of silently switching ports. These recovery handlers are development-only. Restart the dev server after upgrading, then open `http://localhost:3001/` normally; a stale tab may reload once as its worker updates.
 
@@ -139,6 +146,8 @@ Server settings, shared by every web and worker instance:
 The website stores each request ID, input and destination in an account-scoped queue in session storage before submission. The composer clears immediately for another recipe; every request has its own card showing the submitted input, destination and progress. View input opens the full text and import reference. Refreshing or returning within the same tab recovers all cards, including lost submission responses, without changing their request IDs. An older single-request record migrates into the queue. Closing the tab can remove these browser recovery records, but server jobs continue and remain visible in Recent imports. Dismissing a saved card keeps its recipe. Failed or rejected requests can be returned to an empty composer for editing; uncertain requests are tombstoned before their IDs are forgotten.
 
 Reservations are created atomically with admission. Failures before generation release the reservation. Once generation starts, failures and uncertain outcomes remain spent. SDK retries are disabled. Successful AI output is checkpointed before saving, so save retries do not call AI again. Claims abandoned before generation can be recovered after three minutes; interrupted generation becomes terminal instead of running twice. AI calls have a 90-second timeout, and claim tokens prevent an obsolete fetch worker from overwriting a newer claim.
+
+Checkpoint saves share an ordered, skip-locked claim path with queued work. Failed saves wait 5, 10, 20 and 40 seconds before retrying, then become terminal after five failed or abandoned save claims while retaining generated output and spent usage. Apply `packages/db/src/upgrades/import-save-retries.sql` before deploying this worker and web app. See [import save retries](docs/import-save-retries.md) for claim recovery, diagnostics and upgrade order.
 
 Keep job records for usage accounting and request deduplication. Do not purge saved or failed jobs when deleting recipes. Existing extension jobs remain compatible; historical website attempts made before this upgrade have no job record.
 

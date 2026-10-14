@@ -1,0 +1,17 @@
+.git
+.pnpm-store
+**/node_modules
+**/.env
+**/.env.*
+**/dist
+**/.output
+**/.wxt
+**/.turbo
+**/*.tsbuildinfo
+reports
+prototypes
+tmp
+temp
+logs
+coverage
+*.log
