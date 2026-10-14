@@ -30,6 +30,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Check formatting and lint without writes
         run: pnpm check
+      - name: Build web production artifact
+        run: pnpm --filter web build
       - name: Check root and every TypeScript package without cached results
         run: pnpm check-types
       - name: Test with disposable PostgreSQL and fresh production artifact
