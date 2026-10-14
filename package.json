@@ -20,14 +20,19 @@
     "db:push": "turbo run db:push -F @prep-sheet/db --",
     "db:studio": "turbo run db:studio -F @prep-sheet/db --",
     "db:generate": "turbo run db:generate -F @prep-sheet/db --",
-    "db:migrate": "turbo run db:migrate -F @prep-sheet/db --",
+    "db:migrate": "node packages/db/scripts/migrate.mjs",
     "db:start": "turbo run db:start -F @prep-sheet/db --",
     "db:watch": "turbo run db:watch -F @prep-sheet/db --",
     "db:stop": "turbo run db:stop -F @prep-sheet/db --",
     "db:down": "turbo run db:down -F @prep-sheet/db --",
     "check": "biome check .",
     "check:fix": "biome check --write .",
-    "worker:imports": "tsx --env-file=apps/web/.env packages/api/src/import-worker.ts"
+    "worker:imports": "node --env-file-if-exists=apps/web/.env --import tsx packages/api/src/import-worker.ts",
+    "start": "node scripts/start-web.mjs",
+    "start:worker": "node scripts/start-worker.mjs",
+    "build:release": "pnpm --filter web build",
+    "db:verify": "node packages/db/scripts/migrate.mjs --verify",
+    "db:adopt": "node packages/db/scripts/migrate.mjs --adopt"
   },
   "dependencies": {
     "dotenv": "catalog:",

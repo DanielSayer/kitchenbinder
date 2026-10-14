@@ -7,7 +7,6 @@ if (process.env.PREP_SHEET_TEST_DATABASE !== "isolated") {
   );
 }
 const databaseUrl = new URL(
-  // biome-ignore lint/suspicious/noUndeclaredEnvVars: Vitest runs directly from the test wrapper.
   process.env.DATABASE_URL ?? "postgresql://localhost/",
 );
 if (

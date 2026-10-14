@@ -8,7 +8,11 @@ const files = readdirSync(directory)
   .filter((name) => /^\d{4}_.+\.sql$/.test(name))
   .sort();
 export const migrations = files.map((name) => {
-  const sql = readFileSync(new URL(name, directory), "utf8");
+  // Git checkouts can use CRLF on Windows. Hash the same SQL on every host.
+  const sql = readFileSync(new URL(name, directory), "utf8").replaceAll(
+    "\r\n",
+    "\n",
+  );
   return { name, sql, hash: createHash("sha256").update(sql).digest("hex") };
 });
 
@@ -63,11 +67,26 @@ async function catalogue(client, schema) {
     `
     SELECT c.relname AS table_name, a.attname AS name, 'column' AS kind,
       format_type(a.atttypid, a.atttypmod) || ':' || a.attnotnull || ':' ||
-      coalesce(pg_get_expr(d.adbin, d.adrelid), '') AS definition
+      coalesce(pg_get_expr(d.adbin, d.adrelid), '') || ':identity=' || a.attidentity::text ||
+      ':generated=' || a.attgenerated::text || ':collation=' || a.attcollation::regcollation::text AS definition
     FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
     JOIN pg_attribute a ON a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped
     LEFT JOIN pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum
-    WHERE n.nspname=$1 AND c.relkind='r' AND c.relname<>'prep_sheet_migration'
+    WHERE n.nspname=$1 AND c.relkind IN ('r','p') AND c.relname<>'prep_sheet_migration'
+    UNION ALL
+    SELECT c.relname, '', 'relation', c.relkind::text || ':rls=' || c.relrowsecurity || ':force=' || c.relforcerowsecurity
+    FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname=$1 AND c.relkind IN ('r','p','v','m','S','f') AND c.relname<>'prep_sheet_migration'
+    UNION ALL
+    SELECT c.relname, '', 'trigger', pg_get_triggerdef(t.oid)
+    FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname=$1 AND NOT t.tgisinternal
+    UNION ALL
+    SELECT c.relname, '', 'policy', p.polcmd::text || ':' || p.polroles::text || ':' ||
+      p.polpermissive || ':' || coalesce(pg_get_expr(p.polqual,p.polrelid),'') || ':' ||
+      coalesce(pg_get_expr(p.polwithcheck,p.polrelid),'')
+    FROM pg_policy p JOIN pg_class c ON c.oid=p.polrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname=$1
     UNION ALL
     SELECT c.relname, '', 'constraint', pg_get_constraintdef(k.oid)
     FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid

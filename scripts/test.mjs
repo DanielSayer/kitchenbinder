@@ -81,7 +81,6 @@ try {
   }
   const devPort = Number(
     new URL(
-      // biome-ignore lint/suspicious/noUndeclaredEnvVars: This wrapper runs directly, outside Turborepo.
       process.env.DATABASE_URL ??
         webEnv.DATABASE_URL ??
         "postgresql://localhost:5432/",

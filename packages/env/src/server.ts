@@ -5,6 +5,9 @@ import { z } from "zod";
 export const env = createEnv({
   server: {
     DATABASE_URL: z.string().min(1),
+    DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
+    DATABASE_CONNECT_TIMEOUT_MS: z.coerce.number().int().min(1).default(10_000),
+    DATABASE_IDLE_TIMEOUT_MS: z.coerce.number().int().min(1).default(30_000),
     BETTER_AUTH_SECRET: z.string().min(32),
     BETTER_AUTH_URL: z.url(),
     EXTENSION_IDS: z.string().optional(),
