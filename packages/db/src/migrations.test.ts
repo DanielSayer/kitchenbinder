@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
@@ -112,7 +112,7 @@ it("provisions a clean database with ICU and preserves all data on repeated migr
           "SELECT count(*)::int AS total FROM prep_sheet_migration",
         )
       ).rows[0].total,
-    ).toBe(2);
+    ).toBe(4);
     expect(
       (
         await client.query(
@@ -120,6 +120,99 @@ it("provisions a clean database with ICU and preserves all data on repeated migr
         )
       ).rows[0].natural,
     ).toBe(true);
+  });
+}, 60_000);
+
+it("upgrades the published versioned baseline with retry state and manual identity while preserving checkpoints and user data", async () => {
+  await database(async (client, run) => {
+    await client.query(`CREATE TABLE prep_sheet_migration (
+      name text PRIMARY KEY, hash text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    for (const name of [
+      "0000_production_baseline.sql",
+      "0001_recipe_name.sql",
+    ]) {
+      const sql = readFileSync(
+        new URL(`./migrations/${name}`, import.meta.url),
+        "utf8",
+      ).replaceAll("\r\n", "\n");
+      await client.query(sql);
+      await client.query(
+        "INSERT INTO prep_sheet_migration(name,hash) VALUES ($1,$2)",
+        [name, createHash("sha256").update(sql).digest("hex")],
+      );
+    }
+    await seed(client);
+    const before = await contents(client);
+    expect(() => run("--verify")).toThrow();
+    expect(run()).toContain("verified");
+    const after = await contents(client);
+    for (const [index, rows] of before.entries()) {
+      for (const [rowIndex, row] of rows.entries())
+        expect(after[index]?.[rowIndex]?.data).toMatchObject(row.data);
+    }
+    const retry = await client.query(
+      "SELECT save_attempts, next_save_attempt_at, save_claimed_at FROM recipe_import",
+    );
+    expect(retry.rows[0]).toMatchObject({
+      save_attempts: 0,
+      save_claimed_at: null,
+    });
+    expect(retry.rows[0].next_save_attempt_at).toBeInstanceOf(Date);
+    expect(
+      (await client.query("SELECT manual_request_hash FROM recipe")).rows[0]
+        .manual_request_hash,
+    ).toBeNull();
+    expect(run("--verify")).toContain("verified");
+    expect(run()).toContain("verified");
+    expect(await contents(client)).toEqual(after);
+  });
+}, 60_000);
+
+it("adopts recorded feature upgrades without resetting retry leases, manual identities or data", async () => {
+  await database(async (client, run) => {
+    await client.query(baseline);
+    await seed(client);
+    for (const name of [
+      "import-save-retries.sql",
+      "edit-loss-manual-request.sql",
+    ])
+      await client.query(
+        readFileSync(new URL(`./upgrades/${name}`, import.meta.url), "utf8"),
+      );
+    await client.query(`UPDATE recipe SET manual_request_hash='original-immutable-hash';
+      UPDATE recipe_import SET save_attempts=3, next_save_attempt_at='2026-10-14T05:00:00Z', save_claimed_at='2026-10-14T04:59:00Z', worker_token='00000000-0000-4000-8000-000000000004'`);
+    const before = await contents(client);
+    expect(run("--adopt")).toContain("verified");
+    expect(await contents(client)).toEqual(before);
+    expect(run("--verify")).toContain("verified");
+  });
+}, 60_000);
+
+it("rejects incompatible pre-existing feature columns without stamping or applying partial upgrades", async () => {
+  await database(async (client, run) => {
+    await client.query(baseline);
+    await seed(client);
+    await client.query(
+      "ALTER TABLE recipe_import ADD COLUMN save_attempts integer NOT NULL DEFAULT 99",
+    );
+    const before = await contents(client);
+    expect(() => run("--adopt")).toThrow();
+    expect(await contents(client)).toEqual(before);
+    expect(
+      (
+        await client.query(
+          "SELECT to_regclass('prep_sheet_migration') AS ledger",
+        )
+      ).rows[0].ledger,
+    ).toBeNull();
+    expect(
+      (
+        await client.query(
+          "SELECT column_name FROM information_schema.columns WHERE table_name='recipe' AND column_name='manual_request_hash'",
+        )
+      ).rowCount,
+    ).toBe(0);
   });
 }, 60_000);
 
