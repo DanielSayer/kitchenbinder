@@ -36,8 +36,6 @@ jobs:
         run: pnpm check-types
       - name: Test with disposable PostgreSQL and fresh production artifact
         run: pnpm test
-      - name: Build web production artifact
-        run: pnpm --filter web build
       - name: Package Chrome and Edge development extensions
         run: pnpm package:extension
       - name: Confirm checks did not modify tracked files
