@@ -106,6 +106,10 @@ Long migrations need a separately reviewed timeout/transaction strategy.
 `0000_production_baseline.sql` represents shared base commit
 `792b312b7091cd6b55ecfec1ff9feb13b86e2aa3`.
 `0001_recipe_name.sql` installs the required nondeterministic ICU collation.
+`0002_import_save_retries.sql` adds checkpoint retry attempts, eligibility,
+leases and their index. `0003_manual_request_identity.sql` adds the nullable
+immutable manual submission hash. Existing recipe hashes remain unknown;
+recovery refuses to infer an original submission from mutable recipe content.
 Verification checks its provider, locale, stored/actual ICU version and numeric,
 case and accent comparison. PostgreSQL normalises the equivalent locale string.
 This release deliberately rejects PostgreSQL majors other than 18 until their
@@ -139,7 +143,8 @@ pnpm db:verify
 
 Ordinary `db:migrate` refuses unversioned databases containing tables.
 Explicit adoption runs only the recorded recipe-revision, reliable-import,
-billing and recipe-list upgrades, then compares all columns, SQL types,
+billing, recipe-list, import-save-retry and manual-request-identity upgrades,
+then compares all columns, SQL types,
 nullability, defaults, constraints and indexes with a fresh schema made from the
 versioned history. Equivalent historical constraint/index names are accepted and
 renamed to their versioned names after validation, so later generated migrations
@@ -198,9 +203,11 @@ idle waits, finishes the active attempt, closes its pool and exits. Its default
 grace periods longer than those deadlines; Compose uses 40 and 200 seconds.
 Windows supervisors/tests can send the same shutdown request over Node IPC.
 
-Forced interruption leaves durable queue state. The current base recovers stale
+Forced interruption leaves durable queue state. Workers recover stale
 fetching claims after three minutes and fails interrupted AI processing without
 replaying the paid call. Ready checkpoints can be saved without generation.
+Abandoned save leases recover after three minutes and count towards the five
+save attempts. Failures back off without reserving spend or calling AI again.
 Monitor these outcomes; shutdown does not promise success for interrupted AI.
 
 ## Deployment order and rollback
@@ -244,22 +251,25 @@ See [PostgreSQL collation guidance](https://www.postgresql.org/docs/18/collation
 
 ## Later schema changes and CI
 
-The parallel manual-save and import-retry branches are not included here.
-Their additive schema changes must become new, uniquely numbered migrations
-after this history, with the Drizzle snapshot/journal updated by
-`pnpm db:generate`. Do not edit published migrations or fold another branch's
-unmerged schema into the baseline. Include clean provisioning, existing-version
+The combined release includes the manual-save and import-retry migrations
+after the unchanged baseline and collation migrations. Later schema changes
+must become new, uniquely numbered migrations with the Drizzle snapshot/journal
+updated by `pnpm db:generate`. Do not edit published migrations.
+Include clean provisioning, existing-version
 upgrade, data preservation and web/worker compatibility checks with each change.
 Keep SQL unqualified or use Drizzle's quoted `"public".` references so the
 transactional comparison can replay it in an isolated verification schema.
 Data backfills and nontransactional operations need a reviewed runner extension;
 the present schema replay is intended for additive DDL.
 
-Adopt existing unversioned installations with this baseline image first, while
-all writers remain stopped. Then run the combined release's new migrations and
-verification before starting either service. The baseline adoption comparison
-deliberately rejects unrecorded feature columns. A combined release must test this
-two-step upgrade and clean provisioning before deployment.
+The combined image can adopt the supported unversioned installation directly
+while writers are stopped. Adoption applies the recorded additive upgrades and
+verifies the entire combined schema before recording history. Compatible
+already-applied feature upgrades retain retry counters, leases and manual hashes;
+incompatible defaults or column definitions roll back without recording history.
+An installation already carrying the two published baseline migrations uses
+ordinary `db:migrate` to apply migrations 0002 and 0003. Both paths preserve
+existing recipes, checkpoints, planner records and billing data.
 
 `pnpm test` still owns one disposable PostgreSQL container and removes it in
 `finally`. It now provisions with versioned migrations instead of Drizzle push.

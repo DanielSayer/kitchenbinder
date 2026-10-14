@@ -10,7 +10,7 @@ The original submission stays separate from Clear form and Cancel, since those a
 
 ### Additive schema integration
 
-Apply `packages/db/src/upgrades/edit-loss-manual-request.sql` before deploying this change, or incorporate its nullable `recipe.manual_request_hash` column into the production-startup migration work. This task does not regenerate migration history or the shared baseline. Existing rows remain null. Retrying a legacy UUID without a stored original fingerprint returns an explicit conflict; current recipe content is never used to invent an original identity.
+The combined release adds nullable `recipe.manual_request_hash` through versioned migration `0003_manual_request_identity.sql`, after the unchanged baseline, collation and retry migrations. Use `pnpm db:migrate`, or explicit `pnpm db:adopt` for a supported unversioned installation, while writers are stopped. Adoption uses the repeatable `edit-loss-manual-request.sql` upgrade and verifies the complete schema before recording history. Existing rows remain null. Retrying a legacy UUID without a stored original fingerprint returns an explicit conflict; current recipe content is never used to invent an original identity. See [deployment](deployment.md).
 
 ### Regression checks
 
