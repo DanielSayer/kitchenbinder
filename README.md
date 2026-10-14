@@ -140,6 +140,8 @@ The website stores each request ID, input and destination in an account-scoped q
 
 Reservations are created atomically with admission. Failures before generation release the reservation. Once generation starts, failures and uncertain outcomes remain spent. SDK retries are disabled. Successful AI output is checkpointed before saving, so save retries do not call AI again. Claims abandoned before generation can be recovered after three minutes; interrupted generation becomes terminal instead of running twice. AI calls have a 90-second timeout, and claim tokens prevent an obsolete fetch worker from overwriting a newer claim.
 
+Checkpoint saves share an ordered, skip-locked claim path with queued work. Failed saves wait 5, 10, 20 and 40 seconds before retrying, then become terminal after five failed or abandoned save claims while retaining generated output and spent usage. Apply `packages/db/src/upgrades/import-save-retries.sql` before deploying this worker and web app. See [import save retries](docs/import-save-retries.md) for claim recovery, diagnostics and upgrade order.
+
 Keep job records for usage accounting and request deduplication. Do not purge saved or failed jobs when deleting recipes. Existing extension jobs remain compatible; historical website attempts made before this upgrade have no job record.
 
 Vitest runs files sequentially because the integration suites share the isolated PostgreSQL import queue. Development workers can continue using the development database during tests.

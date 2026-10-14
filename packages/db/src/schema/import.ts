@@ -46,10 +46,16 @@ export const recipeImport = pgTable(
       .defaultNow(),
     workerToken: uuid("worker_token"),
     startedAt: timestamp("started_at", { withTimezone: true }),
+    saveAttempts: integer("save_attempts").notNull().default(0),
+    nextSaveAttemptAt: timestamp("next_save_attempt_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    saveClaimedAt: timestamp("save_claimed_at", { withTimezone: true }),
   },
   (t) => [
     index("recipe_import_queue_idx").on(t.state, t.createdAt),
     index("recipe_import_user_idx").on(t.userId, t.createdAt),
+    index("recipe_import_save_retry_idx").on(t.state, t.nextSaveAttemptAt),
   ],
 );
 
