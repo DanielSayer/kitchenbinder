@@ -11,7 +11,6 @@ const project = `prep-sheet-test-${randomUUID().slice(0, 12)}`;
 const composeArgs = ["compose", "-p", project, "-f", composeFile];
 const dbDir = join(root, "packages/db");
 const vitest = join(root, "node_modules/vitest/vitest.mjs");
-const drizzle = join(root, "packages/db/node_modules/drizzle-kit/bin.cjs");
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -56,7 +55,7 @@ function runVitest(args, env) {
   });
 }
 
-if (!existsSync(vitest) || !existsSync(drizzle)) {
+if (!existsSync(vitest)) {
   throw new Error(
     "Install workspace dependencies with pnpm install before running tests.",
   );
@@ -108,22 +107,7 @@ try {
     env.OPENAI_API_KEY = "local-test-placeholder";
   }
   console.info(`Test PostgreSQL: ${project} on 127.0.0.1:${port}`);
-  run(process.execPath, [drizzle, "push", "--force"], { cwd: dbDir, env });
-  run("docker", [
-    ...composeArgs,
-    "exec",
-    "-T",
-    "postgres",
-    "psql",
-    "-U",
-    "postgres",
-    "-d",
-    "prep_sheet_test",
-    "-v",
-    "ON_ERROR_STOP=1",
-    "-c",
-    readFileSync(join(dbDir, "src/upgrades/recipe-list.sql"), "utf8"),
-  ]);
+  run(process.execPath, [join(dbDir, "scripts/migrate.mjs")], { env });
   const args = process.argv.slice(2);
   exitCode = await runVitest(args[0] === "--" ? args.slice(1) : args, env);
 } finally {
