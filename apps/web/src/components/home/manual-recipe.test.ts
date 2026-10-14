@@ -279,3 +279,19 @@ it("keeps newer in-memory fields when storage fails after an uncertain save", as
   );
   expect(navigate).not.toHaveBeenCalled();
 });
+
+it("treats a destination change as a changed retry and retains the draft during recovery", async () => {
+  await mount();
+  const pending = await loseResponse();
+  cleanup();
+  collection.groupId = crypto.randomUUID();
+  await mount();
+  submit();
+  await screen.findByText(/An earlier save may have completed/);
+  expect(createManual).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole("button", { name: "Recover earlier save" }));
+  await screen.findByText(/saved to its original collection/);
+  expect(createManual.mock.calls[1]?.[0]).toEqual(pending);
+  expect(readRecipeDraft(key)?.title).toBe(sampleRecipe.title);
+  expect(navigate).not.toHaveBeenCalled();
+});

@@ -66,12 +66,13 @@ export function ManualRecipe({ onCancel }: { onCancel: () => void }) {
         const draft = latestDraft.current;
         const current = draft && parseRecipeDraft(draft);
         if (
+          groupId !== input.groupId ||
           !current?.success ||
           JSON.stringify(current.data) !== JSON.stringify(input.content)
         ) {
           setRecoveredId(recipe.id);
           setNotice(
-            "Your earlier recipe was saved. Your newer draft is still here. Review it in the saved recipe before applying changes.",
+            "Your earlier recipe was saved to its original collection. Your newer draft is still here. Review it in that recipe before applying changes.",
           );
           return;
         }
@@ -107,14 +108,23 @@ export function ManualRecipe({ onCancel }: { onCancel: () => void }) {
       void navigate({ to: "/login" });
       return;
     }
-    if (submission.kind === "blocked") return;
+    let state = submission;
+    if (state.kind === "blocked") {
+      try {
+        const request = readManualSubmission(submissionKey);
+        state = request ? { kind: "pending", request } : { kind: "ready" };
+        setSubmission(state);
+      } catch {
+        return;
+      }
+    }
     const input = { groupId, content };
     if (
-      submission.kind === "pending" &&
+      state.kind === "pending" &&
       JSON.stringify(input) !==
         JSON.stringify({
-          groupId: submission.request.groupId,
-          content: submission.request.content,
+          groupId: state.request.groupId,
+          content: state.request.content,
         })
     ) {
       setNotice(
@@ -123,8 +133,8 @@ export function ManualRecipe({ onCancel }: { onCancel: () => void }) {
       return;
     }
     const request =
-      submission.kind === "pending"
-        ? submission.request
+      state.kind === "pending"
+        ? state.request
         : { id: crypto.randomUUID(), ...input };
     try {
       writeManualSubmission(submissionKey, request);
