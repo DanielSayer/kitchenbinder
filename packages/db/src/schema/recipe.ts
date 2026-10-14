@@ -25,6 +25,8 @@ export const recipe = pgTable(
     }),
     title: text("title").notNull(),
     content: jsonb("content").$type<RecipeContent>().notNull(),
+    // Immutable identity of the original manual submission, including its destination.
+    manualRequestHash: text("manual_request_hash"),
     revision: integer("revision").default(1).notNull(),
     sourceUrl: text("source_url"),
     origin: text("origin", {
