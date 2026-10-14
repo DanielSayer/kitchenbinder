@@ -1,6 +1,12 @@
 import type { RecipeContent } from "@prep-sheet/db/recipe-content";
 import { useBlocker } from "@tanstack/react-router";
-import { type SubmitEvent, useEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  type SubmitEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { ErrorNotice } from "../feedback";
 
 import {
@@ -39,6 +45,9 @@ export function RecipeEditor({
   savedRevision,
   loadLatest,
   onSaveCopy,
+  onDraftChange,
+  saveAction,
+  recoveryAction,
 }: {
   content: RecipeContent;
   draftKey: string;
@@ -55,6 +64,9 @@ export function RecipeEditor({
   savedRevision?: number;
   loadLatest?: () => Promise<SavedRecipe>;
   onSaveCopy?: (content: RecipeContent) => Promise<void>;
+  onDraftChange?: (draft: RecipeDraft) => void;
+  saveAction?: ReactNode;
+  recoveryAction?: ReactNode;
 }) {
   const [initial] = useState(() => recipeFields(content));
   const [base, setBase] = useState<RecipeDraft | null>(initial);
@@ -76,11 +88,12 @@ export function RecipeEditor({
     const draft = readRecipeDraft(draftKey);
     if (draft) {
       setFields(draft);
+      onDraftChange?.(draft);
       setBase(readDraftBase(draftKey));
       setBaseRevision(readDraftRevision(draftKey));
       setRevision((value) => value + 1);
     }
-  }, [draftKey]);
+  }, [draftKey, onDraftChange]);
 
   const reviewScreen = review ? (preview ? "preview" : "choices") : "editing";
   useEffect(() => {
@@ -126,6 +139,7 @@ export function RecipeEditor({
       return;
     }
     setFields(base ?? initial);
+    onDraftChange?.(base ?? initial);
     setRevision((value) => value + 1);
     setValidation("");
     setStorageFailed(false);
@@ -175,6 +189,7 @@ export function RecipeEditor({
         if (!result.success)
           throw new Error("Check the recipe fields before saving.");
         setFields(draft);
+        onDraftChange?.(draft);
         setBase(original);
         setBaseRevision(expectedRevision);
         setRevision((value) => value + 1);
@@ -219,6 +234,7 @@ export function RecipeEditor({
         if (review) return;
         const next = readRecipeFields(event.currentTarget);
         setFields(next);
+        onDraftChange?.(next);
         persist(next);
       }}
     >
@@ -363,9 +379,11 @@ export function RecipeEditor({
               >
                 {resetLabel}
               </button>
-              <button type="submit" className="button button-primary">
-                {pending || busy ? "Saving..." : saveLabel}
-              </button>
+              {saveAction ?? (
+                <button type="submit" className="button button-primary">
+                  {pending || busy ? "Saving..." : saveLabel}
+                </button>
+              )}
             </div>
           </>
         )}
@@ -377,6 +395,7 @@ export function RecipeEditor({
           </p>
         )}
         <ErrorNotice message={validation || error} />
+        {recoveryAction}
       </fieldset>
     </form>
   );
