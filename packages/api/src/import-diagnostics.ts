@@ -37,7 +37,16 @@ type ImportEvent =
       event: "import_save_retry";
       importId: string;
       elapsedMs: number;
+      attempt: number;
+      delayMs: number;
       failure: Failure;
+    }
+  | {
+      event: "import_save_retry_failed";
+      importId: string;
+      attempt: number;
+      failure: Failure;
+      saveFailure: Failure;
     }
   | {
       event: "import_page_response";
