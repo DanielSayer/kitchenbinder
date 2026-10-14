@@ -255,6 +255,12 @@ transactional comparison can replay it in an isolated verification schema.
 Data backfills and nontransactional operations need a reviewed runner extension;
 the present schema replay is intended for additive DDL.
 
+Adopt existing unversioned installations with this baseline image first, while
+all writers remain stopped. Then run the combined release's new migrations and
+verification before starting either service. The baseline adoption comparison
+deliberately rejects unrecorded feature columns. A combined release must test this
+two-step upgrade and clean provisioning before deployment.
+
 `pnpm test` still owns one disposable PostgreSQL container and removes it in
 `finally`. It now provisions with versioned migrations instead of Drizzle push.
 Migration tests create additional databases only inside that disposable server.
@@ -270,3 +276,26 @@ or Docker Desktop's `host.docker.internal`;
 they do not create a second shared database service.
 See [Docker host networking](https://docs.docker.com/engine/network/drivers/host/)
 for the Linux network behaviour used by these tests.
+
+## Local verification on 14 October 2026
+
+Verification used Windows, Node 26.7.0, pnpm 11.21.0 and Docker 27.4.0:
+
+- Locked installation passed with no lockfile change.
+- `pnpm check` passed, checking 279 files without writes.
+- `pnpm check-types` passed the root check and seven package tasks, all uncached.
+- The full `pnpm test` suite passed 40 files and 297 tests; seven paid AI tests
+  were skipped. Its disposable PostgreSQL container, volume and network were removed.
+- The focused packaged-image run passed three files and six tests, including
+  initial/legacy migration, rejection without stamping or collation repair,
+  HTTP/static/authenticated API/PDF checks and SIGTERM worker drain/restart.
+  It ran the unprivileged Linux/amd64 release image through Docker Desktop against
+  another disposable PostgreSQL server. Its database and worker containers were removed.
+- `pnpm build:release`, the Docker image build, Chrome/Edge development ZIP
+  packaging, Compose configuration validation with placeholders, Actionlint
+  1.7.12 and `git diff --check` passed. The existing large client-chunk warning remains.
+
+Hosted GitHub CI and an actual deployment host were not verified in this local
+run. No production database, paid AI or payment flow was used. Real sign-in,
+provider imports, billing, host TLS/proxy behaviour, pooler compatibility,
+backup restoration and operational alert delivery remain acceptance work.
