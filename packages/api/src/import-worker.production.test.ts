@@ -147,10 +147,9 @@ it("drains a blocked checkpoint save on shutdown, leaves the next job durable, t
   const blocker = await db.$client.connect();
   try {
     await blocker.query("BEGIN");
-    await blocker.query(
-      "SELECT id FROM recipe_import WHERE id=ANY($1::uuid[]) FOR UPDATE",
-      [ids],
-    );
+    // Claims skip locked import rows. Block the actual save after its claim
+    // commits so shutdown must drain that active attempt.
+    await blocker.query("LOCK TABLE recipe IN ACCESS EXCLUSIVE MODE");
     const first = worker();
     await first.wait('"stage":"saving"');
     first.stop();
