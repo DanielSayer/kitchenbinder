@@ -48,7 +48,16 @@ async function checkCollation(client) {
   }
 }
 
+async function checkPostgres(client) {
+  const version = await client.query("SHOW server_version_num");
+  const number = Number(version.rows[0].server_version_num);
+  if (number < 180000 || number >= 190000) {
+    throw new Error("This release is verified on PostgreSQL 18 with ICU");
+  }
+}
+
 export async function checkRelease(client) {
+  await checkPostgres(client);
   const result = await client.query(
     "SELECT name, hash FROM public.prep_sheet_migration ORDER BY name",
   );
@@ -194,13 +203,7 @@ export async function migrate(
     await client.query("SET LOCAL statement_timeout = '60s'");
     await client.query("SELECT pg_advisory_xact_lock(79231202)");
     await client.query("SET LOCAL search_path TO public");
-    const version = await client.query("SHOW server_version_num");
-    if (
-      Number(version.rows[0].server_version_num) < 180000 ||
-      Number(version.rows[0].server_version_num) >= 190000
-    ) {
-      throw new Error("This release is verified on PostgreSQL 18 with ICU");
-    }
+    await checkPostgres(client);
     const history = await client.query(
       "SELECT to_regclass('public.prep_sheet_migration') AS present",
     );

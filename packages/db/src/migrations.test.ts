@@ -28,13 +28,37 @@ async function database(
   url.pathname = `/${name}`;
   const client = new pg.Client({ connectionString: url.href });
   await client.connect();
+  const image = process.env.PREP_SHEET_RELEASE_IMAGE;
+  const containerUrl = new URL(url.href);
+  const network =
+    process.platform === "linux"
+      ? "--network=host"
+      : "--add-host=host.docker.internal:host-gateway";
+  if (process.platform !== "linux")
+    containerUrl.hostname = "host.docker.internal";
   const run = (...args: string[]) =>
-    execFileSync(process.execPath, [runner, ...args], {
-      env: { ...process.env, DATABASE_URL: url.href },
-      encoding: "utf8",
-      timeout: 30_000,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    execFileSync(
+      image ? "docker" : process.execPath,
+      image
+        ? [
+            "run",
+            "--rm",
+            network,
+            "-e",
+            `DATABASE_URL=${containerUrl.href}`,
+            image,
+            "node",
+            "packages/db/scripts/migrate.mjs",
+            ...args,
+          ]
+        : [runner, ...args],
+      {
+        env: { ...process.env, DATABASE_URL: url.href },
+        encoding: "utf8",
+        timeout: 30_000,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
   try {
     await test(client, run);
   } finally {
@@ -97,7 +121,7 @@ it("provisions a clean database with ICU and preserves all data on repeated migr
       ).rows[0].natural,
     ).toBe(true);
   });
-});
+}, 60_000);
 
 it("requires explicit adoption and upgrades recorded legacy revisions/import fields without losing records", async () => {
   await database(async (client, run) => {
@@ -142,7 +166,7 @@ it("requires explicit adoption and upgrades recorded legacy revisions/import fie
     }
     expect(run("--adopt")).toContain("verified");
   });
-});
+}, 60_000);
 
 it("rolls back adoption upgrades when a constraint or default is incompatible", async () => {
   await database(async (client, run) => {
@@ -169,7 +193,7 @@ it("rolls back adoption upgrades when a constraint or default is incompatible", 
       ).rowCount,
     ).toBe(0);
   });
-});
+}, 60_000);
 
 it("refuses changed migration hashes and incorrectly defined ICU collations", async () => {
   await database(async (client, run) => {
@@ -193,4 +217,16 @@ it("refuses changed migration hashes and incorrectly defined ICU collations", as
       ).rows[0].ledger,
     ).toBeNull();
   });
-});
+  await database(async (client, run) => {
+    run();
+    await client.query("DROP COLLATION public.recipe_name");
+    expect(() => run("--verify")).toThrow();
+    expect(
+      (
+        await client.query(
+          "SELECT to_regcollation('public.recipe_name') AS collation",
+        )
+      ).rows[0].collation,
+    ).toBeNull();
+  });
+}, 60_000);

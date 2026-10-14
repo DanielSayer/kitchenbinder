@@ -30,7 +30,14 @@ pnpm db:push
 pnpm dev
 ```
 
-Open http://localhost:3001. This MVP uses Drizzle push; no migrations are generated yet.
+Open http://localhost:3001. Drizzle push remains available for disposable development
+schemas. Production now uses versioned migrations, including the recipe collation.
+For a new database with local configuration, run
+`node --env-file=apps/web/.env packages/db/scripts/migrate.mjs` instead of push.
+Existing schemas require explicit, verified adoption. See the
+[deployment and rollback runbook](docs/deployment.md) before using these commands
+outside development. The historical feature-specific upgrade notes below describe
+the legacy schema; the runbook replaces those individual production steps.
 
 Recipe collections and pickers use bounded summary pages with server-side search and sorting. Apply `packages/db/src/upgrades/recipe-list.sql` before running this version, including on new databases. See [recipe collection pages](docs/recipe-collections.md) for setup, ordering and measurement details.
 

@@ -85,19 +85,25 @@ it("serves authenticated PDFs from a fresh production build without crashing or 
     DISCORD_CLIENT_ID: "",
     DISCORD_CLIENT_SECRET: "",
   };
-  execFileSync(
-    process.execPath,
-    [join(root, "apps/web/node_modules/vite/bin/vite.js"), "build"],
-    {
-      cwd: join(root, "apps/web"),
-      env: runtimeEnv,
-      timeout: 90_000,
-      maxBuffer: 10_000_000,
-    },
-  );
   const image = process.env.PREP_SHEET_RELEASE_IMAGE;
+  if (!image)
+    execFileSync(
+      process.execPath,
+      [join(root, "apps/web/node_modules/vite/bin/vite.js"), "build"],
+      {
+        cwd: join(root, "apps/web"),
+        env: runtimeEnv,
+        timeout: 90_000,
+        maxBuffer: 10_000_000,
+      },
+    );
   const containerUrl = new URL(runtimeEnv.DATABASE_URL ?? "");
-  containerUrl.hostname = "host.docker.internal";
+  const network =
+    process.platform === "linux"
+      ? "--network=host"
+      : "--add-host=host.docker.internal:host-gateway";
+  if (process.platform !== "linux")
+    containerUrl.hostname = "host.docker.internal";
   const result = execFileSync(
     image ? "docker" : process.execPath,
     image
@@ -105,7 +111,7 @@ it("serves authenticated PDFs from a fresh production build without crashing or 
           "run",
           "--rm",
           "-i",
-          "--add-host=host.docker.internal:host-gateway",
+          network,
           "-e",
           "NODE_ENV=production",
           "-e",

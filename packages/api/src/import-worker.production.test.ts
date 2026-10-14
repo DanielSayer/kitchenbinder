@@ -36,7 +36,12 @@ function worker() {
   const image = process.env.PREP_SHEET_RELEASE_IMAGE;
   const name = `prep-sheet-worker-${randomUUID()}`;
   const databaseUrl = new URL(process.env.DATABASE_URL ?? "");
-  databaseUrl.hostname = "host.docker.internal";
+  const network =
+    process.platform === "linux"
+      ? "--network=host"
+      : "--add-host=host.docker.internal:host-gateway";
+  if (process.platform !== "linux")
+    databaseUrl.hostname = "host.docker.internal";
   const child = image
     ? spawn(
         "docker",
@@ -46,7 +51,7 @@ function worker() {
           "--init",
           "--name",
           name,
-          "--add-host=host.docker.internal:host-gateway",
+          network,
           "-e",
           "NODE_ENV=production",
           "-e",
