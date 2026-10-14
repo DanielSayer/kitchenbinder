@@ -139,7 +139,8 @@ try {
   // Give unhandled asynchronous font-loading errors time to reach the event loop.
   await setTimeout(100);
   process.stdout.write("Production server and PDF smoke checks passed.\n");
-  child.send("shutdown");
+  if (process.platform === "win32") child.send("shutdown");
+  else child.kill("SIGTERM");
   const [code] = await closed;
   assert.equal(code, 0, output);
   assert.match(output, /web_stopped/);

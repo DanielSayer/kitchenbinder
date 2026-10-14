@@ -109,7 +109,60 @@ async function catalogue(client, schema) {
     .sort();
 }
 
-async function verifySchema(client) {
+function identifier(value) {
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+async function canonicaliseNames(client, schema) {
+  for (const kind of ["constraint", "index"]) {
+    const query =
+      kind === "constraint"
+        ? `
+      SELECT c.relname AS table_name, k.conname AS name, pg_get_constraintdef(k.oid) AS definition
+      FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+      WHERE n.nspname=$1 AND c.relname<>'prep_sheet_migration'`
+        : `
+      SELECT c.relname AS table_name, x.relname AS name,
+        substring(pg_get_indexdef(i.indexrelid) FROM ' USING .*$') AS definition
+      FROM pg_index i JOIN pg_class c ON c.oid=i.indrelid JOIN pg_class x ON x.oid=i.indexrelid
+      JOIN pg_namespace n ON n.oid=c.relnamespace
+      WHERE n.nspname=$1 AND c.relname<>'prep_sheet_migration'
+        AND NOT EXISTS (SELECT 1 FROM pg_constraint k WHERE k.conindid=i.indexrelid)`;
+    const expected = (await client.query(query, [schema])).rows;
+    const actual = (await client.query(query, ["public"])).rows;
+    const normalise = (definition) =>
+      definition.replaceAll(`${schema}.`, "").replaceAll("public.", "");
+    const renames = [];
+    for (const row of expected) {
+      const current = actual.find(
+        (item) =>
+          item.table_name === row.table_name &&
+          normalise(item.definition) === normalise(row.definition),
+      );
+      if (!current) throw new Error("Cannot canonicalise an unverified schema");
+      if (current.name !== row.name)
+        renames.push({
+          table: row.table_name,
+          from: current.name,
+          to: row.name,
+          temporary: `adopt_${randomUUID().replaceAll("-", "")}`,
+        });
+    }
+    for (const phase of ["temporary", "final"]) {
+      for (const rename of renames) {
+        const from = phase === "temporary" ? rename.from : rename.temporary;
+        const to = phase === "temporary" ? rename.temporary : rename.to;
+        await client.query(
+          kind === "constraint"
+            ? `ALTER TABLE public.${identifier(rename.table)} RENAME CONSTRAINT ${identifier(from)} TO ${identifier(to)}`
+            : `ALTER INDEX public.${identifier(from)} RENAME TO ${identifier(to)}`,
+        );
+      }
+    }
+  }
+}
+
+async function verifySchema(client, { canonicalise = false } = {}) {
   const schema = `release_check_${randomUUID().replaceAll("-", "")}`;
   await client.query(`CREATE SCHEMA "${schema}"`);
   await client.query(`SET LOCAL search_path TO "${schema}", public`);
@@ -126,6 +179,7 @@ async function verifySchema(client) {
       `Schema mismatch. Missing: ${missing.join("; ")}. Unexpected: ${extra.join("; ")}`,
     );
   }
+  if (canonicalise) await canonicaliseNames(client, schema);
   await client.query(`DROP SCHEMA "${schema}" CASCADE`);
   await client.query("SET LOCAL search_path TO public");
 }
@@ -176,7 +230,7 @@ export async function migrate(
       } else {
         for (const migration of migrations) await client.query(migration.sql);
       }
-      await verifySchema(client);
+      await verifySchema(client, { canonicalise: !!existing.rowCount });
       await client.query(`CREATE TABLE public.prep_sheet_migration (
         name text PRIMARY KEY, hash text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now()
       )`);

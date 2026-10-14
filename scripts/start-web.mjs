@@ -90,6 +90,13 @@ const server = createServer(async (incoming, outgoing) => {
       else if (value !== undefined) headers.set(name, value);
     }
     headers.set("host", new URL(origin).host);
+    for (const name of [
+      "forwarded",
+      "x-forwarded-host",
+      "x-forwarded-proto",
+      "x-forwarded-port",
+    ])
+      headers.delete(name);
     const hasBody = !["GET", "HEAD"].includes(incoming.method ?? "");
     const response = await application.fetch(
       new Request(url, {

@@ -107,6 +107,9 @@ it("requires explicit adoption and upgrades recorded legacy revisions/import fie
       ALTER TABLE recipe DROP COLUMN revision;
       ALTER TABLE recipe_import DROP COLUMN source_kind, DROP COLUMN usage_released, DROP COLUMN usage_bucket, DROP COLUMN worker_token;
       ALTER TABLE recipe_import ALTER COLUMN source_url SET NOT NULL;
+      ALTER TABLE billing_account RENAME CONSTRAINT billing_account_customer_id_unique TO billing_account_customer_id_key;
+      ALTER TABLE billing_account RENAME CONSTRAINT billing_account_user_id_user_id_fk TO billing_account_user_id_fkey;
+      ALTER INDEX recipe_user_created_idx RENAME TO legacy_recipe_user_index;
     `);
     const before = await contents(client);
     expect(() => run()).toThrow();
@@ -118,6 +121,20 @@ it("requires explicit adoption and upgrades recorded legacy revisions/import fie
       ).rows[0].ledger,
     ).toBeNull();
     expect(run("--adopt")).toContain("verified");
+    expect(
+      (
+        await client.query(
+          "SELECT to_regclass('recipe_user_created_idx') AS index",
+        )
+      ).rows[0].index,
+    ).toBe("recipe_user_created_idx");
+    expect(
+      (
+        await client.query(
+          "SELECT conname FROM pg_constraint WHERE conrelid='billing_account'::regclass",
+        )
+      ).rows.map((row) => row.conname),
+    ).toContain("billing_account_user_id_user_id_fk");
     const after = await contents(client);
     for (const [index, rows] of before.entries()) {
       for (const [rowIndex, row] of rows.entries())
