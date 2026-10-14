@@ -1,0 +1,42 @@
+# Supply secrets through the host environment or its secret manager.
+# PostgreSQL is external. This file never provisions or migrates it implicitly.
+x-runtime: &runtime
+  image: ${PREP_SHEET_IMAGE:?Set an immutable release image tag or digest}
+  restart: unless-stopped
+  init: true
+  environment: &environment
+    NODE_ENV: production
+    DATABASE_URL: ${DATABASE_URL:?Set the runtime PostgreSQL URL}
+    DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-10}
+    DATABASE_CONNECT_TIMEOUT_MS: ${DATABASE_CONNECT_TIMEOUT_MS:-10000}
+    DATABASE_IDLE_TIMEOUT_MS: ${DATABASE_IDLE_TIMEOUT_MS:-30000}
+    BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set the session signing secret}
+    BETTER_AUTH_URL: ${BETTER_AUTH_URL:?Set the public HTTPS origin}
+    EXTENSION_IDS: ${EXTENSION_IDS:-}
+    GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+    GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+    DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
+    DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+    OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-luna}
+    POLAR_ACCESS_TOKEN: ${POLAR_ACCESS_TOKEN:-}
+    POLAR_WEBHOOK_SECRET: ${POLAR_WEBHOOK_SECRET:-}
+    POLAR_PRO_PRODUCT_ID: ${POLAR_PRO_PRODUCT_ID:-}
+    POLAR_SERVER: ${POLAR_SERVER:-sandbox}
+
+services:
+  web:
+    <<: *runtime
+    command: ["node", "scripts/start-web.mjs"]
+    ports: ["127.0.0.1:3001:3001"]
+    stop_grace_period: 40s
+    environment:
+      <<: *environment
+      SHUTDOWN_TIMEOUT_MS: "30000"
+  worker:
+    <<: *runtime
+    command: ["node", "scripts/start-worker.mjs"]
+    stop_grace_period: 200s
+    environment:
+      <<: *environment
+      WORKER_SHUTDOWN_TIMEOUT_MS: "180000"

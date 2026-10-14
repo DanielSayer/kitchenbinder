@@ -12,9 +12,9 @@ Before selecting work, every worker recovers interrupted generation and abandone
 
 ## Deploying the additive schema upgrade
 
-Stop all old import workers. For an existing database, apply `packages/db/src/upgrades/reliable-imports.sql` if needed, then `packages/db/src/upgrades/import-save-retries.sql`, before deploying the updated web app and workers. The new SQL adds `save_attempts`, `next_save_attempt_at`, `save_claimed_at` and an eligibility index. It can be applied repeatedly and preserves existing checkpoints. New installations using the current Drizzle schema already include these fields.
+Stop all old web and worker processes before migration. The combined release applies `0002_import_save_retries.sql` through `pnpm db:migrate` after the baseline and collation migrations. It adds `save_attempts`, `next_save_attempt_at`, `save_claimed_at` and an eligibility index while preserving existing checkpoints. For a supported unversioned installation, use explicit `pnpm db:adopt`; its recorded additive upgrades are verified against the full combined schema before history is recorded.
 
-The production-startup change owns the shared baseline migration/history. Integrate these additions into that deployment sequence after its baseline is established. This branch does not generate or change migration history. The worker and web app must use a database containing the new fields before starting.
+The baseline is unchanged. The worker and web app require the complete matching versioned history before starting. See [deployment](deployment.md) for backup rehearsal, adoption and release ordering. The standalone repeatable upgrade SQL remains a supported adoption input and a regression fixture; use the versioned runner for deployments.
 
 ## Verification
 

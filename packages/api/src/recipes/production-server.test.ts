@@ -72,6 +72,9 @@ it("serves authenticated PDFs from a fresh production build without crashing or 
   // The isolated wrapper supplies the database and signing secret. Disable external services.
   const runtimeEnv = {
     ...process.env,
+    DATABASE_URL: process.env.DATABASE_URL,
+    BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
+    BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,
     NODE_ENV: "production",
     OPENAI_API_KEY: "",
     POLAR_ACCESS_TOKEN: "",
@@ -82,19 +85,48 @@ it("serves authenticated PDFs from a fresh production build without crashing or 
     DISCORD_CLIENT_ID: "",
     DISCORD_CLIENT_SECRET: "",
   };
-  execFileSync(
-    process.execPath,
-    [join(root, "apps/web/node_modules/vite/bin/vite.js"), "build"],
-    {
-      cwd: join(root, "apps/web"),
-      env: runtimeEnv,
-      timeout: 90_000,
-      maxBuffer: 10_000_000,
-    },
-  );
+  const image = process.env.PREP_SHEET_RELEASE_IMAGE;
+  if (!image)
+    execFileSync(
+      process.execPath,
+      [join(root, "apps/web/node_modules/vite/bin/vite.js"), "build"],
+      {
+        cwd: join(root, "apps/web"),
+        env: runtimeEnv,
+        timeout: 90_000,
+        maxBuffer: 10_000_000,
+      },
+    );
+  const containerUrl = new URL(runtimeEnv.DATABASE_URL ?? "");
+  const network =
+    process.platform === "linux"
+      ? "--network=host"
+      : "--add-host=host.docker.internal:host-gateway";
+  if (process.platform !== "linux")
+    containerUrl.hostname = "host.docker.internal";
   const result = execFileSync(
-    process.execPath,
-    [join(root, "scripts/production-server-smoke.mjs")],
+    image ? "docker" : process.execPath,
+    image
+      ? [
+          "run",
+          "--rm",
+          "-i",
+          network,
+          "-e",
+          "NODE_ENV=production",
+          "-e",
+          "PREP_SHEET_TEST_DATABASE=isolated",
+          "-e",
+          `DATABASE_URL=${containerUrl.href}`,
+          "-e",
+          `BETTER_AUTH_SECRET=${runtimeEnv.BETTER_AUTH_SECRET}`,
+          "-e",
+          `BETTER_AUTH_URL=${runtimeEnv.BETTER_AUTH_URL}`,
+          image,
+          "node",
+          "scripts/production-server-smoke.mjs",
+        ]
+      : [join(root, "scripts/production-server-smoke.mjs")],
     {
       cwd: root,
       env: runtimeEnv,

@@ -5,9 +5,9 @@ Run these from the repository root with Docker available:
 ```sh
 pnpm install --frozen-lockfile
 pnpm check
+pnpm --filter web build
 pnpm check-types
 pnpm test
-pnpm --filter web build
 pnpm package:extension
 ```
 
@@ -34,11 +34,20 @@ Adding a TypeScript workspace requires its own `check-types` script and a config
 
 `.github/workflows/ci.yml` runs on pull requests, pushes and manual dispatch. Its `release-checks` job uses Ubuntu, Node 26.7.0 and the pnpm version pinned in `package.json`. Actions use commit pins. Installation requires the existing lockfile and cannot rewrite it. See [setup-node](https://github.com/actions/setup-node/blob/v7/README.md) and [pnpm/action-setup](https://github.com/pnpm/action-setup/tree/0977fd99725f1db4007ccb2928dbb4e90d06cc86).
 
-The job runs the commands above in order and checks for tracked-file changes afterward. It supplies local placeholder auth/build settings without production secrets. The build database URL is only a configuration placeholder; builds do not provision or query it. `LIVE_AI_TEST=0` keeps paid AI tests disabled.
+The job runs the commands above in order and checks for tracked-file changes afterward. The initial web build generates the ignored route tree before TypeScript checks run. It supplies local placeholder auth/build settings without production secrets. The build database URL is only a configuration placeholder; builds do not provision or query it. `LIVE_AI_TEST=0` keeps paid AI tests disabled.
 
-The full suite uses `scripts/test.mjs` through `pnpm test`. This wrapper starts one disposable PostgreSQL instance on a random port, applies the schema and recipe-list collation, and removes its container, volume and network in `finally`. Do not invoke Vitest directly or add a shared database service to bypass the wrapper.
+The full suite uses `scripts/test.mjs` through `pnpm test`. This wrapper starts one disposable PostgreSQL instance on a random port, applies the versioned migrations including the recipe-list collation, and removes its container, volume and network in `finally`. Do not invoke Vitest directly or add a shared database service to bypass the wrapper.
 
-The production-server regression runs in that suite. It creates a fresh production build and executes the built server handler in a separate Node process. It verifies authenticated APIs and PDFs, anonymous rejection, account isolation, embedded fonts, repeated PDF requests and subsequent health. It disables external OAuth, AI and payment services. See [PDF production packaging](pdf-production.md).
+The production-server regression runs in that suite. It creates a fresh production
+build and starts the Node HTTP listener in a separate process. It verifies static
+assets, authenticated APIs and PDFs, anonymous rejection, account isolation,
+embedded fonts, repeated PDF requests, streamed auth requests and shutdown.
+The worker release regression drains an active checkpoint save and resumes
+pending work after restart without AI. Migration tests cover provisioning,
+legacy adoption, data preservation and schema-drift rejection.
+CI builds the Docker release and reruns migration, HTTP/PDF and worker tests against it using
+the same isolated test wrapper. It disables external OAuth, AI and payment
+services. See [deployment](deployment.md) and [PDF packaging](pdf-production.md).
 
 CI separately builds the web production artifact and packages development extensions for Chrome and Edge. Those ZIPs use the local development origin and identity. A store release still requires the real HTTPS origin, public key and matching website extension IDs, followed by installed-browser verification. Use `pnpm --filter @prep-sheet/extension package:production` with the release settings for that separate step.
 

@@ -36,6 +36,12 @@ jobs:
         run: pnpm check-types
       - name: Test with disposable PostgreSQL and fresh production artifact
         run: pnpm test
+      - name: Build portable Linux release
+        run: docker build -t prep-sheet-ci:local .
+      - name: Verify packaged migrations, HTTP/PDF and worker shutdown against disposable PostgreSQL
+        env:
+          PREP_SHEET_RELEASE_IMAGE: prep-sheet-ci:local
+        run: pnpm test packages/db/src/migrations.test.ts packages/api/src/recipes/production-server.test.ts packages/api/src/import-worker.production.test.ts
       - name: Package Chrome and Edge development extensions
         run: pnpm package:extension
       - name: Confirm checks did not modify tracked files
