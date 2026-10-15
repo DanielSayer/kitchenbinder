@@ -5,6 +5,7 @@ import { once } from "node:events";
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { request as httpRequest } from "node:http";
 import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
 
@@ -42,11 +43,12 @@ assert.ok(database.port && database.port !== "5432");
 
 let input = "";
 for await (const chunk of process.stdin) input += chunk;
-const { cookie, ownId, longId, otherId } = z
+const { cookie, ownId, longId, maximumId, otherId } = z
   .object({
     cookie: z.string().min(1),
     ownId: z.uuid(),
     longId: z.uuid(),
+    maximumId: z.uuid(),
     otherId: z.uuid(),
   })
   .parse(JSON.parse(input));
@@ -164,6 +166,71 @@ try {
   const privateApi = await request("/api/trpc/recipes.list");
   assert.equal(privateApi.status, 401);
   await privateApi.text();
+  const batchPath = (count) =>
+    `/api/trpc/${Array(count).fill("healthCheck").join(",")}?batch=1`;
+  const smallBatch = await request(batchPath(5));
+  assert.equal(smallBatch.status, 200);
+  assert.equal((await smallBatch.json()).length, 5);
+  // Fetch cannot construct GET/HEAD bodies. A raw peer can still send them.
+  for (const method of ["GET", "HEAD"]) {
+    const status = await new Promise((resolve, reject) => {
+      const upload = httpRequest(
+        new URL("/api/trpc/healthCheck", origin),
+        {
+          method,
+          headers: { "transfer-encoding": "chunked" },
+        },
+        (response) => {
+          response.resume();
+          response.once("end", () => resolve(response.statusCode));
+          response.once("error", reject);
+        },
+      );
+      upload.once("error", reject);
+      upload.end("Unparsed request body");
+    });
+    assert.equal(status, 413);
+  }
+  for (const count of [6, 250]) {
+    const excessive = await request(batchPath(count));
+    assert.equal(excessive.status, 400);
+    assert.match(await excessive.text(), /Batch call exceeds maximum size/);
+  }
+  // No Content-Length: exercise the actual chunked listener, before parsers/auth.
+  for (const path of [
+    "/api/trpc/recipes.createManual",
+    "/api/auth/sign-out",
+    "/api/polar/webhooks",
+  ]) {
+    const oversized = await fetch(new URL(path, origin), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      duplex: "half",
+      body: new ReadableStream({
+        start(controller) {
+          for (let chunk = 0; chunk < 32; chunk++)
+            controller.enqueue(new Uint8Array(65_536));
+          controller.close();
+        },
+      }),
+    });
+    assert.equal(oversized.status, 413);
+    await oversized.text();
+  }
+  // Also protect consumers of the built Fetch export without the Node listener.
+  const { default: built } = await import("../apps/web/dist/server/server.js");
+  const directOversize = await built.fetch(
+    new Request(
+      `${environment.BETTER_AUTH_URL}/api/trpc/recipes.createManual`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ignored: "x".repeat(2_000_000) }),
+      },
+    ),
+  );
+  assert.equal(directOversize.status, 413);
+  await directOversize.text();
   const ownRecipe = await request(
     `/api/trpc/recipes.get?input=${encodeURIComponent(JSON.stringify({ id: ownId }))}`,
     true,
@@ -192,6 +259,54 @@ try {
     // Nunito must be embedded rather than silently falling back to a standard font.
     assert.match(bytes.toString("latin1"), /\/FontFile2\b/);
   }
+  const maximumStarted = performance.now();
+  const maximumPdf = request(`/api/recipes/${maximumId}/pdf`, true);
+  const maximumHealth = await request("/api/trpc/healthCheck");
+  assert.equal(maximumHealth.status, 200);
+  await maximumHealth.text();
+  const maximumResponse = await maximumPdf;
+  // Valid maximum content may hit the worker heap or deadline guard. The web
+  // process must stay healthy and return a controlled response in either case.
+  assert.ok([200, 503, 504].includes(maximumResponse.status));
+  assert.ok(performance.now() - maximumStarted < 15_000);
+  assert.equal(
+    maximumResponse.headers.get("cache-control"),
+    "private, no-store",
+  );
+  await maximumResponse.arrayBuffer();
+  const concurrentPdfs = Array.from({ length: 4 }, () =>
+    request(`/api/recipes/${longId}/pdf`, true),
+  );
+  const duringPdf = await request("/api/trpc/healthCheck");
+  assert.equal(duringPdf.status, 200);
+  await duringPdf.text();
+  const overloaded = await Promise.all(concurrentPdfs);
+  assert.ok(overloaded.some((response) => response.status === 200));
+  assert.ok(
+    overloaded.some((response) => [429, 503].includes(response.status)),
+  );
+  for (const response of overloaded) {
+    assert.equal(response.headers.get("cache-control"), "private, no-store");
+    if (response.status !== 200)
+      assert.ok(Number(response.headers.get("retry-after")) >= 1);
+    await response.arrayBuffer();
+  }
+  const pdfLimited = await request(`/api/recipes/${ownId}/pdf`, true);
+  assert.equal(pdfLimited.status, 429);
+  assert.ok(Number(pdfLimited.headers.get("retry-after")) >= 1);
+  await pdfLimited.text();
+  // Batches cost one token per operation, so batching cannot multiply the budget.
+  let accountLimited = false;
+  for (let batch = 0; batch < 24; batch++) {
+    const response = await request(batchPath(5), true);
+    assert.ok([200, 429].includes(response.status));
+    if (response.status === 429) {
+      assert.ok(Number(response.headers.get("retry-after")) >= 1);
+      accountLimited = true;
+    }
+    await response.text();
+  }
+  assert.ok(accountLimited, "Account throttle must count batch operations");
   const afterPdf = await request("/api/trpc/healthCheck");
   assert.equal(afterPdf.status, 200);
   await afterPdf.text();

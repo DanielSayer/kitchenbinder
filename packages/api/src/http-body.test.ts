@@ -1,0 +1,121 @@
+import { describe, expect, it } from "vitest";
+import { bodyByteLimit, boundedRequest } from "../../../scripts/http-body.mjs";
+
+function streamingRequest(
+  path: string,
+  stream: ReadableStream<Uint8Array>,
+  headers = {},
+) {
+  return new Request(`http://localhost${path}`, {
+    method: "POST",
+    headers,
+    body: stream,
+    duplex: "half",
+  });
+}
+
+describe("body admission before parsers", () => {
+  it("stops chunked input at the byte budget and cancels the producer", async () => {
+    let pulls = 0;
+    let cancelled = false;
+    const request = streamingRequest(
+      "/api/trpc/recipes.createManual",
+      new ReadableStream(
+        {
+          pull(controller) {
+            pulls++;
+            controller.enqueue(new Uint8Array(65_536));
+          },
+          cancel() {
+            cancelled = true;
+          },
+        },
+        { highWaterMark: 0 },
+      ),
+    );
+    const result = await boundedRequest(request);
+    expect(result).toBeInstanceOf(Response);
+    if (!(result instanceof Response)) throw new Error("Expected rejection");
+    expect(result.status).toBe(413);
+    expect(cancelled).toBe(true);
+    expect(pulls).toBe(25);
+  });
+
+  it("rejects a declared oversize body before pulling and checks bytes despite a false small length", async () => {
+    let pulls = 0;
+    const make = (length: string) =>
+      streamingRequest(
+        "/api/auth/sign-out",
+        new ReadableStream(
+          {
+            pull(controller) {
+              pulls++;
+              controller.enqueue(new Uint8Array(16_385));
+            },
+          },
+          { highWaterMark: 0 },
+        ),
+        { "content-length": length },
+      );
+    const declared = await boundedRequest(make("1000000"));
+    expect(declared instanceof Response && declared.status).toBe(413);
+    expect(pulls).toBe(0);
+    const lied = await boundedRequest(make("1"));
+    expect(lied instanceof Response && lied.status).toBe(413);
+    expect(pulls).toBe(1);
+  });
+
+  it("preserves the exact signed webhook bytes at the limit", async () => {
+    const bytes = new TextEncoder().encode(' {"name":"crème fraîche"}\r\n');
+    const body = new Uint8Array(bodyByteLimit("/api/polar/webhooks"));
+    body.fill(32);
+    body.set(bytes);
+    const result = await boundedRequest(
+      new Request("http://localhost/api/polar/webhooks", {
+        method: "POST",
+        body,
+        headers: { "webhook-signature": "original-signature" },
+      }),
+    );
+    expect(result).toBeInstanceOf(Request);
+    if (!(result instanceof Request))
+      throw new Error("Expected admitted request");
+    expect(result.headers.get("webhook-signature")).toBe("original-signature");
+    expect(new Uint8Array(await result.arrayBuffer())).toEqual(body);
+  });
+
+  it("rejects a slow unfinished body without waiting for its cancel hook", async () => {
+    let cancelled = false;
+    const result = await boundedRequest(
+      streamingRequest(
+        "/api/polar/webhooks",
+        new ReadableStream({
+          cancel() {
+            cancelled = true;
+            return new Promise(() => {});
+          },
+        }),
+      ),
+      20,
+    );
+    expect(result instanceof Response && result.status).toBe(408);
+    expect(cancelled).toBe(true);
+  });
+
+  it("counts UTF-8 bytes and applies each route's budget", async () => {
+    for (const path of [
+      "/api/auth/callback",
+      "/api/polar/webhooks",
+      "/api/extensions/import",
+      "/api/trpc/recipes.createManual",
+    ]) {
+      const result = await boundedRequest(
+        new Request(`http://localhost${path}`, {
+          method: "POST",
+          body: "🍲".repeat(Math.floor(bodyByteLimit(path) / 4) + 1),
+        }),
+      );
+      expect(result instanceof Response && result.status).toBe(413);
+    }
+  });
+});

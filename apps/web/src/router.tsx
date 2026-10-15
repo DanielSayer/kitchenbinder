@@ -3,6 +3,7 @@ import { createRouter as createTanStackRouter } from "@tanstack/react-router";
 import { setupRouterSsrQueryIntegration } from "@tanstack/react-router-ssr-query";
 import { createTRPCClient, httpBatchLink } from "@trpc/client";
 import { createTRPCOptionsProxy } from "@trpc/tanstack-react-query";
+import { TRPC_MAX_BATCH_SIZE } from "../../../scripts/http-body.mjs";
 
 import Loader from "./components/loader";
 import { routeTree } from "./routeTree.gen";
@@ -13,6 +14,8 @@ const trpcClient = createTRPCClient<AppRouter>({
   links: [
     httpBatchLink({
       url: "/api/trpc",
+      maxItems: TRPC_MAX_BATCH_SIZE,
+      maxURLLength: 8_000,
       fetch(url, options) {
         return fetch(url, {
           ...options,

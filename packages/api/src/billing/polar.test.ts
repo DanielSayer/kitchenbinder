@@ -18,6 +18,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { boundedRequest } from "../../../../scripts/http-body.mjs";
 import { submitWebsiteImport } from "../imports";
 import { sampleRecipe } from "../recipes/fixtures";
 import { usageSummary } from "./usage";
@@ -242,7 +243,8 @@ describe("Polar synchronization and signed webhooks", () => {
       const fetch = vi
         .spyOn(customerPrototype, "getStateExternal")
         .mockResolvedValue(state);
-      const event = request(undefined, false, standard);
+      const event = await boundedRequest(request(undefined, false, standard));
+      if (!(event instanceof Request)) throw new Error("Expected admitted webhook");
       const altered = new Request(event.url, {
         method: "POST",
         headers: event.headers,
@@ -260,7 +262,8 @@ describe("Polar synchronization and signed webhooks", () => {
         ...state,
         activeSubscriptions: [{ ...subscription, cancelAtPeriodEnd: true }],
       });
-      const event = request(undefined, false, standard);
+      const event = await boundedRequest(request(undefined, false, standard));
+      if (!(event instanceof Request)) throw new Error("Expected admitted webhook");
       expect((await handlePolarWebhook(event.clone())).status).toBe(200);
       expect((await handlePolarWebhook(event)).status).toBe(200);
       const [account] = await db

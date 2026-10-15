@@ -8,6 +8,8 @@ import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { createClientIpBoundary } from "./client-ip.mjs";
 import { createOperations } from "./operations.mjs";
+import { bodyByteLimit } from "./http-body.mjs";
+import { incomingBody, rejectIncomingBody } from "./incoming-body.mjs";
 import { verifyRelease } from "./release-environment.mjs";
 
 const clientIpBoundary = createClientIpBoundary(process.env.WEB_PROXY_SECRET);
@@ -80,6 +82,19 @@ const server = createServer(async (incoming, outgoing) => {
     const url = new URL(origin);
     url.pathname = target.pathname;
     url.search = target.search;
+    const hasBody = !["GET", "HEAD"].includes(incoming.method ?? "");
+    if (
+      !hasBody &&
+      (incoming.headers["transfer-encoding"] !== undefined ||
+        Number(incoming.headers["content-length"]) > 0)
+    ) {
+      rejectIncomingBody(incoming, outgoing, 413, "GET and HEAD requests cannot include a body.");
+      return;
+    }
+    if (Number(incoming.headers["content-length"]) > bodyByteLimit(url.pathname)) {
+      rejectIncomingBody(incoming, outgoing, 413, "Request body too large.");
+      return;
+    }
     if (["/health/live", "/health/ready"].includes(url.pathname)) {
       route = "health";
       if (!["GET", "HEAD"].includes(incoming.method ?? "")) {
@@ -136,15 +151,26 @@ const server = createServer(async (incoming, outgoing) => {
     }
     const { headers } = boundary;
     headers.set("x-request-id", requestId);
-    const hasBody = !["GET", "HEAD"].includes(incoming.method ?? "");
+    // The built Fetch entry counts streamed bytes, including chunked requests,
+    // before dispatching to auth, tRPC or raw webhook parsers.
     const response = await application.fetch(
       new Request(url, {
         method: incoming.method,
         headers,
         signal: abort.signal,
-        ...(hasBody ? { body: Readable.toWeb(incoming), duplex: "half" } : {}),
+        ...(hasBody ? { body: incomingBody(incoming), duplex: "half" } : {}),
       }),
     );
+    if ([408, 413].includes(response.status)) {
+      rejectIncomingBody(
+        incoming,
+        outgoing,
+        response.status,
+        new Uint8Array(await response.arrayBuffer()),
+        Object.fromEntries(response.headers),
+      );
+      return;
+    }
     for (const [name, value] of response.headers) {
       if (name !== "set-cookie" && name !== "x-request-id")
         outgoing.setHeader(name, value);
