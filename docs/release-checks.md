@@ -32,7 +32,9 @@ Adding a TypeScript workspace requires its own `check-types` script and a config
 
 ## CI behaviour
 
-`.github/workflows/ci.yml` runs on pull requests, pushes and manual dispatch. Its `release-checks` job uses Ubuntu, Node 26.7.0 and the pnpm version pinned in `package.json`. Actions use commit pins. Installation requires the existing lockfile and cannot rewrite it. See [setup-node](https://github.com/actions/setup-node/blob/v7/README.md) and [pnpm/action-setup](https://github.com/pnpm/action-setup/tree/0977fd99725f1db4007ccb2928dbb4e90d06cc86).
+`.github/workflows/ci.yml` runs on pull requests, pushes to `master` and manual dispatch. Feature-branch pushes are checked through their pull request, avoiding duplicate push and PR runs and failure notifications. A new PR update cancels the previous run for that PR. Different PRs, `master` pushes and manual runs remain independent. A branch without a PR can be checked with manual dispatch. See [GitHub's workflow trigger and concurrency rules](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax).
+
+Its `release-checks` job uses Ubuntu, Node 26.7.0 and the pnpm version pinned in `package.json`. Actions use commit pins. Installation requires the existing lockfile and cannot rewrite it. See [setup-node](https://github.com/actions/setup-node/blob/v7/README.md) and [pnpm/action-setup](https://github.com/pnpm/action-setup/tree/0977fd99725f1db4007ccb2928dbb4e90d06cc86).
 
 The job runs the commands above in order and checks for tracked-file changes afterward. The initial web build generates the ignored route tree before TypeScript checks run. It supplies local placeholder auth/build settings without production secrets. The build database URL is only a configuration placeholder; builds do not provision or query it. `LIVE_AI_TEST=0` keeps paid AI tests disabled.
 
