@@ -108,16 +108,46 @@ or restoring a backup can reset counters. Keep secrets consistent during rolling
 replacement and treat database recovery as an operational event. The release
 runbook otherwise uses maintenance downtime for schema changes.
 
-Auth fails closed if the shared store fails or the two-second counter statement
+Auth fails closed if the shared store fails or the five-second counter statement
 timeout expires. It emits `auth_rate_limit_unavailable` without database/IP/key
 details, and the request fails rather than falling back to process memory.
 Better Auth returns 429 with `X-Retry-After` for exhausted allowances.
-Each HTTP auth attempt also removes at most ten expired buckets in a separate,
-bounded transaction using `SKIP LOCKED`. Cleanup failure emits
+Each allowed HTTP auth attempt also removes at most ten expired buckets in a
+separate transaction with a two-second statement timeout using `SKIP LOCKED`.
+Denied requests skip cleanup to avoid competing for extra database connections.
+Cleanup failure emits
 `auth_rate_limit_cleanup_failed` without reversing a throttle decision. Idle
 expired rows remain until later auth traffic. Monitor table size and these
 events. Edge request/connection limits remain necessary for general resource
 protection; A01 owns those controls.
+
+## Cloudflare or Vercel selection
+
+The host choice is pending between Cloudflare and Vercel. This PR retains the
+existing portable Node listener and separate supervised import worker. It does
+not introduce a platform-specific adapter or claim either platform is accepted.
+
+Cloudflare as a CDN/proxy in front of a host running this release fits the
+multi-proxy contract above. Before trusting `CF-Connecting-IP`, restrict and
+authenticate origin traffic to the selected zone, then configure nginx with the
+actual trusted peer addresses and that header. Cloudflare's
+[header documentation](https://developers.cloudflare.com/fundamentals/reference/http-headers/)
+describes Worker subrequest and Pseudo IPv4 behaviour; include those settings in
+the review. Avoid treating a Cloudflare source IP alone as proof of your zone.
+The application continues to read only the header written by its own boundary.
+Running the application itself on Cloudflare Workers requires a separate runtime
+and ingress adaptation, including the worker process, database and PDF renderer.
+
+Deploying the app into [Vercel Functions](https://vercel.com/docs/functions/runtimes/node-js)
+also needs a platform adapter. The provided `start-web.mjs` listener would no
+longer establish the IP boundary, so the adapter must verify the platform's
+request provenance and overwrite the internal identity header before invoking
+Better Auth. Reuse the shared PostgreSQL limiter, and arrange the durable import
+worker separately after reviewing the platform's
+[function lifetime limits](https://vercel.com/docs/functions/limitations).
+Do not deploy a bare Fetch handler with the internal IP header exposed to
+callers. A Vercel frontend forwarding to a separately hosted Node origin would
+instead need the same authenticated proxy contract as any other external edge.
 
 ## Acceptance on the chosen host
 

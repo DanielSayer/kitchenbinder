@@ -30,19 +30,24 @@ export function createAuthRateLimitStorage({
         .digest("hex");
       try {
         const consumed = await db.transaction(async (tx) => {
-          await tx.execute(sql`SET LOCAL statement_timeout = '2s'`);
+          await tx.execute(sql`SET LOCAL statement_timeout = '5s'`);
+          // Capture one clock value after the conflict row is locked. A queued
+          // statement's start time can precede expiry even after the lock clears.
           const result = await tx.execute(sql`
             INSERT INTO auth_rate_limit (key, count, expires_at)
-            VALUES (${digest}, 1, statement_timestamp() + ${rule.window} * interval '1 second')
-            ON CONFLICT (key) DO UPDATE SET
-              count = CASE WHEN auth_rate_limit.expires_at <= statement_timestamp() THEN 1
-                ELSE least(auth_rate_limit.count + 1, ${rule.max + 1}) END,
-              expires_at = CASE WHEN auth_rate_limit.expires_at <= statement_timestamp()
-                  OR auth_rate_limit.count < ${rule.max}
-                THEN statement_timestamp() + ${rule.window} * interval '1 second'
-                ELSE auth_rate_limit.expires_at END
+            VALUES (${digest}, 1, clock_timestamp() + ${rule.window} * interval '1 second')
+            ON CONFLICT (key) DO UPDATE SET (count, expires_at) = (
+              SELECT
+                CASE WHEN auth_rate_limit.expires_at <= instant.now THEN 1
+                  ELSE least(auth_rate_limit.count + 1, ${rule.max + 1}) END,
+                CASE WHEN auth_rate_limit.expires_at <= instant.now
+                    OR auth_rate_limit.count < ${rule.max}
+                  THEN instant.now + ${rule.window} * interval '1 second'
+                  ELSE auth_rate_limit.expires_at END
+              FROM (SELECT clock_timestamp() AS now) AS instant
+            )
             RETURNING count <= ${rule.max} AS allowed,
-              greatest(0, ceil(extract(epoch FROM expires_at - statement_timestamp())))::int AS "retryAfter"
+              greatest(0, ceil(extract(epoch FROM expires_at - clock_timestamp())))::int AS "retryAfter"
           `);
           const parsed = decision.parse(result.rows[0]);
           return {
@@ -50,6 +55,7 @@ export function createAuthRateLimitStorage({
             retryAfter: parsed.allowed ? null : parsed.retryAfter,
           };
         });
+        if (!consumed.allowed) return consumed;
         // Clean up after committing the counter. Holding cleanup locks while
         // consuming another key can deadlock concurrent requests at expiry.
         try {

@@ -1,4 +1,5 @@
 import { createHmac, randomUUID } from "node:crypto";
+import { setTimeout } from "node:timers/promises";
 import { createDb } from "@prep-sheet/db";
 import { authRateLimit } from "@prep-sheet/db/schema/auth-rate-limit";
 import { betterAuth } from "better-auth";
@@ -131,7 +132,19 @@ it("resets an expired bucket using database time and prunes a bounded number of 
   const store = storage(first);
   expect((await store.consume(key, rule)).allowed).toBe(true);
   expect((await store.consume(key, rule)).allowed).toBe(true);
+  const accepted = await first
+    .select()
+    .from(authRateLimit)
+    .where(eq(authRateLimit.key, digest(key)));
   expect((await store.consume(key, rule)).allowed).toBe(false);
+  for (let attempt = 0; attempt < 5; attempt++)
+    expect((await store.consume(key, rule)).allowed).toBe(false);
+  const denied = await first
+    .select()
+    .from(authRateLimit)
+    .where(eq(authRateLimit.key, digest(key)));
+  expect(denied[0]?.expiresAt).toEqual(accepted[0]?.expiresAt);
+  expect(denied[0]?.count).toBe(3);
   await first
     .update(authRateLimit)
     .set({ expiresAt: new Date(0) })
@@ -152,6 +165,48 @@ it("resets an expired bucket using database time and prunes a bounded number of 
     .from(authRateLimit)
     .where(eq(authRateLimit.key, digest(key)));
   expect(current[0]?.count).toBe(1);
+});
+
+it("uses the time after a contended row lock when resetting an expired counter", async () => {
+  const key = randomUUID();
+  const rule = { max: 1, window: 60 };
+  await storage(first).consume(key, rule);
+  const blocker = await first.$client.connect();
+  let pending: ReturnType<ReturnType<typeof storage>["consume"]> | undefined;
+  try {
+    await blocker.query("BEGIN");
+    await blocker.query(
+      "SELECT key FROM auth_rate_limit WHERE key = $1 FOR UPDATE",
+      [digest(key)],
+    );
+    pending = storage(second).consume(key, rule);
+    let waiting = false;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const activity = await first.execute<{ waiting: boolean }>(sql`
+        SELECT EXISTS (SELECT 1 FROM pg_stat_activity
+          WHERE datname = current_database() AND wait_event_type = 'Lock'
+            AND query LIKE '%INSERT INTO auth_rate_limit%') AS waiting
+      `);
+      if (activity.rows[0]?.waiting) {
+        waiting = true;
+        break;
+      }
+      await setTimeout(10);
+    }
+    expect(waiting).toBe(true);
+    // The waiting statement began before this expiry. Its decision must use
+    // the time after acquiring the row, rather than its old statement time.
+    await blocker.query(
+      "UPDATE auth_rate_limit SET expires_at = clock_timestamp() WHERE key = $1",
+      [digest(key)],
+    );
+    await blocker.query("COMMIT");
+    expect((await pending).allowed).toBe(true);
+  } finally {
+    await blocker.query("ROLLBACK");
+    blocker.release();
+    await pending?.catch(() => {});
+  }
 });
 
 it("fails closed when the shared store is unavailable without exposing connection details", async () => {
