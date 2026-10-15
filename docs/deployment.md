@@ -48,6 +48,10 @@ the public origin, normally HTTPS. Startup refuses skipped validation, missing
 migration history, a different migration history or incompatible recipe collation.
 It does not mutate the database.
 
+Production also requires `SUPPORT_EMAIL` and `SUPPORT_OPERATOR`. Select a monitored
+mailbox and a responsible queue owner, then complete the manual acceptance in
+[account and support operations](account-support.md#launch-configuration-and-acceptance).
+
 Inject Google/Discord credential pairs for the selected sign-in providers,
 `OPENAI_API_KEY` and optional `OPENAI_MODEL` for imports, and Polar settings
 only when enabling billing. `EXTENSION_IDS` must match released extensions.

@@ -20,9 +20,11 @@ import { PrivacyPolicy } from "@/components/privacy-policy";
 import { ApplyTagDialog } from "@/components/recipes/bulk-tag-dialog";
 import { ReportForm } from "@/components/report-form";
 import { SupportContact } from "@/components/support-contact";
+import { getSupportContact } from "@/functions/get-support-contact";
 import { useTRPC } from "@/utils/trpc";
 
 export const Route = createFileRoute("/_auth/settings")({
+  loader: () => getSupportContact(),
   validateSearch: (search): { billing?: string } => ({
     billing: search.billing === "1" || search.billing === 1 ? "1" : undefined,
   }),
@@ -46,6 +48,7 @@ function subscribeToMobileSettings(onChange: () => void) {
 }
 
 function Settings() {
+  const { email: supportEmail } = Route.useLoaderData();
   const isMobile = useSyncExternalStore(
     subscribeToMobileSettings,
     () => window.matchMedia("(max-width: 650px)").matches,
@@ -408,7 +411,7 @@ function Settings() {
             hidden={activeTab !== "report"}
           >
             <ReportForm />
-            <SupportContact />
+            <SupportContact email={supportEmail} />
           </div>
         </div>
       </div>

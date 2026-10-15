@@ -1,4 +1,6 @@
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { db } from "@prep-sheet/db";
 import { user } from "@prep-sheet/db/schema/auth";
 import { group, groupMember } from "@prep-sheet/db/schema/group";
@@ -10,12 +12,25 @@ import { completeAccountDeletion } from "./account-deletion";
 import type { Context } from "./context";
 import { sampleRecipe } from "./recipes/fixtures";
 import { appRouter } from "./routers";
+import { listSupportQueue } from "./support-operations";
 
 const ownerId = randomUUID();
 const otherId = randomUUID();
 const groupId = randomUUID();
 const personalId = randomUUID();
 const sharedId = randomUUID();
+function operatorCommand(...args: string[]) {
+  return execFileSync(
+    process.execPath,
+    ["--import", "tsx", "packages/api/src/support-admin.ts", ...args],
+    {
+      cwd: fileURLToPath(new URL("../../../", import.meta.url)),
+      env: { ...process.env, SUPPORT_OPERATOR: "Isolated queue operator" },
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+}
 function caller(id: string) {
   const now = new Date();
   const session: Context["session"] = {
@@ -106,6 +121,23 @@ describe("account support with PostgreSQL", () => {
     ).toHaveLength(4);
     expect(await owner.reports()).toHaveLength(5);
   });
+  it("lets the configured operator inspect and resolve the exact report through the CLI", async () => {
+    const saved = await other.report({
+      message: "Operator rehearsal report, no real user.",
+    });
+    const listing = operatorCommand("list");
+    expect(listing).toContain("Isolated queue operator");
+    expect(listing).toContain(saved.id);
+    expect(listing).toContain(`${otherId}@example.test`);
+    expect(() => operatorCommand("resolve-report", saved.id)).toThrow();
+    expect(await other.reports()).toHaveLength(1);
+    expect(operatorCommand("resolve-report", saved.id, "--confirm")).toContain(
+      saved.id,
+    );
+    expect(await other.reports()).toHaveLength(0);
+    expect(await owner.reports()).toHaveLength(5);
+    expect((await listSupportQueue(100)).reports).toHaveLength(0);
+  }, 40_000);
   it("deduplicates deletion requests and only cancels your own", async () => {
     await Promise.all([
       owner.requestDeletion({ confirmation: "DELETE" }),
@@ -142,7 +174,9 @@ describe("account support with PostgreSQL", () => {
       .update(group)
       .set({ ownerId: otherId })
       .where(eq(group.id, groupId));
-    await completeAccountDeletion(request.id);
+    expect(
+      operatorCommand("complete-deletion", request.id, "--confirm"),
+    ).toContain(request.id);
     expect(
       await db.select().from(user).where(eq(user.id, ownerId)),
     ).toHaveLength(0);
