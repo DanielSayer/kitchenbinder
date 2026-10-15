@@ -5,6 +5,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { createAuthMiddleware, freshSessionMiddleware } from "better-auth/api";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
+import { createAuthRateLimitStorage } from "./rate-limit";
 
 export function createAuth() {
   const db = createDb();
@@ -16,6 +17,19 @@ export function createAuth() {
       schema: schema,
     }),
     trustedOrigins: [env.BETTER_AUTH_URL],
+    advanced: {
+      ipAddress: {
+        ipAddressHeaders: ["x-prep-sheet-client-ip"],
+        ipv6Subnet: 64,
+      },
+    },
+    rateLimit: {
+      enabled: env.NODE_ENV === "production",
+      customStorage: createAuthRateLimitStorage({
+        db,
+        secret: env.BETTER_AUTH_SECRET,
+      }),
+    },
     session: { freshAge: 10 * 60 },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {

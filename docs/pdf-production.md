@@ -4,7 +4,7 @@ The web SSR build keeps `@react-pdf/renderer` and its transitive dependencies ex
 
 PDFKit uses private package imports for its standard fonts. Bundling its runtime `createRequire` calls into another package changes their resolution context and can crash the process with `Cannot find module '#standard-fonts/Helvetica'`. The explicit SSR external avoids that relocation. See [Vite SSR external dependencies](https://vite.dev/config/ssr-options).
 
-The API PDF module imports regular and bold Nunito fonts with `?inline`. Vite embeds their data URLs in the server's PDF chunk, alongside the logo, so rendering requires no font lookup in the source tree or HTTP font request. React PDF reads those data URLs directly. The PDF route loads this module after session validation and recipe access checks. Public pages and rejected requests do not initialise the renderer.
+The API PDF module imports regular and bold Nunito fonts with `?inline`. Vite embeds their data URLs in the separate `dist/server/pdf-worker.js` entry, alongside the logo, so rendering requires no font lookup in the source tree or HTTP font request. React PDF reads those data URLs directly. The PDF route starts a worker after session validation and recipe access checks. Public pages and rejected requests do not initialise the renderer. See [resource limits](resource-limits.md) for account admission, concurrency, worker termination and proxy expectations.
 
 Run from the repository root:
 

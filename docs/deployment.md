@@ -44,15 +44,22 @@ Never provide real secrets to image builds or commit them to source.
 
 The web and worker require `NODE_ENV=production`, `DATABASE_URL`,
 `BETTER_AUTH_SECRET` with at least 32 characters and `BETTER_AUTH_URL` set to
-the public origin, normally HTTPS. Startup refuses skipped validation, missing
+the public HTTPS origin. Startup refuses skipped validation, missing
 migration history, a different migration history or incompatible recipe collation.
 It does not mutate the database.
 
-Inject Google/Discord credential pairs for the selected sign-in providers,
-`OPENAI_API_KEY` and optional `OPENAI_MODEL` for imports, and Polar settings
-only when enabling billing. `EXTENSION_IDS` must match released extensions.
-`deploy/compose.yml` forwards these values explicitly. Its defaults leave paid
-services disabled. The present login UI still needs the configured providers.
+Production also requires `SUPPORT_EMAIL` and `SUPPORT_OPERATOR`. Select a monitored
+mailbox and a responsible queue owner, then complete the manual acceptance in
+[account and support operations](account-support.md#launch-configuration-and-acceptance).
+
+Inject complete Google/Discord credential pairs for at least one sign-in provider.
+Choose `AI_ENABLED=true|false` and `BILLING_MODE=disabled|sandbox|production`
+explicitly. Enabled AI requires a key and the reviewed model. Enabled billing
+requires all Polar settings and an explicitly matching `POLAR_SERVER`.
+`EXTENSION_IDS` must match released extensions. `deploy/compose.yml` forwards
+these settings. Both runtime entry points reject unsafe provider configuration
+before accessing the database. Run `pnpm providers:check` and complete the
+[provider acceptance workflow](provider-acceptance.md) for the actual HTTPS origin.
 
 Configure encrypted PostgreSQL transport using the provider's trusted certificate
 and node-postgres connection options. Do not disable certificate verification.
@@ -110,6 +117,9 @@ Long migrations need a separately reviewed timeout/transaction strategy.
 leases and their index. `0003_manual_request_identity.sql` adds the nullable
 immutable manual submission hash. Existing recipe hashes remain unknown;
 recovery refuses to infer an original submission from mutable recipe content.
+`0004_auth_rate_limit.sql` adds the shared authentication throttle table. The
+runtime role needs DML on `auth_rate_limit`; use the normal candidate migration
+and verification steps before starting web or worker processes.
 Verification checks its provider, locale, stored/actual ICU version and numeric,
 case and accent comparison. PostgreSQL normalises the equivalent locale string.
 This release deliberately rejects PostgreSQL majors other than 18 until their
@@ -186,14 +196,21 @@ response caching at the chosen proxy. The listener uses the configured public
 origin and does not trust incoming Host/forwarded headers for SSR/auth URLs.
 It preserves the actual Origin header for auth checks.
 
+Follow [the auth proxy contract](auth-proxy.md) before exposing this listener.
+Compose requires `WEB_PROXY_SECRET`; the proxy must overwrite the authenticated
+single-client-IP headers. That document includes host nginx configuration and
+shared PostgreSQL auth throttling across replicas and restarts.
+
 Web startup emits `web_started`; the worker emits `import_worker_started` and
 30-second queue heartbeats. Supervise both with restart policies. HTTP handlers
 only admit durable jobs: a running website alone does not process imports.
 Check the homepage, one static asset, authenticated recipe API and PDF, anonymous
 rejection, and subsequent health. Verify real OAuth and one real import separately
-when authorised. The health API remains a liveness check, not a worker or database
-readiness/alerting system. Host alert delivery and backup recovery remain launch
-gates.
+when authorised. The tRPC health API remains a liveness check. The listener also
+provides `/health/live` and `/health/ready`. See [operations and recovery](operations.md)
+for Compose probes, private diagnostics, alerting, log retention, isolated restore
+tooling and the remaining host acceptance checks. Real host alert delivery and
+production backup recovery remain launch gates.
 
 On SIGTERM/SIGINT the listener stops accepting connections and drains requests,
 then exits, closing its idle internal pools. Its default 30-second deadline exits

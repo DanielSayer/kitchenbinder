@@ -38,10 +38,25 @@ export async function completeAccountDeletion(requestId: string) {
       .select()
       .from(billingAccount)
       .where(eq(billingAccount.userId, request.userId));
-    if (billing?.customerId) {
+    // Checkout can precede the first customer-state webhook. A missing local
+    // customer ID does not prove there is no subscription to resolve.
+    if (
+      billing &&
+      (billing.customerId ||
+        billing.trialUsed ||
+        billing.checkoutUrl ||
+        billing.status !== "free")
+    ) {
       if (!billingEnabled())
         throw new Error(
           "Restore Polar configuration and verify cancellation before deleting this account.",
+        );
+      if (
+        billing.checkoutUrl &&
+        (!billing.checkoutExpiresAt || billing.checkoutExpiresAt > new Date())
+      )
+        throw new Error(
+          "Wait for the pending Polar checkout to expire before completing account deletion.",
         );
       const current = await syncBilling(tx, request.userId);
       if (

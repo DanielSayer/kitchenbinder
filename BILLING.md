@@ -13,13 +13,13 @@ Polar owns the recurring price, currency, taxes and coupons. Create one monthly 
 ## Setup
 
 1. Apply `packages/db/src/upgrades/billing.sql` to an existing database before deploying the web app and worker. New databases can use the current Drizzle schema. The upgrade was applied to the local development database during implementation.
-2. In Polar sandbox, create the monthly Pro product. Set `POLAR_SERVER=sandbox`, `POLAR_PRO_PRODUCT_ID`, `POLAR_ACCESS_TOKEN` and `POLAR_WEBHOOK_SECRET` in `apps/web/.env`. The token needs customer read, subscription read, checkout write and customer session write permissions.
+2. In Polar sandbox, create the monthly Pro product. Set `BILLING_MODE=sandbox`, `POLAR_SERVER=sandbox`, `POLAR_PRO_PRODUCT_ID`, `POLAR_ACCESS_TOKEN` and `POLAR_WEBHOOK_SECRET` in `apps/web/.env`. The token needs customer read, subscription read, checkout write and customer session write permissions.
 3. Add a Polar webhook endpoint at `https://YOUR_HOST/api/polar/webhooks` subscribed to `customer.state_changed`. Use a tunnel for localhost. Copy its signing secret into the environment variable. Set `BETTER_AUTH_URL` to the app's actual origin.
 4. Restart the web app and worker. Settings > Plan & billing opens checkout, reports usage and opens the customer portal. Checkout and portal return to the billing tab. Refresh plan fetches current Polar state, including after returning from checkout.
 5. Create friends-and-family discount codes in Polar. Checkout allows codes. A recurring 100% coupon grants Pro while its subscription is active, with the same AI caps.
-6. Repeat setup with separate production credentials, a production product and `POLAR_SERVER=production` when ready. Nothing in this change creates a Polar product or activates live billing.
+6. Complete [provider acceptance](docs/provider-acceptance.md), then repeat configuration checks with separate production credentials, a production product and both `BILLING_MODE=production` and `POLAR_SERVER=production`. Use `BILLING_MODE=disabled` with no Polar credentials or product ID to keep Free/manual features available. Disabling billing does not cancel existing subscriptions or clear cached entitlements. Reconcile existing subscribers before disabling it.
 
-The app keeps Better Auth for sign-in. Polar's external customer ID is the authenticated Better Auth user ID. Clients cannot choose customer IDs, product IDs, prices or return URLs. Webhooks verify the raw request signature with Polar's SDK, then fetch current customer state under an account lock. This makes retries and out-of-order delivery safe. API or database errors return 503 so Polar retries. Other products never grant Pro.
+The app keeps Better Auth for sign-in. Polar's external customer ID is the authenticated Better Auth user ID. Clients cannot choose customer IDs, product IDs, prices or return URLs. Webhooks verify the raw request signature with Standard Webhooks for current and legacy Polar keys, validate the payload with Polar's SDK, then fetch current customer state under an account lock. This makes retries and out-of-order delivery safe. API or database errors return 503 so Polar retries. Other products never grant Pro.
 
 Checkout is reused until it expires to avoid duplicate purchases. The first issued checkout reserves that account's trial eligibility, even if abandoned. Later checkouts do not offer another trial. The trial AI allowance is also lifetime per account, so repeated provider trials cannot reset it. Direct dashboard subscriptions should use the same external customer ID.
 
@@ -35,9 +35,9 @@ Paid access expires at the verified period end even if a webhook is missed. Canc
 
 ## AI spending cutoff
 
-The default cutoff is 2,500 US cents of reserved cost per UTC day, at 25 cents per provider attempt. `aiSpend` persists reservations before calls under a global PostgreSQL lock across workers. Failed calls still count and account deletion does not erase reservations. Set `pricing.ai.enabled=false` to stop AI calls while keeping manual entry available.
+The default cutoff is 2,500 US cents of reserved cost per UTC day, at 25 cents per provider attempt. `aiSpend` persists reservations before calls under a global PostgreSQL lock across workers. Failed calls still count and account deletion does not erase reservations. Set `AI_ENABLED=false` and remove `OPENAI_API_KEY` on the web and worker, then restart both, to stop new AI calls while keeping manual entry and checkpoint saves available.
 
-This is a conservative reservation budget, not measured provider invoicing. Before launch, set `reserveCentsPerAttempt` at or above the maximum possible cost of the configured model, input and output limits. Revisit it whenever the model or prices change. If the estimate is too low, actual spend can exceed this budget. Set a provider-side spend limit too. The existing generation call disables automatic retries and caps output at 7,000 tokens.
+This is reservation accounting, not measured provider invoicing. `packages/env/src/ai-policy.ts` binds the approved model, UTF-8 input/system bounds, output limit and reservation amounts. Startup rejects an enabled model outside that policy. Generation disables automatic retries and caps output at 7,000 tokens. Review the [cost calculation and provider controls](docs/provider-acceptance.md#ai-reservations-and-provider-controls) whenever prices, model, schema or bounds change. Provider-side controls remain necessary.
 
 ## Launch verification
 

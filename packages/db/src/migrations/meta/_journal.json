@@ -29,6 +29,13 @@
       "when": 1791955933663,
       "tag": "0003_manual_request_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792062486505,
+      "tag": "0004_auth_rate_limit",
+      "breakpoints": true
     }
   ]
 }

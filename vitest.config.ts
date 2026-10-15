@@ -1,6 +1,5 @@
 import { defineConfig } from "vitest/config";
 
-// biome-ignore lint/suspicious/noUndeclaredEnvVars: The test wrapper sets this for its direct Vitest child process.
 if (process.env.PREP_SHEET_TEST_DATABASE !== "isolated") {
   throw new Error(
     "Run tests with pnpm test so they use an isolated PostgreSQL container.",

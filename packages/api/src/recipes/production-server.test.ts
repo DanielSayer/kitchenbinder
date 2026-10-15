@@ -16,8 +16,9 @@ const outsiderId = randomUUID();
 const userIds = [ownerId, outsiderId];
 const ownId = randomUUID();
 const longId = randomUUID();
+const maximumId = randomUUID();
 const otherId = randomUUID();
-const recipeIds = [ownId, longId, otherId];
+const recipeIds = [ownId, longId, maximumId, otherId];
 const token = randomUUID();
 let cookie: string;
 
@@ -46,17 +47,27 @@ beforeAll(async () => {
       userId: id === otherId ? outsiderId : ownerId,
       title: sampleRecipe.title,
       content:
-        id === longId
+        id === maximumId
           ? {
               ...sampleRecipe,
-              title: "A long recipe with ½ cup crème fraîche at 180°C",
-              steps: Array.from(
-                { length: 24 },
-                (_, index) =>
-                  `Step ${index + 1}. ${sampleRecipe.steps[index % 3]}`,
+              ingredients: Array.from({ length: 100 }, () =>
+                "ingredient ".repeat(200).slice(0, 2000),
+              ),
+              steps: Array.from({ length: 100 }, () =>
+                "method ".repeat(300).slice(0, 2000),
               ),
             }
-          : sampleRecipe,
+          : id === longId
+            ? {
+                ...sampleRecipe,
+                title: "A long recipe with ½ cup crème fraîche at 180°C",
+                steps: Array.from(
+                  { length: 24 },
+                  (_, index) =>
+                    `Step ${index + 1}. ${sampleRecipe.steps[index % 3]}`,
+                ),
+              }
+            : sampleRecipe,
       origin: "manual",
     })),
   );
@@ -76,6 +87,11 @@ it("serves authenticated PDFs from a fresh production build without crashing or 
     BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
     BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,
     NODE_ENV: "production",
+    SUPPORT_EMAIL: "support@example.test",
+    SUPPORT_OPERATOR: "Isolated support test operator",
+    PREP_SHEET_TEST_DATABASE: "isolated",
+    AI_ENABLED: "false",
+    BILLING_MODE: "disabled",
     OPENAI_API_KEY: "",
     POLAR_ACCESS_TOKEN: "",
     POLAR_PRO_PRODUCT_ID: "",
@@ -115,7 +131,15 @@ it("serves authenticated PDFs from a fresh production build without crashing or 
           "-e",
           "NODE_ENV=production",
           "-e",
+          `SUPPORT_EMAIL=${runtimeEnv.SUPPORT_EMAIL}`,
+          "-e",
+          `SUPPORT_OPERATOR=${runtimeEnv.SUPPORT_OPERATOR}`,
+          "-e",
           "PREP_SHEET_TEST_DATABASE=isolated",
+          "-e",
+          "AI_ENABLED=false",
+          "-e",
+          "BILLING_MODE=disabled",
           "-e",
           `DATABASE_URL=${containerUrl.href}`,
           "-e",
@@ -130,7 +154,7 @@ it("serves authenticated PDFs from a fresh production build without crashing or 
     {
       cwd: root,
       env: runtimeEnv,
-      input: JSON.stringify({ cookie, ownId, longId, otherId }),
+      input: JSON.stringify({ cookie, ownId, longId, maximumId, otherId }),
       timeout: 45_000,
       maxBuffer: 1_000_000,
       encoding: "utf8",

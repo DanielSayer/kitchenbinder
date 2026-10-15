@@ -7,6 +7,9 @@
     "check-types": "tsc --noEmit"
   },
   "exports": {
+    "./support": "./src/support.ts",
+    "./providers": "./src/providers.ts",
+    "./ai-policy": "./src/ai-policy.ts",
     "./server": "./src/server.ts",
     "./web": "./src/web.ts"
   },

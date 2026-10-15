@@ -123,6 +123,13 @@ Live checks use API credits. The regular test suite never makes paid AI requests
 
 ## Before deployment
 
+TODO before public launch: `SUPPORT_EMAIL` and `SUPPORT_OPERATOR` are still blank
+placeholders in `apps/web/.env.example`. Choose a monitored public mailbox and a
+responsible support/deletion queue owner, including backup cover, then configure
+both runtime values and complete the [support launch acceptance](docs/account-support.md#launch-configuration-and-acceptance).
+Production startup requires both. Mailbox delivery, monitoring and operator
+response have not been verified.
+
 Use the [deployment runbook](docs/deployment.md) to provision or explicitly adopt PostgreSQL 18 with the versioned migrations, verify the database, and supervise the web and import worker from the same release. Configure the deployed sign-in callbacks and `BETTER_AUTH_URL`. Review sign-up and generation limits before making the app publicly reachable. Local Docker data does not automatically sync to a hosted database.
 
 Local development automatically retires service workers left by other projects on the same origin, including the old Korex worker on port 3001. The dev server serves a replacement when the browser updates that worker; it unregisters itself, clears Workbox caches and reloads its controlled tabs. Prep Sheet also removes leftover registrations when its development page loads. Cookies, local storage and session storage are preserved. HTML responses use `Cache-Control: no-store`, and Vite fails if port 3001 is occupied instead of silently switching ports. These recovery handlers are development-only. Restart the dev server after upgrading, then open `http://localhost:3001/` normally; a stale tab may reload once as its worker updates.

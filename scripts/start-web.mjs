@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { realpath, stat } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -5,8 +6,13 @@ import { extname, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
+import { createClientIpBoundary } from "./client-ip.mjs";
+import { bodyByteLimit } from "./http-body.mjs";
+import { incomingBody, rejectIncomingBody } from "./incoming-body.mjs";
+import { createOperations } from "./operations.mjs";
 import { verifyRelease } from "./release-environment.mjs";
 
+const clientIpBoundary = createClientIpBoundary(process.env.WEB_PROXY_SECRET);
 const origin = await verifyRelease();
 const root = await realpath(
   fileURLToPath(new URL("../apps/web/dist/client/", import.meta.url)),
@@ -37,7 +43,25 @@ const types = {
   ".txt": "text/plain; charset=utf-8",
 };
 let stopping = false;
+const operations = createOperations();
 const server = createServer(async (incoming, outgoing) => {
+  const requestId = randomUUID();
+  const started = Date.now();
+  let route = "application";
+  outgoing.setHeader("x-request-id", requestId);
+  outgoing.on("finish", () => {
+    if (outgoing.statusCode >= 500)
+      console.error(
+        JSON.stringify({
+          event: "web_request_failed",
+          timestamp: new Date().toISOString(),
+          requestId,
+          route,
+          status: outgoing.statusCode,
+          elapsedMs: Date.now() - started,
+        }),
+      );
+  });
   const abort = new AbortController();
   outgoing.on("close", () => {
     if (!outgoing.writableFinished) abort.abort();
@@ -47,13 +71,62 @@ const server = createServer(async (incoming, outgoing) => {
       outgoing.writeHead(503, { connection: "close" }).end();
       return;
     }
+    const boundary = clientIpBoundary(incoming, origin);
+    if ("status" in boundary) {
+      outgoing.writeHead(boundary.status, { connection: "close" }).end();
+      return;
+    }
     // The configured public origin supplies protocol/host. Untrusted forwarded
     // headers and Host cannot change auth redirects or SSR request origin.
     const target = new URL(incoming.url ?? "/", origin);
     const url = new URL(origin);
     url.pathname = target.pathname;
     url.search = target.search;
+    const hasBody = !["GET", "HEAD"].includes(incoming.method ?? "");
+    if (
+      !hasBody &&
+      (incoming.headers["transfer-encoding"] !== undefined ||
+        Number(incoming.headers["content-length"]) > 0)
+    ) {
+      rejectIncomingBody(
+        incoming,
+        outgoing,
+        413,
+        "GET and HEAD requests cannot include a body.",
+      );
+      return;
+    }
+    if (
+      Number(incoming.headers["content-length"]) > bodyByteLimit(url.pathname)
+    ) {
+      rejectIncomingBody(incoming, outgoing, 413, "Request body too large.");
+      return;
+    }
+    if (["/health/live", "/health/ready"].includes(url.pathname)) {
+      route = "health";
+      if (!["GET", "HEAD"].includes(incoming.method ?? "")) {
+        outgoing.writeHead(405, { allow: "GET, HEAD" }).end();
+        return;
+      }
+      const status =
+        url.pathname === "/health/live"
+          ? undefined
+          : await operations.snapshot();
+      const ready =
+        status === undefined || (status.database && status.worker.ok);
+      outgoing.writeHead(ready ? 200 : 503, {
+        "content-type": "application/json",
+        "cache-control": "no-store",
+      });
+      outgoing.end(
+        incoming.method === "HEAD"
+          ? undefined
+          : JSON.stringify({ status: ready ? "ok" : "unavailable" }),
+      );
+      return;
+    }
     if (["GET", "HEAD"].includes(incoming.method ?? "")) {
+      if (url.pathname.startsWith("/assets/")) route = "asset";
       const candidate = resolve(root, `.${decodeURIComponent(url.pathname)}`);
       if (candidate.startsWith(root + sep)) {
         let file;
@@ -83,31 +156,31 @@ const server = createServer(async (incoming, outgoing) => {
         return;
       }
     }
-    const headers = new Headers();
-    for (const [name, value] of Object.entries(incoming.headers)) {
-      if (Array.isArray(value))
-        for (const item of value) headers.append(name, item);
-      else if (value !== undefined) headers.set(name, value);
-    }
-    headers.set("host", new URL(origin).host);
-    for (const name of [
-      "forwarded",
-      "x-forwarded-host",
-      "x-forwarded-proto",
-      "x-forwarded-port",
-    ])
-      headers.delete(name);
-    const hasBody = !["GET", "HEAD"].includes(incoming.method ?? "");
+    const { headers } = boundary;
+    headers.set("x-request-id", requestId);
+    // The built Fetch entry counts streamed bytes, including chunked requests,
+    // before dispatching to auth, tRPC or raw webhook parsers.
     const response = await application.fetch(
       new Request(url, {
         method: incoming.method,
         headers,
         signal: abort.signal,
-        ...(hasBody ? { body: Readable.toWeb(incoming), duplex: "half" } : {}),
+        ...(hasBody ? { body: incomingBody(incoming), duplex: "half" } : {}),
       }),
     );
+    if ([408, 413].includes(response.status)) {
+      rejectIncomingBody(
+        incoming,
+        outgoing,
+        response.status,
+        new Uint8Array(await response.arrayBuffer()),
+        Object.fromEntries(response.headers),
+      );
+      return;
+    }
     for (const [name, value] of response.headers) {
-      if (name !== "set-cookie") outgoing.setHeader(name, value);
+      if (name !== "set-cookie" && name !== "x-request-id")
+        outgoing.setHeader(name, value);
     }
     if (response.headers.getSetCookie().length)
       outgoing.setHeader("set-cookie", response.headers.getSetCookie());
@@ -122,8 +195,16 @@ const server = createServer(async (incoming, outgoing) => {
     }
   } catch {
     // Never log request URLs, cookies or exception messages.
-    if (!abort.signal.aborted)
-      console.error(JSON.stringify({ event: "web_request_failed" }));
+    if (!abort.signal.aborted && outgoing.headersSent)
+      console.error(
+        JSON.stringify({
+          event: "web_response_interrupted",
+          timestamp: new Date().toISOString(),
+          requestId,
+          route,
+          elapsedMs: Date.now() - started,
+        }),
+      );
     if (!outgoing.headersSent) outgoing.writeHead(500).end();
     else outgoing.destroy();
   }
@@ -145,7 +226,8 @@ function stop() {
     process.exit(1);
   }, grace);
   timer.unref();
-  server.close(() => {
+  server.close(async () => {
+    await operations.close();
     console.info(JSON.stringify({ event: "web_stopped" }));
     // Auth and API pools are owned inside the SSR bundle. All requests have
     // drained; process exit closes their idle database connections.

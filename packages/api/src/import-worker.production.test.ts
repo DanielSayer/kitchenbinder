@@ -55,6 +55,16 @@ function worker() {
           "-e",
           "NODE_ENV=production",
           "-e",
+          "SUPPORT_EMAIL=support@example.test",
+          "-e",
+          "SUPPORT_OPERATOR=Isolated support test operator",
+          "-e",
+          "PREP_SHEET_TEST_DATABASE=isolated",
+          "-e",
+          "AI_ENABLED=false",
+          "-e",
+          "BILLING_MODE=disabled",
+          "-e",
           `DATABASE_URL=${databaseUrl.href}`,
           "-e",
           `BETTER_AUTH_SECRET=${process.env.BETTER_AUTH_SECRET}`,
@@ -78,6 +88,10 @@ function worker() {
           env: {
             ...process.env,
             NODE_ENV: "production",
+            SUPPORT_EMAIL: "support@example.test",
+            SUPPORT_OPERATOR: "Isolated support test operator",
+            AI_ENABLED: "false",
+            BILLING_MODE: "disabled",
             OPENAI_API_KEY: "",
             POLAR_ACCESS_TOKEN: "",
             POLAR_PRO_PRODUCT_ID: "",
@@ -116,6 +130,21 @@ function worker() {
       throw new Error(`Worker event missing: ${event}. ${output}`);
     },
     output: () => output,
+    healthy() {
+      const result = spawnSync(
+        image ? "docker" : process.execPath,
+        image
+          ? ["exec", name, "node", "scripts/operations.mjs", "worker"]
+          : [
+              fileURLToPath(
+                new URL("../../../scripts/operations.mjs", import.meta.url),
+              ),
+              "worker",
+            ],
+        { cwd: root, env: process.env, stdio: "ignore", timeout: 5000 },
+      );
+      return result.status === 0;
+    },
   };
 }
 function stop(child: ChildProcess) {
@@ -152,6 +181,7 @@ it("drains a blocked checkpoint save on shutdown, leaves the next job durable, t
     await blocker.query("LOCK TABLE recipe IN ACCESS EXCLUSIVE MODE");
     const first = worker();
     await first.wait('"stage":"saving"');
+    expect(first.healthy()).toBe(true);
     first.stop();
     await setTimeout(100);
     expect(first.child.exitCode).toBeNull();
@@ -159,6 +189,8 @@ it("drains a blocked checkpoint save on shutdown, leaves the next job durable, t
     const [code] = await first.closed;
     expect(code, first.output()).toBe(0);
     expect(first.output()).toContain("import_worker_stopped");
+    if (!process.env.PREP_SHEET_RELEASE_IMAGE)
+      expect(first.healthy()).toBe(false);
     const rows = await db
       .select()
       .from(recipeImport)

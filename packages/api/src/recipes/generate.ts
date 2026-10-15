@@ -1,5 +1,6 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { recipeContentSchema } from "@prep-sheet/db/recipe-content";
+import { aiPolicy } from "@prep-sheet/env/ai-policy";
 import { env } from "@prep-sheet/env/server";
 import { TRPCError } from "@trpc/server";
 import { generateText, Output } from "ai";
@@ -34,14 +35,16 @@ export async function generateRecipe(
     input,
     capturedSourceUrl,
   );
+  const system = recipeSystemPrompt(content, tags, sourceUrl);
   try {
     const { output } = await generateText({
       model: createOpenAI({ apiKey })(env.OPENAI_MODEL),
       output: Output.object({ schema: resultSchema }),
-      maxOutputTokens: 7000,
+      maxOutputTokens: aiPolicy.maxOutputTokens,
       maxRetries: 0,
+      providerOptions: { openai: { serviceTier: "default" } },
       abortSignal: AbortSignal.timeout(90000),
-      system: buildRecipeSystemPrompt(sourceUrl ? "web" : "input", tags),
+      system,
       prompt: content,
     });
     if (!output.recipe)
@@ -80,6 +83,24 @@ export async function generateRecipe(
       cause: error,
     });
   }
+}
+
+export function recipeSystemPrompt(
+  content: string,
+  tags: { id: string; name: string; description: string }[],
+  sourceUrl?: string | null,
+) {
+  const system = buildRecipeSystemPrompt(sourceUrl ? "web" : "input", tags);
+  if (
+    Buffer.byteLength(content, "utf8") > aiPolicy.maxContentBytes ||
+    Buffer.byteLength(system, "utf8") > aiPolicy.maxSystemBytes
+  )
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message:
+        "This recipe input is too large. Shorten the recipe text or available tags and try again.",
+    });
+  return system;
 }
 
 export async function prepareRecipeInput(
