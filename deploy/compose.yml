@@ -33,6 +33,7 @@ services:
     environment:
       <<: *environment
       SHUTDOWN_TIMEOUT_MS: "30000"
+      WEB_PROXY_SECRET: ${WEB_PROXY_SECRET:?Set the shared proxy authentication secret}
   worker:
     <<: *runtime
     command: ["node", "scripts/start-worker.mjs"]

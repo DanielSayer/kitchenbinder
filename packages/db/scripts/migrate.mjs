@@ -225,6 +225,7 @@ export async function migrate(
           "recipe-list.sql",
           "import-save-retries.sql",
           "edit-loss-manual-request.sql",
+          "auth-rate-limit.sql",
         ]) {
           const sql = readFileSync(
             new URL(`../src/upgrades/${name}`, import.meta.url),

@@ -112,7 +112,7 @@ it("provisions a clean database with ICU and preserves all data on repeated migr
           "SELECT count(*)::int AS total FROM prep_sheet_migration",
         )
       ).rows[0].total,
-    ).toBe(4);
+    ).toBe(5);
     expect(
       (
         await client.query(
@@ -123,51 +123,57 @@ it("provisions a clean database with ICU and preserves all data on repeated migr
   });
 }, 60_000);
 
-it("upgrades the published versioned baseline with retry state and manual identity while preserving checkpoints and user data", async () => {
-  await database(async (client, run) => {
-    await client.query(`CREATE TABLE prep_sheet_migration (
+it.each([2, 4])(
+  "upgrades a database with %i published migrations while preserving checkpoints and user data",
+  async (published) => {
+    await database(async (client, run) => {
+      await client.query(`CREATE TABLE prep_sheet_migration (
       name text PRIMARY KEY, hash text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now()
     )`);
-    for (const name of [
-      "0000_production_baseline.sql",
-      "0001_recipe_name.sql",
-    ]) {
-      const sql = readFileSync(
-        new URL(`./migrations/${name}`, import.meta.url),
-        "utf8",
-      ).replaceAll("\r\n", "\n");
-      await client.query(sql);
-      await client.query(
-        "INSERT INTO prep_sheet_migration(name,hash) VALUES ($1,$2)",
-        [name, createHash("sha256").update(sql).digest("hex")],
+      for (const name of [
+        "0000_production_baseline.sql",
+        "0001_recipe_name.sql",
+        "0002_import_save_retries.sql",
+        "0003_manual_request_identity.sql",
+      ].slice(0, published)) {
+        const sql = readFileSync(
+          new URL(`./migrations/${name}`, import.meta.url),
+          "utf8",
+        ).replaceAll("\r\n", "\n");
+        await client.query(sql);
+        await client.query(
+          "INSERT INTO prep_sheet_migration(name,hash) VALUES ($1,$2)",
+          [name, createHash("sha256").update(sql).digest("hex")],
+        );
+      }
+      await seed(client);
+      const before = await contents(client);
+      expect(() => run("--verify")).toThrow();
+      expect(run()).toContain("verified");
+      const after = await contents(client);
+      for (const [index, rows] of before.entries()) {
+        for (const [rowIndex, row] of rows.entries())
+          expect(after[index]?.[rowIndex]?.data).toMatchObject(row.data);
+      }
+      const retry = await client.query(
+        "SELECT save_attempts, next_save_attempt_at, save_claimed_at FROM recipe_import",
       );
-    }
-    await seed(client);
-    const before = await contents(client);
-    expect(() => run("--verify")).toThrow();
-    expect(run()).toContain("verified");
-    const after = await contents(client);
-    for (const [index, rows] of before.entries()) {
-      for (const [rowIndex, row] of rows.entries())
-        expect(after[index]?.[rowIndex]?.data).toMatchObject(row.data);
-    }
-    const retry = await client.query(
-      "SELECT save_attempts, next_save_attempt_at, save_claimed_at FROM recipe_import",
-    );
-    expect(retry.rows[0]).toMatchObject({
-      save_attempts: 0,
-      save_claimed_at: null,
+      expect(retry.rows[0]).toMatchObject({
+        save_attempts: 0,
+        save_claimed_at: null,
+      });
+      expect(retry.rows[0].next_save_attempt_at).toBeInstanceOf(Date);
+      expect(
+        (await client.query("SELECT manual_request_hash FROM recipe")).rows[0]
+          .manual_request_hash,
+      ).toBeNull();
+      expect(run("--verify")).toContain("verified");
+      expect(run()).toContain("verified");
+      expect(await contents(client)).toEqual(after);
     });
-    expect(retry.rows[0].next_save_attempt_at).toBeInstanceOf(Date);
-    expect(
-      (await client.query("SELECT manual_request_hash FROM recipe")).rows[0]
-        .manual_request_hash,
-    ).toBeNull();
-    expect(run("--verify")).toContain("verified");
-    expect(run()).toContain("verified");
-    expect(await contents(client)).toEqual(after);
-  });
-}, 60_000);
+  },
+  60_000,
+);
 
 it("adopts recorded feature upgrades without resetting retry leases, manual identities or data", async () => {
   await database(async (client, run) => {

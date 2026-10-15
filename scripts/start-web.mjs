@@ -5,8 +5,10 @@ import { extname, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
+import { createClientIpBoundary } from "./client-ip.mjs";
 import { verifyRelease } from "./release-environment.mjs";
 
+const clientIpBoundary = createClientIpBoundary(process.env.WEB_PROXY_SECRET);
 const origin = await verifyRelease();
 const root = await realpath(
   fileURLToPath(new URL("../apps/web/dist/client/", import.meta.url)),
@@ -47,6 +49,11 @@ const server = createServer(async (incoming, outgoing) => {
       outgoing.writeHead(503, { connection: "close" }).end();
       return;
     }
+    const boundary = clientIpBoundary(incoming, origin);
+    if ("status" in boundary) {
+      outgoing.writeHead(boundary.status, { connection: "close" }).end();
+      return;
+    }
     // The configured public origin supplies protocol/host. Untrusted forwarded
     // headers and Host cannot change auth redirects or SSR request origin.
     const target = new URL(incoming.url ?? "/", origin);
@@ -83,20 +90,7 @@ const server = createServer(async (incoming, outgoing) => {
         return;
       }
     }
-    const headers = new Headers();
-    for (const [name, value] of Object.entries(incoming.headers)) {
-      if (Array.isArray(value))
-        for (const item of value) headers.append(name, item);
-      else if (value !== undefined) headers.set(name, value);
-    }
-    headers.set("host", new URL(origin).host);
-    for (const name of [
-      "forwarded",
-      "x-forwarded-host",
-      "x-forwarded-proto",
-      "x-forwarded-port",
-    ])
-      headers.delete(name);
+    const { headers } = boundary;
     const hasBody = !["GET", "HEAD"].includes(incoming.method ?? "");
     const response = await application.fetch(
       new Request(url, {
