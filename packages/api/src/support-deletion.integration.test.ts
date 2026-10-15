@@ -15,6 +15,8 @@ import { sampleRecipe } from "./recipes/fixtures";
 import { appRouter } from "./routers";
 
 vi.hoisted(() => {
+  vi.stubEnv("BILLING_MODE", "sandbox");
+  vi.stubEnv("POLAR_SERVER", "sandbox");
   vi.stubEnv("POLAR_ACCESS_TOKEN", "isolated-test-token");
   vi.stubEnv("POLAR_PRO_PRODUCT_ID", "11111111-1111-4111-8111-111111111111");
   vi.stubEnv("POLAR_WEBHOOK_SECRET", "isolated-test-secret");
