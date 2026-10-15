@@ -1,3 +1,5 @@
+import { aiPolicy } from "@prep-sheet/env/ai-policy";
+
 // Product policy lives here. Polar owns the actual recurring price and coupons.
 export const pricing = {
   free: { recipes: 10, aiCredits: 3, createHousehold: false },
@@ -9,8 +11,8 @@ export const pricing = {
     pendingPerAccount: 5,
     concurrentAttempts: 2,
     // Reserve this conservative cost before each provider call. See BILLING.md.
-    reserveCentsPerAttempt: 25,
-    dailyBudgetCents: 2500,
+    reserveCentsPerAttempt: aiPolicy.reserveCentsPerAttempt,
+    dailyBudgetCents: aiPolicy.dailyBudgetCents,
   },
 } satisfies {
   free: { recipes: number | null; aiCredits: number; createHousehold: boolean };

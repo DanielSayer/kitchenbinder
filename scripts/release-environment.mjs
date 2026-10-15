@@ -1,6 +1,8 @@
 import { checkRelease, connect } from "../packages/db/scripts/migrate.mjs";
+import { validateProviderConfiguration } from "../packages/env/src/providers.ts";
 
 export async function verifyRelease() {
+  validateProviderConfiguration(process.env);
   if (process.env.NODE_ENV !== "production")
     throw new Error("NODE_ENV must be production");
   if (process.env.SKIP_ENV_VALIDATION)

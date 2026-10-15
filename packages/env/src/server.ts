@@ -1,6 +1,9 @@
 import "dotenv/config";
 import { createEnv } from "@t3-oss/env-core";
 import { z } from "zod";
+import { validateProviderConfiguration } from "./providers";
+
+export const providerConfiguration = validateProviderConfiguration(process.env);
 
 export const env = createEnv({
   server: {
@@ -11,16 +14,18 @@ export const env = createEnv({
     BETTER_AUTH_SECRET: z.string().min(32),
     BETTER_AUTH_URL: z.url(),
     EXTENSION_IDS: z.string().optional(),
-    DISCORD_CLIENT_ID: z.string().optional(),
-    DISCORD_CLIENT_SECRET: z.string().optional(),
-    GOOGLE_CLIENT_ID: z.string().optional(),
-    GOOGLE_CLIENT_SECRET: z.string().optional(),
-    OPENAI_API_KEY: z.string().optional(),
-    POLAR_ACCESS_TOKEN: z.string().optional(),
-    POLAR_WEBHOOK_SECRET: z.string().optional(),
+    DISCORD_CLIENT_ID: z.string().trim().optional(),
+    DISCORD_CLIENT_SECRET: z.string().trim().optional(),
+    GOOGLE_CLIENT_ID: z.string().trim().optional(),
+    GOOGLE_CLIENT_SECRET: z.string().trim().optional(),
+    OPENAI_API_KEY: z.string().trim().optional(),
+    AI_ENABLED: z.enum(["true", "false"]).optional(),
+    BILLING_MODE: z.enum(["disabled", "sandbox", "production"]).optional(),
+    POLAR_ACCESS_TOKEN: z.string().trim().optional(),
+    POLAR_WEBHOOK_SECRET: z.string().trim().optional(),
     POLAR_PRO_PRODUCT_ID: z.uuid().optional(),
-    POLAR_SERVER: z.enum(["sandbox", "production"]).default("sandbox"),
-    OPENAI_MODEL: z.string().default("gpt-5.6-luna"),
+    POLAR_SERVER: z.enum(["sandbox", "production"]).optional(),
+    OPENAI_MODEL: z.string().trim().default(providerConfiguration.model),
     NODE_ENV: z
       .enum(["development", "production", "test"])
       .default("development"),

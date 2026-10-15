@@ -5,6 +5,7 @@ import { aiSpend, billingAccount } from "@prep-sheet/db/schema/billing";
 import { group } from "@prep-sheet/db/schema/group";
 import { recipeImport } from "@prep-sheet/db/schema/import";
 import { recipe } from "@prep-sheet/db/schema/recipe";
+import { providerConfiguration } from "@prep-sheet/env/server";
 import { eq, inArray } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { Context } from "../context";
@@ -78,6 +79,31 @@ describe("billing enforcement with PostgreSQL", () => {
       await db.delete(aiSpend).where(inArray(aiSpend.importId, spendIds));
     await db.$client.end();
   });
+  it("keeps manual saves available with AI and billing disabled while rejecting new AI without usage or spend", async () => {
+    const enabled = providerConfiguration.aiEnabled;
+    try {
+      providerConfiguration.aiEnabled = false;
+      const api = caller(id);
+      const item = manual();
+      await expect(api.recipes.createManual(item)).resolves.toMatchObject({
+        id: item.id,
+      });
+      await expect(submitWebsiteImport(id, ai())).rejects.toMatchObject({
+        code: "PRECONDITION_FAILED",
+      });
+      expect(
+        await db.select().from(recipeImport).where(eq(recipeImport.userId, id)),
+      ).toHaveLength(0);
+      expect((await usageSummary(db, id)).used).toBe(0);
+      expect(await api.billing.status()).toMatchObject({
+        available: false,
+        pricing: { ai: { enabled: false } },
+      });
+    } finally {
+      providerConfiguration.aiEnabled = enabled;
+    }
+  });
+
   it("admits exactly ten concurrent manual saves and permits retrying the tenth", async () => {
     const api = caller(id);
     const inputs = Array.from({ length: 12 }, manual);

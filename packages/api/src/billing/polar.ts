@@ -7,7 +7,7 @@ import {
 import { db } from "@prep-sheet/db";
 import { user } from "@prep-sheet/db/schema/auth";
 import { billingAccount } from "@prep-sheet/db/schema/billing";
-import { env } from "@prep-sheet/env/server";
+import { env, providerConfiguration } from "@prep-sheet/env/server";
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import type { Database } from "../groups/access";
@@ -16,7 +16,8 @@ import { lockAccount } from "./usage";
 
 export function billingEnabled() {
   return Boolean(
-    env.POLAR_ACCESS_TOKEN &&
+    providerConfiguration.billingMode !== "disabled" &&
+      env.POLAR_ACCESS_TOKEN &&
       env.POLAR_PRO_PRODUCT_ID &&
       env.POLAR_WEBHOOK_SECRET,
   );

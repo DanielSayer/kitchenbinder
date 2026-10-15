@@ -26,6 +26,8 @@ const { productId, secret } = vi.hoisted(() => {
   const productId = "11111111-1111-4111-8111-111111111111";
   const secret = "test-polar-webhook-secret";
   vi.stubEnv("POLAR_ACCESS_TOKEN", "test-token");
+  vi.stubEnv("BILLING_MODE", "sandbox");
+  vi.stubEnv("POLAR_SERVER", "sandbox");
   vi.stubEnv("POLAR_PRO_PRODUCT_ID", productId);
   vi.stubEnv("POLAR_WEBHOOK_SECRET", secret);
   return { productId, secret };

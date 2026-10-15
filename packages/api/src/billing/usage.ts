@@ -2,6 +2,7 @@ import { user } from "@prep-sheet/db/schema/auth";
 import { aiSpend, billingAccount } from "@prep-sheet/db/schema/billing";
 import { recipeImport } from "@prep-sheet/db/schema/import";
 import { recipe } from "@prep-sheet/db/schema/recipe";
+import { providerConfiguration } from "@prep-sheet/env/server";
 import { TRPCError } from "@trpc/server";
 import { and, count, eq, gte, inArray, isNull, sql, sum } from "drizzle-orm";
 import type { Database } from "../groups/access";
@@ -71,7 +72,7 @@ export async function checkRecipeCapacity(tx: Database, userId: string) {
 
 export async function checkAiAllowance(tx: Database, userId: string) {
   const plan = await usageSummary(tx, userId);
-  if (!pricing.ai.enabled)
+  if (!pricing.ai.enabled || !providerConfiguration.aiEnabled)
     throw new TRPCError({
       code: "PRECONDITION_FAILED",
       message:
@@ -120,6 +121,7 @@ export async function reserveAiSpend(tx: Database, importId: string) {
     );
   if (
     !pricing.ai.enabled ||
+    !providerConfiguration.aiEnabled ||
     Number(spent?.total ?? 0) + pricing.ai.reserveCentsPerAttempt >
       pricing.ai.dailyBudgetCents
   )
