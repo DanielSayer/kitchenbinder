@@ -20,6 +20,8 @@ It returns 413 on overflow and 408 if the complete body has not arrived within
 15 seconds. It cancels reading on rejection. The existing extension handlers
 retain their smaller action-specific limits. These are byte budgets, so JSON
 escaping and multi-byte characters count towards the total.
+GET and HEAD requests with a declared or chunked body are rejected by the
+listener with 413, including requests for static assets.
 
 The listener sends a rejection immediately, discards further upload bytes in
 constant memory for at most one second, then closes the connection. This short

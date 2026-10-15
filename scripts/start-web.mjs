@@ -6,7 +6,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { bodyByteLimit } from "./http-body.mjs";
-import { finishRejectedBody, incomingBody } from "./incoming-body.mjs";
+import { incomingBody, rejectIncomingBody } from "./incoming-body.mjs";
 import { verifyRelease } from "./release-environment.mjs";
 
 const origin = await verifyRelease();
@@ -55,13 +55,24 @@ const server = createServer(async (incoming, outgoing) => {
     const url = new URL(origin);
     url.pathname = target.pathname;
     url.search = target.search;
+    const hasBody = !["GET", "HEAD"].includes(incoming.method ?? "");
+    if (
+      !hasBody &&
+      (incoming.headers["transfer-encoding"] !== undefined ||
+        Number(incoming.headers["content-length"]) > 0)
+    ) {
+      rejectIncomingBody(
+        incoming,
+        outgoing,
+        413,
+        "GET and HEAD requests cannot include a body.",
+      );
+      return;
+    }
     if (
       Number(incoming.headers["content-length"]) > bodyByteLimit(url.pathname)
     ) {
-      finishRejectedBody(incoming, outgoing);
-      outgoing
-        .writeHead(413, { "cache-control": "no-store" })
-        .end("Request body too large.");
+      rejectIncomingBody(incoming, outgoing, 413, "Request body too large.");
       return;
     }
     if (["GET", "HEAD"].includes(incoming.method ?? "")) {
@@ -108,7 +119,6 @@ const server = createServer(async (incoming, outgoing) => {
       "x-forwarded-port",
     ])
       headers.delete(name);
-    const hasBody = !["GET", "HEAD"].includes(incoming.method ?? "");
     // The built Fetch entry counts streamed bytes, including chunked requests,
     // before dispatching to auth, tRPC or raw webhook parsers.
     const response = await application.fetch(
@@ -119,8 +129,16 @@ const server = createServer(async (incoming, outgoing) => {
         ...(hasBody ? { body: incomingBody(incoming), duplex: "half" } : {}),
       }),
     );
-    if ([408, 413].includes(response.status))
-      finishRejectedBody(incoming, outgoing);
+    if ([408, 413].includes(response.status)) {
+      rejectIncomingBody(
+        incoming,
+        outgoing,
+        response.status,
+        new Uint8Array(await response.arrayBuffer()),
+        Object.fromEntries(response.headers),
+      );
+      return;
+    }
     for (const [name, value] of response.headers) {
       if (name !== "set-cookie") outgoing.setHeader(name, value);
     }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { fork } from "node:child_process";
 import { once } from "node:events";
+import { request as httpRequest } from "node:http";
 import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
 
@@ -96,6 +97,26 @@ try {
   const smallBatch = await request(batchPath(5));
   assert.equal(smallBatch.status, 200);
   assert.equal((await smallBatch.json()).length, 5);
+  // Fetch cannot construct GET/HEAD bodies. A raw peer can still send them.
+  for (const method of ["GET", "HEAD"]) {
+    const status = await new Promise((resolve, reject) => {
+      const upload = httpRequest(
+        new URL("/api/trpc/healthCheck", origin),
+        {
+          method,
+          headers: { "transfer-encoding": "chunked" },
+        },
+        (response) => {
+          response.resume();
+          response.once("end", () => resolve(response.statusCode));
+          response.once("error", reject);
+        },
+      );
+      upload.once("error", reject);
+      upload.end("Unparsed request body");
+    });
+    assert.equal(status, 413);
+  }
   for (const count of [6, 250]) {
     const excessive = await request(batchPath(count));
     assert.equal(excessive.status, 400);

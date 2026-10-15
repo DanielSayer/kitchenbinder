@@ -40,21 +40,44 @@ export function incomingBody(incoming) {
   );
 }
 
-// A TCP reset while the client is still uploading can swallow the 413/408.
-// Discard bytes without retaining/parsing them for at most one second, send the
-// response immediately, then close the connection after the upload ends.
-export function finishRejectedBody(incoming, outgoing) {
-  const socket = incoming.socket;
-  const deadline = setTimeout(() => socket.destroy(), 1_000);
-  const close = () => {
+// Send a complete, length-delimited rejection immediately and advertise close
+// so clients cannot reuse the connection. Delay end() while discarding upload
+// bytes for at most one second: closing with unread TCP data can reset the socket
+// before the client receives the response.
+export function rejectIncomingBody(
+  incoming,
+  outgoing,
+  status,
+  body,
+  headers = {},
+) {
+  const bytes = Buffer.from(body);
+  outgoing.writeHead(status, {
+    "content-type": "text/plain; charset=utf-8",
+    ...headers,
+    "cache-control": "no-store",
+    connection: "close",
+    "content-length": bytes.byteLength,
+  });
+  outgoing.flushHeaders();
+  outgoing.write(bytes);
+  let deadline;
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
     clearTimeout(deadline);
-    if (outgoing.writableFinished) socket.end();
-    else outgoing.once("finish", () => socket.end());
+    outgoing.end();
   };
-  socket.once("close", () => clearTimeout(deadline));
-  if (incoming.readableEnded) close();
+  if (incoming.readableEnded) finish();
   else {
-    incoming.once("end", close);
+    deadline = setTimeout(finish, 1_000);
+    incoming.socket.once("close", () => {
+      finished = true;
+      clearTimeout(deadline);
+      incoming.off("end", finish);
+    });
+    incoming.once("end", finish);
     incoming.resume();
   }
 }
