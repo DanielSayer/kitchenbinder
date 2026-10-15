@@ -1,0 +1,33 @@
+# Install inside nginx's http {} configuration. Replace the uppercase values.
+# TLS certificate provisioning and the default catch-all virtual host belong
+# to the operator. Do not expose the upstream port on a public interface.
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name PUBLIC_HOST;
+    ssl_certificate TLS_CERTIFICATE_PATH;
+    ssl_certificate_key TLS_PRIVATE_KEY_PATH;
+
+    # Store this include outside source control, readable only by the proxy
+    # administrator. It defines one proxy_set_header directive with the same
+    # WEB_PROXY_SECRET supplied to the web containers. See docs/auth-proxy.md.
+    location / {
+        include /etc/nginx/private/prep-sheet-proxy-secret.conf;
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host PUBLIC_HOST;
+        proxy_set_header X-Prep-Sheet-Client-IP $remote_addr;
+        proxy_set_header Forwarded "";
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header X-Forwarded-Host "";
+        proxy_set_header X-Forwarded-Proto "";
+        proxy_set_header X-Forwarded-Port "";
+        proxy_set_header X-Real-IP "";
+        proxy_set_header True-Client-IP "";
+        proxy_set_header CF-Connecting-IP "";
+        proxy_cache off;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 120s;
+    }
+}
