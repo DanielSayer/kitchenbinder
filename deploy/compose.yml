@@ -4,8 +4,19 @@ x-runtime: &runtime
   image: ${PREP_SHEET_IMAGE:?Set an immutable release image tag or digest}
   restart: unless-stopped
   init: true
+  logging:
+    driver: local
+    options:
+      max-size: "10m"
+      max-file: "5"
   environment: &environment
     NODE_ENV: production
+    WORKER_HEARTBEAT_PATH: /app/tmp/operations/worker.json
+    OPS_HEARTBEAT_MAX_MS: ${OPS_HEARTBEAT_MAX_MS:-90000}
+    OPS_QUEUED_MAX_MS: ${OPS_QUEUED_MAX_MS:-300000}
+    OPS_READY_MAX_MS: ${OPS_READY_MAX_MS:-600000}
+    OPS_ACTIVE_MAX_MS: ${OPS_ACTIVE_MAX_MS:-300000}
+    OPS_SAVE_FAILURE_MAX_MS: ${OPS_SAVE_FAILURE_MAX_MS:-300000}
     DATABASE_URL: ${DATABASE_URL:?Set the runtime PostgreSQL URL}
     DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-10}
     DATABASE_CONNECT_TIMEOUT_MS: ${DATABASE_CONNECT_TIMEOUT_MS:-10000}
@@ -30,6 +41,13 @@ services:
     command: ["node", "scripts/start-web.mjs"]
     ports: ["127.0.0.1:3001:3001"]
     stop_grace_period: 40s
+    volumes: ["operations:/app/tmp/operations:ro"]
+    healthcheck:
+      test: ["CMD", "node", "scripts/operations.mjs", "web"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
     environment:
       <<: *environment
       SHUTDOWN_TIMEOUT_MS: "30000"
@@ -37,6 +55,26 @@ services:
     <<: *runtime
     command: ["node", "scripts/start-worker.mjs"]
     stop_grace_period: 200s
+    volumes: ["operations:/app/tmp/operations"]
+    healthcheck:
+      test: ["CMD", "node", "scripts/operations.mjs", "worker"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
     environment:
       <<: *environment
       WORKER_SHUTDOWN_TIMEOUT_MS: "180000"
+  monitor:
+    <<: *runtime
+    profiles: ["monitoring"]
+    command: ["node", "scripts/monitor-operations.mjs"]
+    volumes: ["operations:/app/tmp/operations:ro"]
+    environment:
+      <<: *environment
+      OPS_WEB_URL: http://web:3001/health/live
+      OPS_ALERT_WEBHOOK_URL: ${OPS_ALERT_WEBHOOK_URL:-}
+      OPS_ALERT_TOKEN: ${OPS_ALERT_TOKEN:-}
+
+volumes:
+  operations:

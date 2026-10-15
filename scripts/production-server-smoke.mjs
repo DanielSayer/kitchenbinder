@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { fork } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { once } from "node:events";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
 
@@ -28,8 +32,15 @@ const { cookie, ownId, longId, otherId } = z
     otherId: z.uuid(),
   })
   .parse(JSON.parse(input));
+const operationsDirectory = await mkdtemp(join(tmpdir(), "prep-sheet-http-"));
+const heartbeatPath = join(operationsDirectory, "worker.json");
 const child = fork(new URL("./start-web.mjs", import.meta.url), [], {
-  env: { ...process.env, PORT: "0", HOST: "127.0.0.1" },
+  env: {
+    ...process.env,
+    PORT: "0",
+    HOST: "127.0.0.1",
+    WORKER_HEARTBEAT_PATH: heartbeatPath,
+  },
   stdio: ["ignore", "pipe", "pipe", "ipc"],
 });
 let output = "";
@@ -57,6 +68,46 @@ try {
       headers: authenticated ? { cookie } : {},
     });
 
+  assert.equal((await request("/health/live")).status, 200);
+  const missingWorker = await request("/health/ready");
+  assert.equal(missingWorker.status, 503);
+  assert.deepEqual(await missingWorker.json(), { status: "unavailable" });
+  assert.equal(missingWorker.headers.get("cache-control"), "no-store");
+  const correlation = missingWorker.headers.get("x-request-id");
+  assert.match(correlation, /^[0-9a-f-]{36}$/);
+  await writeFile(
+    heartbeatPath,
+    JSON.stringify({
+      version: 1,
+      timestamp: Date.now(),
+      instance: randomUUID(),
+    }),
+  );
+  await setTimeout(5100);
+  assert.equal((await request("/health/ready")).status, 200);
+  await rm(heartbeatPath);
+  await setTimeout(5100);
+  assert.equal((await request("/health/ready")).status, 503);
+  assert.equal((await request("/health/live")).status, 200);
+  const failure = await fetch(new URL("/%E0?private=never-log-this", origin), {
+    headers: {
+      "x-request-id": "attacker-supplied-id",
+      cookie: "private-cookie-never-log",
+    },
+  });
+  assert.equal(failure.status, 500);
+  const failureId = failure.headers.get("x-request-id");
+  assert.match(failureId, /^[0-9a-f-]{36}$/);
+  await failure.text();
+  await setTimeout(50);
+  assert.ok(output.includes(failureId));
+  assert.ok(output.includes(correlation));
+  for (const value of [
+    "never-log-this",
+    "attacker-supplied-id",
+    "private-cookie-never-log",
+  ])
+    assert.ok(!output.includes(value));
   const home = await request("/");
   assert.equal(home.status, 200);
   const html = await home.text();
@@ -146,6 +197,7 @@ try {
   assert.match(output, /web_stopped/);
 } finally {
   if (child.exitCode === null) child.kill();
+  await rm(operationsDirectory, { recursive: true, force: true });
 }
 // Let Node drain request pools naturally. A forced success exit would conceal
 // delayed asynchronous errors such as the original font crash.

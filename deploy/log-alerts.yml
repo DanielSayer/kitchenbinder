@@ -1,0 +1,12 @@
+# Loki ruler rules. Configure the log collector to label Compose web logs with
+# service_name="prep-sheet-web", and supply the operator's Alertmanager endpoint.
+groups:
+  - name: prep-sheet-errors
+    rules:
+      - alert: PrepSheetWebFailures
+        expr: sum(count_over_time({service_name="prep-sheet-web"} | json | event=~"web_request_failed|web_response_interrupted" | route!="health" [1m])) >= 5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Prep Sheet has at least five failed web requests per minute
