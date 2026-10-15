@@ -24,7 +24,7 @@ import { usageSummary } from "./usage";
 
 const { productId, secret } = vi.hoisted(() => {
   const productId = "11111111-1111-4111-8111-111111111111";
-  const secret = "test-polar-webhook-secret";
+  const secret = `whsec_${Buffer.from("test-polar-webhook-secret").toString("base64")}`;
   vi.stubEnv("POLAR_ACCESS_TOKEN", "test-token");
   vi.stubEnv("BILLING_MODE", "sandbox");
   vi.stubEnv("POLAR_SERVER", "sandbox");
@@ -83,7 +83,11 @@ const state: CustomerState = {
 const customerPrototype = Object.getPrototypeOf(
   new Polar({ accessToken: "test-token" }).customers,
 );
-function request(timestamp = Math.floor(Date.now() / 1000), invalid = false) {
+function request(
+  timestamp = Math.floor(Date.now() / 1000),
+  invalid = false,
+  standard = false,
+) {
   const data = {
     id: customerId,
     created_at: now.toISOString(),
@@ -110,7 +114,14 @@ function request(timestamp = Math.floor(Date.now() / 1000), invalid = false) {
     data,
   });
   const id = randomUUID();
-  const signature = createHmac("sha256", invalid ? "wrong-secret" : secret)
+  const signature = createHmac(
+    "sha256",
+    invalid
+      ? "wrong-secret"
+      : standard
+        ? Buffer.from(secret.slice(6), "base64")
+        : secret,
+  )
     .update(`${id}.${timestamp}.${body}`)
     .digest("base64");
   return new Request("http://localhost/api/polar/webhooks", {
@@ -210,35 +221,60 @@ describe("Polar synchronization and signed webhooks", () => {
       trialUsed: false,
     });
   });
-  it("rejects forged and expired signatures before calling the API", async () => {
-    const fetch = vi
-      .spyOn(customerPrototype, "getStateExternal")
-      .mockResolvedValue(state);
-    expect((await handlePolarWebhook(request(undefined, true))).status).toBe(
-      403,
-    );
-    expect((await handlePolarWebhook(request(1))).status).toBe(403);
-    expect(fetch).not.toHaveBeenCalled();
-  });
-  it("accepts verified events, grants discounted Pro and ignores stale payload state", async () => {
-    vi.spyOn(customerPrototype, "getStateExternal").mockResolvedValue({
-      ...state,
-      activeSubscriptions: [{ ...subscription, cancelAtPeriodEnd: true }],
-    });
-    const event = request();
-    expect((await handlePolarWebhook(event.clone())).status).toBe(200);
-    expect((await handlePolarWebhook(event)).status).toBe(200);
-    const [account] = await db
-      .select()
-      .from(billingAccount)
-      .where(eq(billingAccount.userId, userId));
-    expect(account).toMatchObject({
-      status: "active",
-      customerId,
-      cancelAtPeriodEnd: true,
-      trialUsed: true,
-    });
-  });
+  it.each([false, true])(
+    "rejects forged and expired signatures before calling the API, standard=%s",
+    async (standard) => {
+      const fetch = vi
+        .spyOn(customerPrototype, "getStateExternal")
+        .mockResolvedValue(state);
+      expect(
+        (await handlePolarWebhook(request(undefined, true, standard))).status,
+      ).toBe(403);
+      expect(
+        (await handlePolarWebhook(request(1, false, standard))).status,
+      ).toBe(403);
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+  it.each([false, true])(
+    "rejects modified raw bytes before reconciliation, standard=%s",
+    async (standard) => {
+      const fetch = vi
+        .spyOn(customerPrototype, "getStateExternal")
+        .mockResolvedValue(state);
+      const event = request(undefined, false, standard);
+      const altered = new Request(event.url, {
+        method: "POST",
+        headers: event.headers,
+        body: `${await event.text()}\n`,
+      });
+      expect((await handlePolarWebhook(altered)).status).toBe(403);
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([false, true])(
+    "accepts verified events, grants discounted Pro and ignores stale payload state, standard=%s",
+    async (standard) => {
+      vi.spyOn(customerPrototype, "getStateExternal").mockResolvedValue({
+        ...state,
+        activeSubscriptions: [{ ...subscription, cancelAtPeriodEnd: true }],
+      });
+      const event = request(undefined, false, standard);
+      expect((await handlePolarWebhook(event.clone())).status).toBe(200);
+      expect((await handlePolarWebhook(event)).status).toBe(200);
+      const [account] = await db
+        .select()
+        .from(billingAccount)
+        .where(eq(billingAccount.userId, userId));
+      expect(account).toMatchObject({
+        status: "active",
+        customerId,
+        cancelAtPeriodEnd: true,
+        trialUsed: true,
+      });
+    },
+  );
   it("removes access from authoritative state and ignores unrelated products", async () => {
     vi.spyOn(customerPrototype, "getStateExternal").mockResolvedValue({
       ...state,

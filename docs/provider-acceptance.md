@@ -53,6 +53,14 @@ in deployments. Database tests run only through `pnpm test`.
 
 ## HTTPS OAuth acceptance
 
+For the first private staging deployment, use a dedicated HTTPS subdomain of the
+chosen production domain, Google only, `AI_ENABLED=false` and
+`BILLING_MODE=disabled`. Confirm Google's callback and login/logout/account switching
+first. Add Discord and run the linking checks next. Enable AI only after its
+project controls and two paid import attempts are authorised. Enable Polar
+sandbox last for its controlled lifecycle checks. This sequence does not choose
+or create a domain, configure credentials, or authorise spending/provider emails.
+
 Use controlled accounts with permission from their owners. Register exact
 `https://<actual-origin>/api/auth/callback/google` and/or
 `https://<actual-origin>/api/auth/callback/discord` callbacks. Configure the actual
@@ -163,7 +171,10 @@ checkout as part of this checklist without separate explicit authorisation.
 
 Configure `https://<actual-origin>/api/polar/webhooks` for
 `customer.state_changed`. Keep raw bytes through the proxy and use the SDK's
-signature validation. Polar documents delivery retries and dashboard redelivery
+payload schema. The locked SDK 0.49 only verifies legacy signing keys, so the app
+uses Standard Webhooks to verify both the legacy UTF-8 key and current `whsec_`
+base64 key formats. Invalid/expired signatures fail before any provider call.
+Polar documents delivery retries and dashboard redelivery
 in [webhook delivery](https://polar.sh/docs/integrate/webhooks/delivery).
 Confirm genuine signatures against this locked SDK and the actual secret format;
 a locally generated signature alone cannot establish provider compatibility.

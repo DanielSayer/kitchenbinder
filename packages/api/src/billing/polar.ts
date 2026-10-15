@@ -1,9 +1,6 @@
 import { Polar } from "@polar-sh/sdk";
 import { PolarError } from "@polar-sh/sdk/models/errors/polarerror";
-import {
-  validateEvent,
-  WebhookVerificationError,
-} from "@polar-sh/sdk/webhooks";
+import { WebhookVerificationError } from "@polar-sh/sdk/webhooks";
 import { db } from "@prep-sheet/db";
 import { user } from "@prep-sheet/db/schema/auth";
 import { billingAccount } from "@prep-sheet/db/schema/billing";
@@ -13,6 +10,7 @@ import { eq } from "drizzle-orm";
 import type { Database } from "../groups/access";
 import { allowance, pricing } from "./policy";
 import { lockAccount } from "./usage";
+import { validatePolarEvent as validateEvent } from "./webhook";
 
 export function billingEnabled() {
   return Boolean(
