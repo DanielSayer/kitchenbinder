@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { once } from "node:events";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
@@ -13,14 +15,36 @@ assert.equal(database.hostname, "127.0.0.1");
 assert.equal(database.pathname, "/prep_sheet_test");
 assert.ok(database.port && database.port !== "5432");
 assert.ok(process.env.PREP_SHEET_RELEASE_IMAGE);
-database.hostname = "host.docker.internal";
+const linux = process.platform === "linux";
+if (!linux) database.hostname = "host.docker.internal";
+let hostPort;
+if (linux) {
+  // The wrapper exposes PostgreSQL only on host loopback. Linux containers need
+  // host networking to reach it. Reserve a random listener port for this test.
+  const reservation = createServer();
+  reservation.listen(0, "127.0.0.1");
+  await once(reservation, "listening");
+  hostPort = reservation.address().port;
+  await new Promise((done) => reservation.close(done));
+}
 const directory = await mkdtemp(join(tmpdir(), "prep-sheet-compose-"));
 const override = join(directory, "compose.yml");
 // Runtime credentials come only from the wrapper. No literal or inherited live
 // provider credentials enter these test containers.
 await writeFile(
   override,
-  `services:
+  linux
+    ? `services:
+  web:
+    network_mode: host
+    ports: !reset []
+    environment:
+      HOST: 127.0.0.1
+      PORT: "${hostPort}"
+  worker:
+    network_mode: host
+`
+    : `services:
   web:
     ports: !override ["127.0.0.1::3001"]
     extra_hosts: ["host.docker.internal:host-gateway"]
@@ -85,8 +109,8 @@ try {
     ]),
     "local",
   );
-  const binding = compose(["port", "web", "3001"]);
-  const port = binding.match(/:(\d+)$/)?.[1];
+  const port =
+    hostPort ?? compose(["port", "web", "3001"]).match(/:(\d+)$/)?.[1];
   assert.ok(port);
   const origin = `http://127.0.0.1:${port}`;
   assert.equal((await fetch(`${origin}/health/ready`)).status, 200);
