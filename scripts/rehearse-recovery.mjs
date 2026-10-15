@@ -56,7 +56,19 @@ export async function rehearseRecovery({
     for (let attempt = 0; attempt < 120; attempt++) {
       const probe = spawnSync(
         "docker",
-        ["exec", name, "pg_isready", "-U", "postgres", "-d", "recovery"],
+        // The official image's temporary init server listens only on a Unix
+        // socket. TCP readiness proves initialization and its restart finished.
+        [
+          "exec",
+          name,
+          "pg_isready",
+          "-h",
+          "127.0.0.1",
+          "-U",
+          "postgres",
+          "-d",
+          "recovery",
+        ],
         { stdio: "ignore", timeout: 3000 },
       );
       if (probe.status === 0) {
