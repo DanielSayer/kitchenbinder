@@ -7,6 +7,7 @@
   ],
   "type": "module",
   "scripts": {
+    "providers:check": "node --env-file-if-exists=apps/web/.env scripts/check-providers.mjs",
     "test": "node scripts/test.mjs",
     "test:live": "node scripts/test.mjs packages/api/src/recipes/live.test.ts",
     "test:production": "node scripts/test.mjs packages/api/src/recipes/production-server.test.ts",

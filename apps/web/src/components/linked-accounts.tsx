@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { ErrorNotice } from "@/components/feedback";
 import { authClient } from "@/lib/auth-client";
+import { SignInProviders } from "./sign-in-providers";
 import type { SignInProvider } from "./social-sign-in";
 
 export function LinkedAccounts() {
@@ -55,31 +56,33 @@ export function LinkedAccounts() {
           retry={() => void accounts.refetch()}
         />
       ) : (
-        <div className="help-actions">
-          {(["google", "discord"] satisfies SignInProvider[]).map(
-            (provider) => {
-              const linked = accounts.data?.some(
-                (account) => account.providerId === provider,
-              );
-              const name = provider === "google" ? "Google" : "Discord";
-              return linked ? (
-                <span key={provider}>{name} linked</span>
-              ) : (
-                <button
-                  key={provider}
-                  type="button"
-                  className="button button-outline"
-                  disabled={pending !== null}
-                  onClick={() => void link(provider)}
-                >
-                  {pending === provider
-                    ? `Connecting to ${name}...`
-                    : `Link ${name}`}
-                </button>
-              );
-            },
+        <SignInProviders>
+          {(providers) => (
+            <div className="help-actions">
+              {providers.map((provider) => {
+                const linked = accounts.data?.some(
+                  (account) => account.providerId === provider,
+                );
+                const name = provider === "google" ? "Google" : "Discord";
+                return linked ? (
+                  <span key={provider}>{name} linked</span>
+                ) : (
+                  <button
+                    key={provider}
+                    type="button"
+                    className="button button-outline"
+                    disabled={pending !== null}
+                    onClick={() => void link(provider)}
+                  >
+                    {pending === provider
+                      ? `Connecting to ${name}...`
+                      : `Link ${name}`}
+                  </button>
+                );
+              })}
+            </div>
           )}
-        </div>
+        </SignInProviders>
       )}
       <ErrorNotice message={error} />
     </div>

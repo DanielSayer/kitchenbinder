@@ -1,5 +1,6 @@
 import { db } from "@prep-sheet/db";
 import { billingAccount } from "@prep-sheet/db/schema/billing";
+import { providerConfiguration } from "@prep-sheet/env/server";
 import { eq } from "drizzle-orm";
 import {
   billingEnabled,
@@ -25,7 +26,13 @@ export const billingRouter = router({
       cancelAtPeriodEnd: account?.cancelAtPeriodEnd ?? false,
       validUntil: account?.validUntil ?? null,
       trialEligible: !account?.trialUsed,
-      pricing,
+      pricing: {
+        ...pricing,
+        ai: {
+          ...pricing.ai,
+          enabled: pricing.ai.enabled && providerConfiguration.aiEnabled,
+        },
+      },
     };
   }),
   refresh: protectedProcedure.mutation(({ ctx }) =>

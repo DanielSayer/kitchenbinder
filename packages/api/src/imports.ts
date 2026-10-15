@@ -43,6 +43,7 @@ import { importFailure, logImport } from "./import-diagnostics";
 import {
   generateRecipe,
   prepareRecipeInput,
+  recipeSystemPrompt,
   requireRecipeProvider,
 } from "./recipes/generate";
 import { persistRecipe } from "./recipes/persist";
@@ -568,6 +569,7 @@ export async function processNextImport(
     const tags = await availableTags(job.userId);
     // A missing provider key must fail before reserving spend or consuming AI usage.
     ensureProviderReady();
+    recipeSystemPrompt(prepared.content, tags, prepared.sourceUrl);
     // Persist the exact input before crossing the AI boundary.
     const claimed = await db.transaction(async (tx) => {
       const claimed = await tx

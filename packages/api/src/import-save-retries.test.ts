@@ -5,6 +5,7 @@ import { user } from "@prep-sheet/db/schema/auth";
 import { aiSpend } from "@prep-sheet/db/schema/billing";
 import { recipeImport } from "@prep-sheet/db/schema/import";
 import { recipe } from "@prep-sheet/db/schema/recipe";
+import { aiPolicy } from "@prep-sheet/env/ai-policy";
 import { eq, inArray, sql } from "drizzle-orm";
 import {
   afterAll,
@@ -134,6 +135,23 @@ afterAll(async () => {
   await db.delete(recipe).where(eq(recipe.userId, owner));
   await db.delete(user).where(eq(user.id, owner));
   await db.$client.end();
+});
+
+it("releases usage and reserves no spend for an oversized durable input", async () => {
+  const id = randomUUID();
+  await db.insert(recipeImport).values({
+    id,
+    userId: owner,
+    fingerprint: id,
+    input: "x".repeat(aiPolicy.maxContentBytes + 1),
+  });
+  const generate = vi.fn().mockResolvedValue(generated);
+  await processNextImport(generate);
+  expect(generate).not.toHaveBeenCalled();
+  expect(await job(id)).toMatchObject({ state: "failed", usageReleased: true });
+  expect(
+    await db.select().from(aiSpend).where(eq(aiSpend.importId, id)),
+  ).toHaveLength(0);
 });
 
 it("lets healthy ready and queued jobs finish beside a persistently failing checkpoint", async () => {

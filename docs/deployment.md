@@ -52,11 +52,14 @@ Production also requires `SUPPORT_EMAIL` and `SUPPORT_OPERATOR`. Select a monito
 mailbox and a responsible queue owner, then complete the manual acceptance in
 [account and support operations](account-support.md#launch-configuration-and-acceptance).
 
-Inject Google/Discord credential pairs for the selected sign-in providers,
-`OPENAI_API_KEY` and optional `OPENAI_MODEL` for imports, and Polar settings
-only when enabling billing. `EXTENSION_IDS` must match released extensions.
-`deploy/compose.yml` forwards these values explicitly. Its defaults leave paid
-services disabled. The present login UI still needs the configured providers.
+Inject complete Google/Discord credential pairs for at least one sign-in provider.
+Choose `AI_ENABLED=true|false` and `BILLING_MODE=disabled|sandbox|production`
+explicitly. Enabled AI requires a key and the reviewed model. Enabled billing
+requires all Polar settings and an explicitly matching `POLAR_SERVER`.
+`EXTENSION_IDS` must match released extensions. `deploy/compose.yml` forwards
+these settings. Both runtime entry points reject unsafe provider configuration
+before accessing the database. Run `pnpm providers:check` and complete the
+[provider acceptance workflow](provider-acceptance.md) for the actual HTTPS origin.
 
 Configure encrypted PostgreSQL transport using the provider's trusted certificate
 and node-postgres connection options. Do not disable certificate verification.

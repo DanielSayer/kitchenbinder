@@ -1,3 +1,4 @@
+import { providerConfiguration } from "@prep-sheet/env/server";
 import { publicProcedure, router } from "../index";
 import { billingRouter } from "./billing";
 import { groupsRouter } from "./groups";
@@ -8,6 +9,9 @@ import { supportRouter } from "./support";
 import { tagsRouter } from "./tags";
 
 export const appRouter = router({
+  signInProviders: publicProcedure.query(
+    () => providerConfiguration.signInProviders,
+  ),
   billing: billingRouter,
   recipes: recipesRouter,
   tags: tagsRouter,

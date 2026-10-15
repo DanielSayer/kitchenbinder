@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { fork } from "node:child_process";
 import { once } from "node:events";
+import { readdir, readFile } from "node:fs/promises";
 import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
 
@@ -14,6 +15,24 @@ const environment = z
   })
   .parse(process.env);
 const database = new URL(environment.DATABASE_URL);
+const clientDirectory = new URL("../apps/web/dist/client/", import.meta.url);
+for (const file of await readdir(clientDirectory, { recursive: true })) {
+  if (!file.endsWith(".js")) continue;
+  const code = await readFile(
+    new URL(file.replaceAll("\\", "/"), clientDirectory),
+    "utf8",
+  );
+  assert.doesNotMatch(
+    code,
+    /GOOGLE_CLIENT_SECRET|DISCORD_CLIENT_SECRET|POLAR_ACCESS_TOKEN|OPENAI_API_KEY/,
+    "Server provider configuration must not enter browser chunks",
+  );
+  if (process.env.BETTER_AUTH_SECRET)
+    assert.ok(
+      !code.includes(process.env.BETTER_AUTH_SECRET),
+      "The runtime signing secret must not enter browser chunks",
+    );
+}
 assert.ok(["127.0.0.1", "host.docker.internal"].includes(database.hostname));
 assert.equal(database.pathname, "/prep_sheet_test");
 assert.ok(database.port && database.port !== "5432");

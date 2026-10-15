@@ -100,6 +100,15 @@ try {
     BETTER_AUTH_URL: "http://localhost:3001",
     NODE_ENV: "test",
     PREP_SHEET_TEST_DATABASE: "isolated",
+    AI_ENABLED: "true",
+    BILLING_MODE: "disabled",
+    POLAR_ACCESS_TOKEN: "",
+    POLAR_PRO_PRODUCT_ID: "",
+    POLAR_WEBHOOK_SECRET: "",
+    GOOGLE_CLIENT_ID: "",
+    GOOGLE_CLIENT_SECRET: "",
+    DISCORD_CLIENT_ID: "",
+    DISCORD_CLIENT_SECRET: "",
   };
   if (env.LIVE_AI_TEST !== "1") {
     // Integration tests mock generation, but import admission checks for a key.
