@@ -1,4 +1,5 @@
 export * from "./auth";
+export * from "./auth-rate-limit";
 export * from "./billing";
 export * from "./extension";
 export * from "./group";

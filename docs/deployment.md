@@ -186,6 +186,11 @@ response caching at the chosen proxy. The listener uses the configured public
 origin and does not trust incoming Host/forwarded headers for SSR/auth URLs.
 It preserves the actual Origin header for auth checks.
 
+Follow [the auth proxy contract](auth-proxy.md) before exposing this listener.
+Compose requires `WEB_PROXY_SECRET`; the proxy must overwrite the authenticated
+single-client-IP headers. That document includes host nginx configuration and
+shared PostgreSQL auth throttling across replicas and restarts.
+
 Web startup emits `web_started`; the worker emits `import_worker_started` and
 30-second queue heartbeats. Supervise both with restart policies. HTTP handlers
 only admit durable jobs: a running website alone does not process imports.
