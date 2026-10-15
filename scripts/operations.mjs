@@ -66,6 +66,8 @@ export function createOperations({
   let cached;
   let expires = 0;
   let pending;
+  const failedSave =
+    "save_attempts>0 AND (state='failed' OR (state='ready' AND (save_claimed_at IS NULL OR save_attempts>1)))";
   async function inspect() {
     const worker = await workerStatus();
     const issues = worker.ok ? [] : ["worker_stale"];
@@ -74,11 +76,11 @@ export function createOperations({
         count(*) FILTER (WHERE state='queued')::int AS queued,
         count(*) FILTER (WHERE state='ready')::int AS ready,
         count(*) FILTER (WHERE state IN ('fetching','processing'))::int AS active,
-        count(*) FILTER (WHERE save_attempts>0 AND state IN ('ready','failed'))::int AS save_failures,
+        count(*) FILTER (WHERE ${failedSave})::int AS save_failures,
         coalesce(extract(epoch FROM (now()-min(created_at) FILTER (WHERE state='queued')))*1000,0)::float8 AS queued_ms,
         coalesce(extract(epoch FROM (now()-min(coalesce(started_at,created_at)) FILTER (WHERE state='ready')))*1000,0)::float8 AS ready_ms,
         coalesce(extract(epoch FROM (now()-min(coalesce(started_at,created_at)) FILTER (WHERE state IN ('fetching','processing'))))*1000,0)::float8 AS active_ms,
-        coalesce(extract(epoch FROM (now()-min(created_at) FILTER (WHERE save_attempts>0 AND state IN ('ready','failed'))))*1000,0)::float8 AS save_failure_ms
+        coalesce(extract(epoch FROM (now()-min(created_at) FILTER (WHERE ${failedSave})))*1000,0)::float8 AS save_failure_ms
         FROM recipe_import WHERE state IN ('queued','ready','fetching','processing','failed')`);
       const queue = result.rows[0];
       const limits = thresholds();

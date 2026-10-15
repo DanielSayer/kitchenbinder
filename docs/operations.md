@@ -54,8 +54,10 @@ thresholds are shared by the monitor and probes:
 
 Database probe failure adds `database_unavailable`. Queue/ready/active ages use
 the oldest available durable timestamp. Save failure age uses creation time for
-ready/failed rows with `save_attempts > 0`, a conservative upper bound because
-the schema does not record the first save failure time. Failed checkpoint saves
+failed rows with save attempts and ready rows that have returned from a save or
+started a retry. A first save still holding its lease is excluded. Age is a
+conservative upper bound because the schema does not record the first save
+failure time. Failed checkpoint saves
 stay visible until resolved; this includes exhausted retries. Investigate their
 user recovery path instead of deleting records to silence alerts. Queue issues
 alert operators without taking otherwise working recipe reads offline. HTTP
@@ -229,6 +231,16 @@ archive, corrupt archive recovery failed safely and the source was unchanged.
 The full focused test took 14.31 seconds including negative cases. All disposable
 containers, volumes and networks were removed. These tiny-fixture timings do not
 establish production recovery performance.
+
+The local release gate passed lint, seven uncached package type tasks, the web
+release build and the full 46-file suite with 328 passing tests and seven paid AI
+skips. A later four-file focused run passed readiness/privacy, worker shutdown,
+HTTP/PDF and recovery checks. The Linux release image built successfully, Compose
+configuration validated with and without the monitoring profile, and Prometheus
+`promtool` accepted all five host alert rules. Packaged CI also exercises a
+disposable Compose deployment, including both healthchecks, shared heartbeat
+permissions, worker stop/restart and readiness recovery. This test requires
+`PREP_SHEET_RELEASE_IMAGE`; ordinary source runs skip it.
 
 No production backup, host deployment, off-host restore, external alert delivery,
 resource monitoring or measured production RPO/RTO has been accepted. Those

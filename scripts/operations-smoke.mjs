@@ -29,7 +29,6 @@ const { writeWorkerHeartbeat, clearWorkerHeartbeat } = await import(
 );
 const userId = randomUUID();
 const operations = createOperations();
-const snapshots = [];
 async function inspect() {
   const probe = createOperations();
   try {
@@ -96,6 +95,11 @@ try {
       [randomUUID(), userId, state, attempts],
     );
   }
+  await client.query(
+    `INSERT INTO recipe_import(id,user_id,fingerprint,input,state,save_attempts,save_claimed_at)
+    VALUES ($1::uuid,$2,$1::text,'first save in progress','ready',1,now())`,
+    [randomUUID(), userId],
+  );
   const aged = await inspect();
   assert.deepEqual(aged.issues.sort(), [
     "active_aged",
@@ -106,7 +110,6 @@ try {
   assert.equal(aged.queue.save_failures, 2);
   assert.ok(!JSON.stringify(aged).includes("PRIVATE"));
   assert.ok(!JSON.stringify(aged).includes(userId));
-  snapshots.push(aged);
   await client.query("DELETE FROM recipe_import WHERE user_id=$1", [userId]);
   await locker.query(
     "BEGIN; LOCK TABLE recipe_import IN ACCESS EXCLUSIVE MODE",
