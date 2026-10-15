@@ -38,10 +38,10 @@ jobs:
         run: pnpm test
       - name: Build portable Linux release
         run: docker build -t prep-sheet-ci:local .
-      - name: Verify packaged migrations, HTTP/PDF and worker shutdown against disposable PostgreSQL
+      - name: Verify packaged migrations, HTTP/PDF, worker shutdown and Compose readiness
         env:
           PREP_SHEET_RELEASE_IMAGE: prep-sheet-ci:local
-        run: pnpm test packages/db/src/migrations.test.ts packages/api/src/recipes/production-server.test.ts packages/api/src/import-worker.production.test.ts packages/auth/src/proxy.production.test.ts
+        run: pnpm test packages/db/src/migrations.test.ts packages/api/src/recipes/production-server.test.ts packages/api/src/import-worker.production.test.ts packages/auth/src/proxy.production.test.ts packages/api/src/operations.compose.test.ts
       - name: Package Chrome and Edge development extensions
         run: pnpm package:extension
       - name: Confirm checks did not modify tracked files

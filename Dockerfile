@@ -7,6 +7,7 @@ RUN pnpm build:release
 # Keep the locked workspace installation, including tsx for the source worker.
 # The content-addressed download store is unnecessary after installation.
 RUN rm -rf /app/.pnpm-store /app/.git
+RUN mkdir -p /app/tmp/operations
 
 FROM node:26.7.0-bookworm-slim@sha256:4db36457f406501e6f608802e5da617e5fbd0e80b75901b6a09de1ae5a667d32 AS release
 WORKDIR /app

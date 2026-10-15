@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { realpath, stat } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -6,6 +7,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { createClientIpBoundary } from "./client-ip.mjs";
+import { createOperations } from "./operations.mjs";
 import { verifyRelease } from "./release-environment.mjs";
 
 const clientIpBoundary = createClientIpBoundary(process.env.WEB_PROXY_SECRET);
@@ -39,7 +41,25 @@ const types = {
   ".txt": "text/plain; charset=utf-8",
 };
 let stopping = false;
+const operations = createOperations();
 const server = createServer(async (incoming, outgoing) => {
+  const requestId = randomUUID();
+  const started = Date.now();
+  let route = "application";
+  outgoing.setHeader("x-request-id", requestId);
+  outgoing.on("finish", () => {
+    if (outgoing.statusCode >= 500)
+      console.error(
+        JSON.stringify({
+          event: "web_request_failed",
+          timestamp: new Date().toISOString(),
+          requestId,
+          route,
+          status: outgoing.statusCode,
+          elapsedMs: Date.now() - started,
+        }),
+      );
+  });
   const abort = new AbortController();
   outgoing.on("close", () => {
     if (!outgoing.writableFinished) abort.abort();
@@ -60,7 +80,31 @@ const server = createServer(async (incoming, outgoing) => {
     const url = new URL(origin);
     url.pathname = target.pathname;
     url.search = target.search;
+    if (["/health/live", "/health/ready"].includes(url.pathname)) {
+      route = "health";
+      if (!["GET", "HEAD"].includes(incoming.method ?? "")) {
+        outgoing.writeHead(405, { allow: "GET, HEAD" }).end();
+        return;
+      }
+      const status =
+        url.pathname === "/health/live"
+          ? undefined
+          : await operations.snapshot();
+      const ready =
+        status === undefined || (status.database && status.worker.ok);
+      outgoing.writeHead(ready ? 200 : 503, {
+        "content-type": "application/json",
+        "cache-control": "no-store",
+      });
+      outgoing.end(
+        incoming.method === "HEAD"
+          ? undefined
+          : JSON.stringify({ status: ready ? "ok" : "unavailable" }),
+      );
+      return;
+    }
     if (["GET", "HEAD"].includes(incoming.method ?? "")) {
+      if (url.pathname.startsWith("/assets/")) route = "asset";
       const candidate = resolve(root, `.${decodeURIComponent(url.pathname)}`);
       if (candidate.startsWith(root + sep)) {
         let file;
@@ -91,6 +135,7 @@ const server = createServer(async (incoming, outgoing) => {
       }
     }
     const { headers } = boundary;
+    headers.set("x-request-id", requestId);
     const hasBody = !["GET", "HEAD"].includes(incoming.method ?? "");
     const response = await application.fetch(
       new Request(url, {
@@ -101,7 +146,8 @@ const server = createServer(async (incoming, outgoing) => {
       }),
     );
     for (const [name, value] of response.headers) {
-      if (name !== "set-cookie") outgoing.setHeader(name, value);
+      if (name !== "set-cookie" && name !== "x-request-id")
+        outgoing.setHeader(name, value);
     }
     if (response.headers.getSetCookie().length)
       outgoing.setHeader("set-cookie", response.headers.getSetCookie());
@@ -116,8 +162,16 @@ const server = createServer(async (incoming, outgoing) => {
     }
   } catch {
     // Never log request URLs, cookies or exception messages.
-    if (!abort.signal.aborted)
-      console.error(JSON.stringify({ event: "web_request_failed" }));
+    if (!abort.signal.aborted && outgoing.headersSent)
+      console.error(
+        JSON.stringify({
+          event: "web_response_interrupted",
+          timestamp: new Date().toISOString(),
+          requestId,
+          route,
+          elapsedMs: Date.now() - started,
+        }),
+      );
     if (!outgoing.headersSent) outgoing.writeHead(500).end();
     else outgoing.destroy();
   }
@@ -139,7 +193,8 @@ function stop() {
     process.exit(1);
   }, grace);
   timer.unref();
-  server.close(() => {
+  server.close(async () => {
+    await operations.close();
     console.info(JSON.stringify({ event: "web_stopped" }));
     // Auth and API pools are owned inside the SSR bundle. All requests have
     // drained; process exit closes their idle database connections.

@@ -4,6 +4,7 @@ import { recipeImport } from "@prep-sheet/db/schema/import";
 import { count, inArray, min } from "drizzle-orm";
 import { importFailure, logImport } from "./import-diagnostics";
 import { processNextImport } from "./imports";
+import { clearWorkerHeartbeat, writeWorkerHeartbeat } from "./worker-heartbeat";
 
 let stopping = false;
 const idleAbort = new AbortController();
@@ -58,6 +59,7 @@ async function heartbeat() {
       )
       .groupBy(recipeImport.state);
     const queued = states.find((row) => row.state === "queued");
+    await writeWorkerHeartbeat();
     logImport({
       event: "import_worker_heartbeat",
       queued: queued?.total ?? 0,
@@ -97,6 +99,9 @@ try {
   }
 } finally {
   clearInterval(heartbeatTimer);
+  // Wait for the in-flight writer before removing the clean-shutdown marker.
+  while (checkingQueue) await setTimeout(10);
+  await clearWorkerHeartbeat();
   await db.$client.end();
   clearTimeout(shutdownTimer);
   logImport({ event: "import_worker_stopped", pid: process.pid });
