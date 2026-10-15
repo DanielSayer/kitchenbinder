@@ -17,6 +17,7 @@ assert.ok(["127.0.0.1", "host.docker.internal"].includes(database.hostname));
 assert.equal(database.pathname, "/prep_sheet_test");
 assert.ok(database.port && database.port !== "5432");
 const secret = randomBytes(32).toString("base64url");
+const publicOrigin = "https://proxy-smoke.example.test";
 const children = [];
 
 async function start(proxySecret) {
@@ -28,6 +29,10 @@ async function start(proxySecret) {
       // Vitest exports TEST=true, which otherwise disables Better Auth CSRF.
       TEST: "false",
       WEB_PROXY_SECRET: proxySecret,
+      // Exercise ordinary HTTPS production validation with dummy OAuth IDs.
+      // Only OAuth URL creation runs; no provider request is made.
+      PREP_SHEET_TEST_DATABASE: undefined,
+      BETTER_AUTH_URL: publicOrigin,
       // Starting OAuth creates local state and a URL only. No provider call.
       GOOGLE_CLIENT_ID: "proxy-smoke-client-id",
       GOOGLE_CLIENT_SECRET: "proxy-smoke-client-secret",
@@ -74,7 +79,7 @@ try {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        origin: environment.BETTER_AUTH_URL,
+        origin: publicOrigin,
         ...headers,
       },
       body: JSON.stringify({
@@ -84,6 +89,16 @@ try {
       }),
     });
   assert.equal((await fetch(first.origin)).status, 403);
+  for (const path of ["/health/live", "/health/ready"])
+    assert.equal((await fetch(`${first.origin}${path}`)).status, 403);
+  assert.equal(
+    (
+      await fetch(`${first.origin}/health/live`, {
+        headers: verified(identity),
+      })
+    ).status,
+    200,
+  );
   assert.equal(
     (await fetch(`${first.origin}/branding/icon-192.png`)).status,
     403,
@@ -129,10 +144,7 @@ try {
     assert.equal(response.status, 200, await response.clone().text());
     const body = z.object({ url: z.url() }).parse(await response.json());
     const redirect = new URL(body.url).searchParams.get("redirect_uri");
-    assert.equal(
-      redirect,
-      `${environment.BETTER_AUTH_URL}/api/auth/callback/google`,
-    );
+    assert.equal(redirect, `${publicOrigin}/api/auth/callback/google`);
   }
   const throttled = await signIn(second, verified(identity));
   assert.equal(throttled.status, 429);

@@ -3,9 +3,9 @@ import { fork } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { request as httpRequest } from "node:http";
 import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
 

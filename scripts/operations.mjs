@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { clientIpHeader, proxySecretHeader } from "./client-ip.mjs";
 
 const require = createRequire(
   new URL("../packages/db/package.json", import.meta.url),
@@ -116,12 +117,23 @@ export function createOperations({
   };
 }
 
+// Private probes use the same authenticated ingress contract as the proxy.
+// Never exempt health routes from the listener's client-IP boundary.
+export function operationsHeaders() {
+  return process.env.WEB_PROXY_SECRET
+    ? {
+        [proxySecretHeader]: process.env.WEB_PROXY_SECRET,
+        [clientIpHeader]: "127.0.0.1",
+      }
+    : {};
+}
+
 export async function healthcheck(mode) {
   if (mode === "worker") return (await workerStatus()).ok;
   if (mode !== "web") throw new Error("Expected web or worker");
   const response = await fetch(
     `http://127.0.0.1:${process.env.PORT ?? 3001}/health/ready`,
-    { signal: AbortSignal.timeout(4000) },
+    { signal: AbortSignal.timeout(4000), headers: operationsHeaders() },
   );
   await response.body?.cancel();
   return response.ok;

@@ -44,7 +44,7 @@ Never provide real secrets to image builds or commit them to source.
 
 The web and worker require `NODE_ENV=production`, `DATABASE_URL`,
 `BETTER_AUTH_SECRET` with at least 32 characters and `BETTER_AUTH_URL` set to
-the public origin, normally HTTPS. Startup refuses skipped validation, missing
+the public HTTPS origin. Startup refuses skipped validation, missing
 migration history, a different migration history or incompatible recipe collation.
 It does not mutate the database.
 
@@ -117,6 +117,9 @@ Long migrations need a separately reviewed timeout/transaction strategy.
 leases and their index. `0003_manual_request_identity.sql` adds the nullable
 immutable manual submission hash. Existing recipe hashes remain unknown;
 recovery refuses to infer an original submission from mutable recipe content.
+`0004_auth_rate_limit.sql` adds the shared authentication throttle table. The
+runtime role needs DML on `auth_rate_limit`; use the normal candidate migration
+and verification steps before starting web or worker processes.
 Verification checks its provider, locale, stored/actual ICU version and numeric,
 case and accent comparison. PostgreSQL normalises the equivalent locale string.
 This release deliberately rejects PostgreSQL majors other than 18 until their

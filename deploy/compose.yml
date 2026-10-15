@@ -78,6 +78,7 @@ services:
     environment:
       <<: *environment
       OPS_WEB_URL: http://web:3001/health/live
+      WEB_PROXY_SECRET: ${WEB_PROXY_SECRET:?Set the shared proxy authentication secret}
       OPS_ALERT_WEBHOOK_URL: ${OPS_ALERT_WEBHOOK_URL:-}
       OPS_ALERT_TOKEN: ${OPS_ALERT_TOKEN:-}
 

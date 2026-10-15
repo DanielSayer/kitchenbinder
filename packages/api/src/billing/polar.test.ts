@@ -244,7 +244,8 @@ describe("Polar synchronization and signed webhooks", () => {
         .spyOn(customerPrototype, "getStateExternal")
         .mockResolvedValue(state);
       const event = await boundedRequest(request(undefined, false, standard));
-      if (!(event instanceof Request)) throw new Error("Expected admitted webhook");
+      if (!(event instanceof Request))
+        throw new Error("Expected admitted webhook");
       const altered = new Request(event.url, {
         method: "POST",
         headers: event.headers,
@@ -263,7 +264,8 @@ describe("Polar synchronization and signed webhooks", () => {
         activeSubscriptions: [{ ...subscription, cancelAtPeriodEnd: true }],
       });
       const event = await boundedRequest(request(undefined, false, standard));
-      if (!(event instanceof Request)) throw new Error("Expected admitted webhook");
+      if (!(event instanceof Request))
+        throw new Error("Expected admitted webhook");
       expect((await handlePolarWebhook(event.clone())).status).toBe(200);
       expect((await handlePolarWebhook(event)).status).toBe(200);
       const [account] = await db

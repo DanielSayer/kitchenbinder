@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { createOperations } from "./operations.mjs";
+import { createOperations, operationsHeaders } from "./operations.mjs";
 
 const destinationSchema = z.url().refine((value) => {
   const url = new URL(value);
@@ -75,6 +75,7 @@ export async function monitor() {
         const response = await fetch(web, {
           redirect: "error",
           signal: AbortSignal.timeout(4000),
+          headers: operationsHeaders(),
         });
         await response.body?.cancel();
         if (!response.ok) issues.push("web_unavailable");

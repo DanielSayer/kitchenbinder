@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
@@ -41,15 +41,22 @@ await writeFile(
     environment:
       HOST: 127.0.0.1
       PORT: "${hostPort}"
+      PREP_SHEET_TEST_DATABASE: isolated
   worker:
     network_mode: host
+    environment:
+      PREP_SHEET_TEST_DATABASE: isolated
 `
     : `services:
   web:
     ports: !override ["127.0.0.1::3001"]
     extra_hosts: ["host.docker.internal:host-gateway"]
+    environment:
+      PREP_SHEET_TEST_DATABASE: isolated
   worker:
     extra_hosts: ["host.docker.internal:host-gateway"]
+    environment:
+      PREP_SHEET_TEST_DATABASE: isolated
 `,
 );
 const project = `prep-sheet-ops-${randomUUID()}`;
@@ -67,6 +74,11 @@ const environment = {
   PREP_SHEET_IMAGE: process.env.PREP_SHEET_RELEASE_IMAGE,
   DATABASE_URL: database.href,
   BETTER_AUTH_URL: "http://localhost:3001",
+  AI_ENABLED: "false",
+  BILLING_MODE: "disabled",
+  SUPPORT_EMAIL: "support@example.test",
+  SUPPORT_OPERATOR: "Isolated Compose test operator",
+  WEB_PROXY_SECRET: randomBytes(32).toString("base64url"),
   OPENAI_API_KEY: "",
   POLAR_ACCESS_TOKEN: "",
   POLAR_PRO_PRODUCT_ID: "",
@@ -113,11 +125,17 @@ try {
     hostPort ?? compose(["port", "web", "3001"]).match(/:(\d+)$/)?.[1];
   assert.ok(port);
   const origin = `http://127.0.0.1:${port}`;
-  assert.equal((await fetch(`${origin}/health/ready`)).status, 200);
+  const headers = {
+    "x-prep-sheet-proxy-secret": environment.WEB_PROXY_SECRET,
+    "x-prep-sheet-client-ip": "127.0.0.1",
+  };
+  assert.equal((await fetch(`${origin}/health/ready`)).status, 403);
+  const probe = (path) => fetch(`${origin}${path}`, { headers });
+  assert.equal((await probe("/health/ready")).status, 200);
   compose(["stop", "worker"]);
   let unavailable = false;
   for (let attempt = 0; attempt < 30; attempt++) {
-    const response = await fetch(`${origin}/health/ready`);
+    const response = await probe("/health/ready");
     await response.body?.cancel();
     if (response.status === 503) {
       unavailable = true;
@@ -129,11 +147,11 @@ try {
     unavailable,
     "web must observe stopped worker through the shared volume",
   );
-  assert.equal((await fetch(`${origin}/health/live`)).status, 200);
+  assert.equal((await probe("/health/live")).status, 200);
   compose(["start", "worker"]);
   let recovered = false;
   for (let attempt = 0; attempt < 80; attempt++) {
-    const response = await fetch(`${origin}/health/ready`);
+    const response = await probe("/health/ready");
     await response.body?.cancel();
     if (response.ok) {
       recovered = true;

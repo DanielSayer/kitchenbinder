@@ -15,6 +15,14 @@ accept HEAD, reject other methods and send `Cache-Control: no-store`. Readiness
 returns only `{"status":"ok"}` or `{"status":"unavailable"}` with 503. Restrict
 probe traffic at the proxy; no user or queue details are exposed over HTTP.
 
+The authenticated ingress contract in [auth-proxy.md](auth-proxy.md) applies to
+both health routes. Compose healthchecks and the optional monitor send the
+configured `WEB_PROXY_SECRET` and a fixed local client identity. The monitor
+receives that secret separately from web. Keep its `OPS_WEB_URL` pointed at the
+private web listener; do not direct this credential-bearing probe to third-party
+URLs. External probes should use the public HTTPS proxy. Health routes do not
+bypass proxy authentication.
+
 The dedicated readiness pool has one connection, a 1-second connection deadline,
 a PostgreSQL 1-second statement timeout and a 1.5-second client query deadline.
 Concurrent checks share one pending query and results cache for 5 seconds.

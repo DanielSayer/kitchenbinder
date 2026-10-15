@@ -2,7 +2,6 @@ import { aiPolicy } from "../packages/env/src/ai-policy.ts";
 import { validateProviderConfiguration } from "../packages/env/src/providers.ts";
 
 try {
-  // biome-ignore lint/suspicious/noUndeclaredEnvVars: This standalone acceptance command never permits the test wrapper's topology.
   if (process.env.PREP_SHEET_TEST_DATABASE)
     throw new Error(
       "Provider acceptance cannot use the synthetic test topology.",

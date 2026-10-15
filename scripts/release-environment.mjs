@@ -1,6 +1,6 @@
 import { checkRelease, connect } from "../packages/db/scripts/migrate.mjs";
-import { getSupportConfig } from "../packages/env/src/support.ts";
 import { validateProviderConfiguration } from "../packages/env/src/providers.ts";
+import { getSupportConfig } from "../packages/env/src/support.ts";
 
 export async function verifyRelease() {
   validateProviderConfiguration(process.env);
