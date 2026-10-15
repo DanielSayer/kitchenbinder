@@ -1,0 +1,13 @@
+# Example only. Set installation, secret-file and archive paths for the actual host.
+[Unit]
+Description=Prep Sheet PostgreSQL backup
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/prep-sheet
+EnvironmentFile=/etc/prep-sheet/backup.env
+ExecStart=/usr/bin/node scripts/backup-database.mjs --directory /var/backups/prep-sheet
+UMask=0077
+TimeoutStartSec=360
