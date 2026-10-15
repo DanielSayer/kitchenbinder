@@ -9,6 +9,7 @@
     "dev": "vite dev"
   },
   "dependencies": {
+    "@prep-sheet/env": "workspace:*",
     "@prep-sheet/api": "workspace:*",
     "@prep-sheet/auth": "workspace:*",
     "@prep-sheet/db": "workspace:*",

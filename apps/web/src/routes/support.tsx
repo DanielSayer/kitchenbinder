@@ -1,11 +1,16 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ReportForm } from "@/components/report-form";
 import { SupportContact } from "@/components/support-contact";
+import { getSupportContact } from "@/functions/get-support-contact";
 import { authClient } from "@/lib/auth-client";
 
-export const Route = createFileRoute("/support")({ component: Support });
+export const Route = createFileRoute("/support")({
+  loader: () => getSupportContact(),
+  component: Support,
+});
 
 function Support() {
+  const { email } = Route.useLoaderData();
   const { data: session, isPending } = authClient.useSession();
   return (
     <main id="main-content" className="page-width help-page">
@@ -19,7 +24,7 @@ function Support() {
       </div>
       <section className="help-section">
         <h2>Get help</h2>
-        <SupportContact />
+        <SupportContact email={email} />
         <p>
           Your sign-in provider manages your password and sign-in email. Prep
           Sheet account deletion is available in{" "}

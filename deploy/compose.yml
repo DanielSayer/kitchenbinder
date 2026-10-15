@@ -12,6 +12,8 @@ x-runtime: &runtime
     DATABASE_IDLE_TIMEOUT_MS: ${DATABASE_IDLE_TIMEOUT_MS:-30000}
     BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set the session signing secret}
     BETTER_AUTH_URL: ${BETTER_AUTH_URL:?Set the public HTTPS origin}
+    SUPPORT_EMAIL: ${SUPPORT_EMAIL:?Set the monitored public support mailbox}
+    SUPPORT_OPERATOR: ${SUPPORT_OPERATOR:?Set the responsible support operator}
     EXTENSION_IDS: ${EXTENSION_IDS:-}
     GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}

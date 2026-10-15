@@ -87,6 +87,11 @@ try {
   const health = await request("/api/trpc/healthCheck");
   assert.equal(health.status, 200);
   assert.match(await health.text(), /OK/);
+  const supportPage = await request("/support");
+  assert.equal(supportPage.status, 200);
+  const supportHtml = await supportPage.text();
+  assert.ok(supportHtml.includes(`mailto:${process.env.SUPPORT_EMAIL}`));
+  assert.ok(!supportHtml.includes(process.env.SUPPORT_OPERATOR));
   const privateApi = await request("/api/trpc/recipes.list");
   assert.equal(privateApi.status, 401);
   await privateApi.text();

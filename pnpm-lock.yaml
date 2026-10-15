@@ -148,6 +148,9 @@ importers:
       '@prep-sheet/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@prep-sheet/env':
+        specifier: workspace:*
+        version: link:../../packages/env
       '@prep-sheet/ui':
         specifier: workspace:*
         version: link:../../packages/ui
