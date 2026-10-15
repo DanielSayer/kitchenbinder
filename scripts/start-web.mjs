@@ -5,6 +5,8 @@ import { extname, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
+import { bodyByteLimit } from "./http-body.mjs";
+import { finishRejectedBody, incomingBody } from "./incoming-body.mjs";
 import { verifyRelease } from "./release-environment.mjs";
 
 const origin = await verifyRelease();
@@ -53,6 +55,15 @@ const server = createServer(async (incoming, outgoing) => {
     const url = new URL(origin);
     url.pathname = target.pathname;
     url.search = target.search;
+    if (
+      Number(incoming.headers["content-length"]) > bodyByteLimit(url.pathname)
+    ) {
+      finishRejectedBody(incoming, outgoing);
+      outgoing
+        .writeHead(413, { "cache-control": "no-store" })
+        .end("Request body too large.");
+      return;
+    }
     if (["GET", "HEAD"].includes(incoming.method ?? "")) {
       const candidate = resolve(root, `.${decodeURIComponent(url.pathname)}`);
       if (candidate.startsWith(root + sep)) {
@@ -98,14 +109,18 @@ const server = createServer(async (incoming, outgoing) => {
     ])
       headers.delete(name);
     const hasBody = !["GET", "HEAD"].includes(incoming.method ?? "");
+    // The built Fetch entry counts streamed bytes, including chunked requests,
+    // before dispatching to auth, tRPC or raw webhook parsers.
     const response = await application.fetch(
       new Request(url, {
         method: incoming.method,
         headers,
         signal: abort.signal,
-        ...(hasBody ? { body: Readable.toWeb(incoming), duplex: "half" } : {}),
+        ...(hasBody ? { body: incomingBody(incoming), duplex: "half" } : {}),
       }),
     );
+    if ([408, 413].includes(response.status))
+      finishRejectedBody(incoming, outgoing);
     for (const [name, value] of response.headers) {
       if (name !== "set-cookie") outgoing.setHeader(name, value);
     }
