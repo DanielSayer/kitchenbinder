@@ -17,7 +17,7 @@
     "@prep-sheet/env": "workspace:*",
     "better-auth": "catalog:",
     "dotenv": "catalog:",
-    "drizzle-orm": "^0.45.2",
+    "drizzle-orm": "^0.45.4",
     "zod": "catalog:"
   },
   "devDependencies": {

@@ -44,9 +44,13 @@ export function pdfWorker(): Plugin {
       await developmentBuild;
       return `export default ${JSON.stringify(pathToFileURL(`${developmentDirectory}/pdf-worker.js`).href)};`;
     },
-    resolveFileUrl({ fileName, relativePath }) {
-      if (fileName !== "pdf-worker.js") return;
-      return `new URL(${JSON.stringify(relativePath)}, import.meta.url).href`;
+    resolveFileUrl: {
+      // Vite's asset hook otherwise turns this Node worker into a public URL.
+      order: "pre",
+      handler({ fileName, relativePath }) {
+        if (fileName !== "pdf-worker.js") return;
+        return `new URL(${JSON.stringify(relativePath)}, import.meta.url).href`;
+      },
     },
   };
 }
