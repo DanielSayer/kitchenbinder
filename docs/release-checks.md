@@ -55,7 +55,7 @@ CI separately builds the web production artifact and packages development extens
 
 Make the `release-checks` job required in repository branch protection before relying on it to prevent merges. This workflow performs validation; it does not deploy the website, migrate a production database or verify the eventual host.
 
-## Verification on 13 October 2026
+## Historical verification on 13 October 2026
 
 Local verification used Windows, Node 26.7.0, pnpm 11.21.0 and Docker 27.4.0:
 
@@ -66,6 +66,6 @@ Local verification used Windows, Node 26.7.0, pnpm 11.21.0 and Docker 27.4.0:
 - The focused auth/shopping suites passed 12 tests. The full isolated suite passed 38 files and 292 tests, including the fresh-build authenticated server/PDF regression. Seven paid AI tests were skipped. Docker test resources were removed.
 - The standalone web production build passed. The existing large client-chunk warning remains.
 - Chrome and Edge development builds and ZIPs passed without cached package results.
-- Actionlint 1.7.12 accepted the workflow. The hosted GitHub job has not run because these commits have not been pushed.
+- Actionlint 1.7.12 accepted the workflow. At that point the hosted GitHub job had not run because those commits had not been pushed. This dated record does not describe the current candidate's hosted status; inspect the exact commit's release-checks run.
 
 P08's compiler and repository-check gaps are resolved. Production host acceptance, store extension release and the other production-readiness audit findings remain separate launch work.

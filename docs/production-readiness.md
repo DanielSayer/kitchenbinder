@@ -6,6 +6,14 @@ still requires the environment-specific acceptance below. No live deployment,
 OAuth exchange, paid AI import, payment or external support/alert message was
 performed during integration.
 
+The selected target is one Amazon Lightsail Linux instance with the existing
+Docker Compose web, import worker and monitoring topology, Neon PostgreSQL 18,
+and Cloudflare domain/DNS. Preparation does not provision or accept that target.
+Initial private staging is Google only with `AI_ENABLED=false` and
+`BILLING_MODE=disabled`, leaving Discord, OpenAI and Polar credentials/product
+IDs unset. The actual host, HTTPS origin, DNS and provider configuration remain
+pending inputs.
+
 ## Combined contracts
 
 - The Node listener authenticates proxy traffic before serving static, API or
@@ -27,8 +35,8 @@ performed during integration.
 
 | Area | Required evidence or configuration | Procedure |
 | --- | --- | --- |
-| Host and ingress | Chosen runtime, HTTPS hostname, restricted origin access, secret delivery, forged-header rejection, independent client limits, CPU/memory and aggregate resource limits under representative load | [Auth proxy](auth-proxy.md), [resource limits](resource-limits.md) |
-| Database | PostgreSQL 18 with ICU, verified TLS, migration/runtime/backup permissions, connection budget, applied and verified candidate migrations | [Deployment](deployment.md) |
+| Host and ingress | Actual Lightsail Linux capacity, HTTPS hostname and Cloudflare DNS/ingress arrangement, restricted origin access, secret delivery, forged-header rejection, independent client limits, CPU/memory and aggregate resource limits under representative load | [Auth proxy](auth-proxy.md), [resource limits](resource-limits.md) |
+| Database | Neon PostgreSQL 18/ICU and collation verification, trusted certificate/hostname TLS validation, direct migration/verification endpoint, separate migration/runtime roles and backup permissions, connection and query wait budgets, applied and verified candidate migrations before startup | [Deployment](deployment.md) |
 | Recovery and alerts | Off-host encrypted backup/PITR destination and retention, named escalation owner, tested alert receiver, worker/database/host failure drills, isolated production-sized restore and measured RPO/RTO | [Operations](operations.md) |
 | OAuth | Actual callback registrations and credentials, controlled accounts, real login/logout/linking/account-switching on the HTTPS origin | [Provider acceptance](provider-acceptance.md) |
 | AI, if enabled | Approved project/model and spend controls, permission for paid acceptance imports, output and credit-accounting verification | [Provider acceptance](provider-acceptance.md) |
@@ -37,11 +45,14 @@ performed during integration.
 
 Support mailbox and operator placeholders deliberately remain blank until the
 owner supplies them. Production startup refuses missing values. AI and billing
-can remain explicitly disabled while the private staging sign-in and operational
-checks are completed.
+remain explicitly disabled while the private staging sign-in and operational
+checks are completed. Migrate and verify separately, then start web and worker
+from the same immutable image. The default release procedure uses maintenance
+downtime; mixed releases need an explicit compatibility review.
 
 The separate P2 audit work remains outside these PRs: expired recipe cleanup and
-retention policy, billing lock contention, dependency-advisory remediation and
-remaining historical setup documentation. Production browser-extension identity,
-installed Chrome/Edge acceptance and store release also remain separate if the
+retention policy, billing lock contention and dependency-advisory remediation.
+Active setup documentation now directs operators to versioned migrations;
+dated verification notes remain historical evidence. Production browser-extension
+identity, installed Chrome/Edge acceptance and store release also remain separate if the
 extension is included in launch.

@@ -1,9 +1,36 @@
-# Portable Node release and database runbook
+# Node release and database runbook
 
 This release supports Node 26.7.0, pnpm 11.21.0 and PostgreSQL 18 built with ICU.
 It runs the website and import worker as separate supervised processes from the
-same immutable release. No hosting provider is required to build or test it.
-Production credentials and a deployment destination remain operator decisions.
+same immutable image. No hosting provider is required to build or test it.
+
+The selected deployment is one Amazon Lightsail Linux instance running the
+existing Docker Compose web, import worker and monitoring topology, Neon
+PostgreSQL 18, and Cloudflare domain/DNS. This document prepares that release;
+it does not establish a provisioned or accepted environment. Initial private
+staging uses Google only, `AI_ENABLED=false` and `BILLING_MODE=disabled`. Keep
+Discord, OpenAI and Polar credentials/product IDs unset for that stage. Enable
+other providers/features only after their separate acceptance checks.
+
+## Pending deployment inputs and acceptance
+
+Before startup, record the actual Lightsail host and capacity, HTTPS origin and
+Cloudflare DNS/ingress arrangement. Configure and verify the authenticated proxy
+contract at that origin, including resource limits. Cloudflare DNS selection alone
+does not establish origin TLS, proxy identity or request admission.
+
+The Neon database's PostgreSQL 18/ICU support, collation behaviour and version,
+verified TLS, direct migration endpoint, separate runtime/migration roles and
+backup access remain to be verified. Choose pool and statement/lock/transaction
+wait budgets for the selected capacity. Keep migration credentials outside the
+web/worker environment. The actual Google client, consent/test-account setup and
+HTTPS callback, `BETTER_AUTH_SECRET`, monitored `SUPPORT_EMAIL` and responsible
+`SUPPORT_OPERATOR` with cover are also pending inputs. Startup validation cannot
+prove provider sign-in, mailbox attendance or live database acceptance.
+
+Complete the [production-readiness acceptance](production-readiness.md), including
+off-host recovery and independent host/monitor alerts. Repository and packaged
+CI checks do not substitute for those live checks.
 
 ## Build and package
 
@@ -12,11 +39,16 @@ From a clean checkout of the selected commit:
 ```sh
 pnpm install --frozen-lockfile
 pnpm check
+pnpm build:release
 pnpm check-types
 pnpm test
-pnpm build:release
 docker build -t prep-sheet:RELEASE_COMMIT .
 ```
+
+The web build must precede type checking on a clean checkout because it generates
+the ignored `apps/web/src/routeTree.gen.ts`. This matches CI's initial web build
+before its compiler checks. The later Docker build packages the same selected
+commit for Linux.
 
 Use an immutable image digest in `PREP_SHEET_IMAGE`. Record the commit, image
 digest, previous image and database backup identifier in the deployment record.
@@ -52,21 +84,28 @@ Production also requires `SUPPORT_EMAIL` and `SUPPORT_OPERATOR`. Select a monito
 mailbox and a responsible queue owner, then complete the manual acceptance in
 [account and support operations](account-support.md#launch-configuration-and-acceptance).
 
-Inject complete Google/Discord credential pairs for at least one sign-in provider.
+For private staging, inject the complete Google credential pair and leave both
+Discord values unset. At least one complete sign-in provider is required.
 Choose `AI_ENABLED=true|false` and `BILLING_MODE=disabled|sandbox|production`
 explicitly. Enabled AI requires a key and the reviewed model. Enabled billing
 requires all Polar settings and an explicitly matching `POLAR_SERVER`.
 `EXTENSION_IDS` must match released extensions. `deploy/compose.yml` forwards
 these settings. Both runtime entry points reject unsafe provider configuration
-before accessing the database. Run `pnpm providers:check` and complete the
-[provider acceptance workflow](provider-acceptance.md) for the actual HTTPS origin.
+before accessing the database. Run `pnpm providers:check` with the intended
+runtime environment and complete the [provider acceptance workflow](provider-acceptance.md)
+for the actual HTTPS origin.
 
 Configure encrypted PostgreSQL transport using the provider's trusted certificate
-and node-postgres connection options. Do not disable certificate verification.
-The tested configuration uses direct PostgreSQL connections. Migrations require
-a direct connection with ownership of application tables and permission to
+and node-postgres connection options. Verify certificate and hostname validation
+on the actual Neon endpoint; do not disable certificate verification or assume an
+encrypted connection proves peer verification. The tested repository configuration
+uses direct PostgreSQL connections; Neon transport has not been accepted here.
+Both migrations and `db:verify` require a direct connection with ownership of
+application tables and permission to
 create/drop a temporary verification schema. Use a separate migration credential,
-then restore the runtime credential in `DATABASE_URL`.
+then restore the runtime credential in `DATABASE_URL` before startup. Verification
+replays DDL in a temporary schema even when no migration is pending, so it uses
+the migration role. Runtime startup performs read-only release checks instead.
 
 The runtime role needs application table DML and read access to
 `public.prep_sheet_migration` and PostgreSQL catalogues. It does not need DDL.
@@ -80,21 +119,30 @@ timeout and a 30-second idle timeout. Set `DATABASE_POOL_MAX`,
 The web owns an API pool and a separate auth pool. The worker owns its API pool.
 Budget at least `2 × web replicas × pool max + worker replicas × pool max`,
 plus migration, monitoring and operator connections. Pools open connections lazily.
-Allow room for old and new processes during deployment. Transaction locks are
-used for admission and queue claiming. Statement pooling is unsupported.
+Include readiness probes in that budget. The maintenance procedure stops old
+web and worker processes before migration; it does not overlap old/new releases.
+Transaction locks are used for admission and queue claiming. Statement pooling
+is unsupported.
 Transaction/session pooling has not been exercised; verify its transaction,
-TLS and shutdown behaviour before substituting a pooler.
+TLS and shutdown behaviour before substituting a pooler, including a Neon pooled
+endpoint. Use a direct endpoint for migration, verification and adoption.
 
 ## Initial provisioning
 
-Create an empty, dedicated PostgreSQL 18 database with UTF-8 encoding and ICU
-support using the database provider's normal provisioning process. With its
-direct migration credential injected:
+Create an empty, dedicated Neon PostgreSQL 18 database with UTF-8 encoding and
+verify ICU support using the provider's provisioning process. No Neon database
+has been provisioned or queried for this preparation. With its direct migration
+credential injected as `DATABASE_URL`:
 
 ```sh
 pnpm db:migrate
 pnpm db:verify
 ```
+
+These root package scripts read the process environment and do not load
+`apps/web/.env`. For local development only, use
+`node --env-file=apps/web/.env packages/db/scripts/migrate.mjs` and the same command
+with `--verify`. Do not point local/test commands at a remote database by mistake.
 
 For the container, use the same image that will run the application:
 
@@ -120,8 +168,9 @@ recovery refuses to infer an original submission from mutable recipe content.
 `0004_auth_rate_limit.sql` adds the shared authentication throttle table. The
 runtime role needs DML on `auth_rate_limit`; use the normal candidate migration
 and verification steps before starting web or worker processes.
-Verification checks its provider, locale, stored/actual ICU version and numeric,
-case and accent comparison. PostgreSQL normalises the equivalent locale string.
+Verification checks the collation's provider, locale, stored/actual ICU version
+and numeric, case and accent comparison. PostgreSQL normalises the equivalent
+locale string.
 This release deliberately rejects PostgreSQL majors other than 18 until their
 catalogue checks and application suite have been exercised.
 
@@ -153,9 +202,9 @@ pnpm db:verify
 
 Ordinary `db:migrate` refuses unversioned databases containing tables.
 Explicit adoption runs only the recorded recipe-revision, reliable-import,
-billing, recipe-list, import-save-retry and manual-request-identity upgrades,
-then compares all columns, SQL types,
-nullability, defaults, constraints and indexes with a fresh schema made from the
+billing, recipe-list, import-save-retry, manual-request-identity and auth-rate-limit
+upgrades, then compares all columns, SQL types, nullability, defaults, constraints
+and indexes with a fresh schema made from the
 versioned history. Equivalent historical constraint/index names are accepted and
 renamed to their versioned names after validation, so later generated migrations
 can address them.
@@ -174,7 +223,10 @@ unknown production database or a completed production backup recovery exercise.
 
 ## Start, supervise and verify
 
-After migration verification, inject runtime credentials and start both processes:
+Migration and verification are separate one-off steps, using the candidate image
+and direct migration credentials while old web and worker processes are stopped.
+Compose startup does not run them. After successful verification, inject runtime
+credentials and start both processes in separate supervised sessions:
 
 ```sh
 pnpm start
@@ -187,6 +239,13 @@ Or use the provided supervision configuration:
 docker compose -f deploy/compose.yml up -d
 docker compose -f deploy/compose.yml logs --tail=50 web worker
 ```
+
+The selected topology also uses the opt-in monitoring service. Configure its
+receiver and follow [operations](operations.md) to enable the `monitoring` profile
+and test delivery, recovery notifications and independent host-loss detection.
+Starting Compose without that profile starts only web and worker. Keep all
+services on the recorded immutable `PREP_SHEET_IMAGE`; never use a separately
+built worker image or move a mutable tag between migration and startup.
 
 The Node listener serves SSR/API routes and built files from `dist/client`.
 Hashed assets receive immutable caching; public branding files revalidate.
@@ -285,8 +344,9 @@ verifies the entire combined schema before recording history. Compatible
 already-applied feature upgrades retain retry counters, leases and manual hashes;
 incompatible defaults or column definitions roll back without recording history.
 An installation already carrying the two published baseline migrations uses
-ordinary `db:migrate` to apply migrations 0002 and 0003. Both paths preserve
-existing recipes, checkpoints, planner records and billing data.
+ordinary `db:migrate` to apply the remaining numbered migrations through 0004,
+then `db:verify`. Both paths preserve existing recipes, checkpoints, planner
+records and billing data.
 
 `pnpm test` still owns one disposable PostgreSQL container and removes it in
 `finally`. It now provisions with versioned migrations instead of Drizzle push.
@@ -304,7 +364,7 @@ they do not create a second shared database service.
 See [Docker host networking](https://docs.docker.com/engine/network/drivers/host/)
 for the Linux network behaviour used by these tests.
 
-## Local verification on 14 October 2026
+## Historical local verification on 14 October 2026
 
 Verification used Windows, Node 26.7.0, pnpm 11.21.0 and Docker 27.4.0:
 
@@ -322,7 +382,10 @@ Verification used Windows, Node 26.7.0, pnpm 11.21.0 and Docker 27.4.0:
   packaging, Compose configuration validation with placeholders, Actionlint
   1.7.12 and `git diff --check` passed. The existing large client-chunk warning remains.
 
-Hosted GitHub CI and an actual deployment host were not verified in this local
-run. No production database, paid AI or payment flow was used. Real sign-in,
+Hosted GitHub CI and an actual deployment host were not verified in that local
+run. This dated record is not the current release status; use the selected
+commit's [release checks](release-checks.md) and
+[production-readiness acceptance](production-readiness.md). No production
+database, paid AI or payment flow was used. Real sign-in,
 provider imports, billing, host TLS/proxy behaviour, pooler compatibility,
 backup restoration and operational alert delivery remain acceptance work.
