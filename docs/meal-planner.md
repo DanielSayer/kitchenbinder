@@ -14,13 +14,14 @@ Planner writes use account-scoped locks and revisions. Applying a preview checks
 
 ## Database setup
 
-Run `pnpm db:push` from the repository workflow, or run `drizzle-kit push` from `packages/db`, before deploying this feature. The new `meal_planner` table has account ownership, revision, JSON meal entries and the active trip snapshot. Existing recipe and shopping tables are unchanged. Resetting the shopping list also clears the active planner-trip link, while retaining planned meals.
+The versioned schema includes `meal_planner`, with account ownership, revision, JSON meal entries and the active trip snapshot. With the direct migration credential injected as `DATABASE_URL`, run `pnpm db:migrate` and `pnpm db:verify` while web and worker are stopped, then start both from the same candidate image with runtime credentials. An unversioned database needs a backup, restored-copy rehearsal and explicitly reviewed `pnpm db:adopt`, followed by verification. Follow the [deployment runbook](deployment.md); schema push is not a deployment step. Resetting the shopping list also clears the active planner-trip link, while retaining planned meals.
 
 ## Verification
 
 ```sh
-node node_modules/vitest/vitest.mjs run
-node node_modules/typescript/bin/tsc --noEmit -p apps/web/tsconfig.json
+pnpm build:release
+pnpm check-types
+pnpm test packages/api/src/planner.integration.test.ts
 ```
 
-The planner integration suite uses isolated PostgreSQL accounts and cleans them up. It covers authentication, recipe access, privacy, competing edits, repeated cooking sessions, leftover validation, stale previews, preserving groceries and purchased portions, removing covered meals, empty trips and resetting the active-trip link.
+Run from the repository root. The build generates web routes before type checking on a clean checkout. The `pnpm test` wrapper provisions and removes a disposable PostgreSQL 18 database; never invoke Vitest directly or use the development/production database. The planner integration suite creates isolated accounts and cleans them up. It covers authentication, recipe access, privacy, competing edits, repeated cooking sessions, leftover validation, stale previews, preserving groceries and purchased portions, removing covered meals, empty trips and resetting the active-trip link.

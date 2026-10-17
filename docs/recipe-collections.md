@@ -10,19 +10,22 @@ Pages use offsets. Concurrent inserts, deletes or sort changes can move recipes 
 
 The UI tests in `apps/web/src/components/recipes/pagination.test.ts` exercise page resets, navigation restoration, deletion recovery and shopping selections retained across page/search changes and submitted together.
 
-Final verification on 11 October 2026 passed 37 files and 291 tests through `pnpm test`, with seven live AI tests skipped. The wrapper removed its PostgreSQL container and volume. `pnpm check-types`, the explicit web/database TypeScript checks and the web production build passed. The standalone API TypeScript check still reports two existing errors: the PDF logo `?inline` import has no declaration, and the shopping integration test compares a general string against an array inferred as UUID template strings. The build retains its existing large client chunk warning.
-
 Shopping and meal pickers select only ID, title, collection ID and servings from JSON. The meal editor looks up a selected recipe through `shopping.recipe`, which returns the same small projection even when that recipe is outside the current page. The tag picker requests ID, title and collection ID, with the already-applied tag excluded on the server. All queries preserve membership/account permission checks and exclude deleted recipes.
 
 ## Database setup
 
-Before starting this version against a new or existing database, apply `packages/db/src/upgrades/recipe-list.sql` with your normal PostgreSQL deployment tool. It idempotently creates `recipe_name`, an ICU collation with numeric ordering and primary strength. The PostgreSQL build must support ICU. Drizzle push does not create collations. The isolated test wrapper applies this SQL after its schema setup.
+Use PostgreSQL 18 with ICU. Versioned migration `0001_recipe_name.sql` creates `recipe_name`, the nondeterministic ICU collation with numeric ordering and primary strength. With the direct migration credential injected as `DATABASE_URL`, run these from the repository root while web and worker are stopped:
 
-For the repository's local Docker database, from the repository root in PowerShell:
-
-```powershell
-Get-Content packages/db/src/upgrades/recipe-list.sql -Raw | docker exec -i prep-sheet-postgres psql -U postgres -d prep-sheet -v ON_ERROR_STOP=1
+```sh
+pnpm db:migrate
+pnpm db:verify
 ```
+
+Verification checks migration hashes, the complete schema, collation locale/version and comparison behaviour. An unversioned installation requires a backup, restored-copy rehearsal and explicitly reviewed `pnpm db:adopt`, followed by verification. Follow the [deployment runbook](deployment.md). Do not apply `recipe-list.sql` separately or use schema push as release setup. The test wrapper applies the complete versioned migrations to its disposable database.
+
+## Historical verification on 11 October 2026
+
+That feature run passed 37 files and 291 tests through `pnpm test`, with seven live AI tests skipped. The wrapper removed its PostgreSQL container and volume. The then-current `pnpm check-types`, explicit web/database TypeScript checks and web production build passed. A separate API TypeScript check reported two errors at that time: a missing PDF logo `?inline` declaration and a shopping test string/UUID comparison. These are dated observations, not current failures. The current release gate includes the API compiler; use [release checks](release-checks.md) to verify a candidate. The feature build also reported a large client chunk warning.
 
 ## Regression and measurement
 
@@ -30,8 +33,8 @@ Get-Content packages/db/src/upgrades/recipe-list.sql -Raw | docker exec -i prep-
 
 On 11 October 2026, the full recipe projection was 14,090,891 JSON bytes. A 24-recipe collection page, including its count, was 8,760 bytes; the shopping picker page was 2,462 bytes. These are JSON sizes before transport framing or compression. The legacy measurement includes only ID, title and content, so it understates the old complete list payload. One local run measured 61.81 ms for that full query and 21.79 ms for the paginated endpoint, including its count and transaction. These observations are not latency guarantees. `EXPLAIN ANALYZE` of the actual paginated collection query returned a Limit node with 24 rows and 13.91 ms execution time.
 
-## Browser verification
+## Historical browser verification on 11 October 2026
 
 The running local app was inspected in the in-app Chromium browser with an authenticated development session and a temporary 30-recipe group. Desktop checks used 1280 × 900; mobile layouts used 390 × 844 and 320 × 760. The collection displayed 24 then 6 recipes, sorted names naturally, found the 15 tomato recipes through ingredient search, retained bulk selections across pages/search, and returned from detail to page two. The shopping picker retained selections across pages and displayed original servings. Collection and picker layouts had no horizontal overflow; the mobile picker has an explicit full-width Add ingredients action below the selection summary.
 
-Picker selections were exercised at desktop width. Automation clicks in the mobile viewport did not reliably hit dropdown options, so mobile evidence is layout inspection of those selected states, rather than a verified touchscreen interaction. Meal and tag pickers were integrated and covered by API/type checks, but their complete rendered flows were not exercised. No production deployment, real mobile device or paid AI call was used. The temporary group and all 30 fixture recipes were removed, and the original personal collection was restored. The local development database's collation was applied; other environments still need the setup SQL.
+Picker selections were exercised at desktop width. Automation clicks in the mobile viewport did not reliably hit dropdown options, so mobile evidence is layout inspection of those selected states, rather than a verified touchscreen interaction. Meal and tag pickers were integrated and covered by API/type checks, but their complete rendered flows were not exercised. No production deployment, real mobile device or paid AI call was used. The temporary group and all 30 fixture recipes were removed, and the original personal collection was restored. The local development database's collation was applied during that feature work. Current environments use the versioned migration and verification procedure above.

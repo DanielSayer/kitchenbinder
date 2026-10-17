@@ -14,36 +14,40 @@ Copy `apps/web/.env.example` to `apps/web/.env` and fill in the credentials. Kee
 - `DATABASE_URL`: local Docker PostgreSQL connection.
 - `BETTER_AUTH_SECRET`: a random secret of at least 32 characters.
 - `BETTER_AUTH_URL`: `http://localhost:3001`.
-- `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET`: from your Discord application.
-- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`: from a Google Cloud OAuth client of type Web application.
-- `OPENAI_API_KEY`: an API key with available API credits.
+- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`: from a Google Cloud OAuth client of type Web application. Configure at least one sign-in provider.
+- `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET`: optional alternative from your Discord application. Leave both blank for Google-only staging.
+- `AI_ENABLED=false` and `BILLING_MODE=disabled`: keep AI and billing disabled for initial setup and private staging.
+- `OPENAI_API_KEY`: needed only when explicitly enabling AI after provider acceptance.
 - `OPENAI_MODEL`: defaults to `gpt-5.6-luna`.
 
-Register `http://localhost:3001/api/auth/callback/discord` in the Discord Developer Portal under OAuth2 redirects. Use the same hostname for the app and callback.
+If enabling Discord locally, register `http://localhost:3001/api/auth/callback/discord` in the Discord Developer Portal under OAuth2 redirects. Use the same hostname for the app and callback.
 
 For Google, configure the OAuth consent screen and create a Web application client in Google Cloud Console. Register `http://localhost:3001/api/auth/callback/google` as an authorized redirect URI. Add the equivalent HTTPS URI for your production domain. While the consent screen is in testing mode, add your test accounts; make the app available to your intended audience before public launch. Set both Google environment variables and restart the server. Only basic profile and email access is used.
 
-Existing users should sign in with Discord and choose **Settings > Account > Link Google** to keep their recipes and groups. Linking requires a session created within the last ten minutes and matching email addresses. Users with older sessions must sign out and sign in again. Matching emails never silently merge accounts. An identity already attached to another Prep Sheet account cannot be linked or merged through this flow. Email/password sign-in is not enabled.
+Existing Discord users should sign in with Discord and choose **Settings > Account > Link Google** to keep their recipes and groups, before Discord is disabled on that installation. Linking requires a session created within the last ten minutes and matching email addresses. Users with older sessions must sign out and sign in again. Matching emails never silently merge accounts. An identity already attached to another Prep Sheet account cannot be linked or merged through this flow. Email/password sign-in is not enabled.
 
 ```sh
-pnpm db:push
+node --env-file=apps/web/.env packages/db/scripts/migrate.mjs
+node --env-file=apps/web/.env packages/db/scripts/migrate.mjs --verify
 pnpm dev
 ```
 
-Open http://localhost:3001. Drizzle push remains available for disposable development
-schemas. Production now uses versioned migrations, including the recipe collation.
-For a new database with local configuration, run
-`node --env-file=apps/web/.env packages/db/scripts/migrate.mjs` instead of push.
-Existing schemas require explicit, verified adoption. See the
-[deployment and rollback runbook](docs/deployment.md) before using these commands
-outside development. The historical feature-specific upgrade notes below describe
-the legacy schema; the runbook replaces those individual production steps.
+Open http://localhost:3001. These commands load the ignored local configuration.
+With `DATABASE_URL` already injected, their equivalents are `pnpm db:migrate`
+and `pnpm db:verify`; those package scripts do not load `.env` automatically.
+Existing versioned databases use the same migration/verification sequence.
+An unversioned database containing tables requires a backup, a restored-copy
+rehearsal and explicitly reviewed `pnpm db:adopt` before verification. Follow the
+[deployment and rollback runbook](docs/deployment.md). Do not apply feature upgrade
+SQL separately. `pnpm db:push` remains a disposable development-schema tool; it
+does not establish the migration ledger or required ICU collation and is not a
+complete setup for the release runtime.
 
-Recipe collections and pickers use bounded summary pages with server-side search and sorting. Apply `packages/db/src/upgrades/recipe-list.sql` before running this version, including on new databases. See [recipe collection pages](docs/recipe-collections.md) for setup, ordering and measurement details.
+Recipe collections and pickers use bounded summary pages with server-side search and sorting. The versioned migrations include their required ICU collation. See [recipe collection pages](docs/recipe-collections.md) for ordering and measurement details.
 
-Recipe edits require a revision token. Before deploying this update to an existing database, apply `packages/db/src/upgrades/recipe-revisions.sql`. The local database was upgraded during implementation. Saves atomically check and increment the revision. Drafts retain the original fields and revision in tab storage, including after refresh. Saving combines changes to separate fields automatically. Only fields changed differently in both versions require a Mine or Saved choice, followed by one Save recipe action. Ingredients and method are compared as whole sections. Older drafts without an original snapshot require choices for differing fields. Users can view the saved recipe without losing their draft, or save their draft as a personal copy. Every save still checks the revision, including after review. Full version history is not stored.
+Recipe edits require a revision token. Saves atomically check and increment the revision. Drafts retain the original fields and revision in tab storage, including after refresh. Saving combines changes to separate fields automatically. Only fields changed differently in both versions require a Mine or Saved choice, followed by one Save recipe action. Ingredients and method are compared as whole sections. Older drafts without an original snapshot require choices for differing fields. Users can view the saved recipe without losing their draft, or save their draft as a personal copy. Every save still checks the revision, including after review. Full version history is not stored.
 
-Recipe favourites and 1–5 star ratings are personal to each user, including in shared collections. Use favourites as a shortlist, sort by highest rated, or filter for recipes you have not rated yet. Run `pnpm db:push` for existing databases to add the `recipe_favourite` and `recipe_rating` tables before running the updated app. Apply the schema separately in other environments.
+Recipe favourites and 1–5 star ratings are personal to each user, including in shared collections. Use favourites as a shortlist, sort by highest rated, or filter for recipes you have not rated yet. Their tables are included in the versioned schema.
 
 ## Implementation
 
@@ -70,7 +74,7 @@ Choose **Manage groups** beside the collection picker to create a group for frie
 - The invitation token is random, stored as a SHA-256 hash and placed in the URL fragment. The join screen preserves it through Discord sign-in and asks the recipient to explicitly join.
 - Leaving or being removed ends server access, including PDF downloads. Contributions stay in the group. Deleting a contributor's account also preserves shared recipes. The database prevents deleting a group owner's account while they own a group.
 
-For an existing local database, run `pnpm db:push` before starting the updated app. This adds `group`, `group_member`, `group_invite`, and nullable `recipe.group_id` tables/columns and changes the creator reference to allow deleted contributors. No recipe backfill is needed: a null group ID denotes a personal collection. The local database was upgraded during implementation. Apply the schema separately to other environments using your deployment process.
+The versioned schema includes `group`, `group_member`, `group_invite` and nullable `recipe.group_id`, with a creator reference that allows deleted contributors. A null group ID denotes a personal collection. Follow the deployment runbook for existing databases, including explicit adoption review for unversioned installations.
 
 ## Tags and account settings
 
@@ -80,20 +84,20 @@ Recipe creation passes the user's available tags to the AI and saves only recogn
 
 Collections has an expandable Filters panel. Selected tags must all match and combine with search and favourites. Recipe details keeps tags, favourites and copying under Organise; Edit and Delete are in the recipe actions menu.
 
-Run `pnpm db:push` to add `tag` and `recipe_tag` before running this version against an existing database. The local schema has been updated; other environments need the same schema update. Built-in tags initialise on first use through one shared promise per process. Their fixed IDs make initialisation idempotent across processes, and a failed initialisation can be retried.
+The versioned schema includes `tag` and `recipe_tag`. Built-in tags initialise on first use through one shared promise per process. Their fixed IDs make initialisation idempotent across processes, and a failed initialisation can be retried.
 
 Custom tag creation, renaming and deletion use a transaction under the account lock. The 100-tag limit counts custom tags only. Names are checked against the account's custom tags and global tags using PostgreSQL's case folding, with the same conflict message for creates and renames. Existing accounts above the limit keep their tags but cannot create more until their count falls below 100.
 
 ## Checks
 
 ```sh
-pnpm test
-pnpm check-types
-pnpm build
 pnpm check
+pnpm build:release
+pnpm check-types
+pnpm test
 ```
 
-`pnpm test` starts one fresh PostgreSQL 18 container for the whole Vitest run. It assigns a free loopback port, creates a separate Docker volume, applies the complete versioned migrations, and passes the test `DATABASE_URL` to every Vitest worker. The wrapper removes the container and volume after success or failure. Docker Desktop must be running. The development container and its data are not part of this Compose project.
+Build before type checking on a clean checkout. The web build generates the ignored route tree, matching CI. `pnpm test` starts one fresh PostgreSQL 18 container for the whole Vitest run. It assigns a free loopback port, creates a separate Docker volume, applies the complete versioned migrations, and passes the test `DATABASE_URL` to every Vitest worker. The wrapper removes the container and volume after success or failure. Docker Desktop must be running. The development container and its data are not part of this Compose project.
 
 Use `pnpm test path/to/file.test.ts` to run selected files with the same lifecycle. Run tests through this command rather than invoking Vitest directly; Vitest rejects runs without the wrapper's isolated database marker. Ordinary integration tests use a local placeholder OpenAI key because generation is mocked. `pnpm test:live` uses a real key from `apps/web/.env` or the process environment when `LIVE_AI_TEST=1`.
 
@@ -130,19 +134,21 @@ both runtime values and complete the [support launch acceptance](docs/account-su
 Production startup requires both. Mailbox delivery, monitoring and operator
 response have not been verified.
 
-Use the [deployment runbook](docs/deployment.md) to provision or explicitly adopt PostgreSQL 18 with the versioned migrations, verify the database, and supervise the web and import worker from the same release. Configure the deployed sign-in callbacks and `BETTER_AUTH_URL`. Review sign-up and generation limits before making the app publicly reachable. Local Docker data does not automatically sync to a hosted database.
+The selected deployment is one Amazon Lightsail Linux instance running the existing Docker Compose web, import worker and monitoring topology, Neon PostgreSQL 18, and Cloudflare domain/DNS. Initial private staging uses Google only with `AI_ENABLED=false` and `BILLING_MODE=disabled`.
+
+Use the [deployment runbook](docs/deployment.md) to migrate or explicitly adopt the database, verify it separately, then start web and worker from the same immutable image. The actual Lightsail host, HTTPS origin, Cloudflare DNS, Neon PostgreSQL 18/ICU and verified TLS, direct migration connection, restricted runtime/migration roles, Google credentials/callbacks and support owner/mailbox remain pending inputs and acceptance. Review connection and query wait budgets, ingress capacity, off-host recovery and independent alerts before launch. Local Docker data does not automatically sync to Neon. Repository checks do not prove live host or provider acceptance.
 
 Local development automatically retires service workers left by other projects on the same origin, including the old Korex worker on port 3001. The dev server serves a replacement when the browser updates that worker; it unregisters itself, clears Workbox caches and reloads its controlled tabs. Prep Sheet also removes leftover registrations when its development page loads. Cookies, local storage and session storage are preserved. HTML responses use `Cache-Control: no-store`, and Vite fails if port 3001 is occupied instead of silently switching ports. These recovery handlers are development-only. Restart the dev server after upgrading, then open `http://localhost:3001/` normally; a stale tab may reload once as its worker updates.
 
 ## Durable imports and AI allowance
 
-`pnpm dev` and `pnpm dev:web` start the import worker alongside the website. The worker watches its source and restarts after changes. For a separately hosted website, run `pnpm worker:imports` alongside it. Website creation and extension imports both enqueue jobs; HTTP requests never generate recipes. Supervise the worker in production and restart it on failure. Deploy the website and worker together. Stop old workers before upgrading.
+`pnpm dev` and `pnpm dev:web` start the import worker alongside the website. The worker watches its source and restarts after changes. `pnpm worker:imports` runs a separate development worker with local configuration. Production uses `pnpm start` and `pnpm start:worker`, or their Compose services, with injected configuration and the same immutable image. Website creation and extension imports both enqueue jobs; HTTP requests never generate recipes. Supervise both processes. Drain and stop old web and worker processes, migrate/verify separately, then start both from the candidate image. The default deployment uses maintenance downtime; mixed image/schema releases require a separate compatibility review.
 
 The worker writes JSON diagnostics to its terminal. `import_worker_started` confirms startup; a heartbeat every 30 seconds reports queued/active counts and the oldest queue wait. Each import logs its reference ID, queue wait, stage starts and durations, page response hosts/statuses/redirect counts, and its saved or failed outcome. Failure diagnostics include only error type, safe error code and HTTP status, never exception messages, recipe text, full URLs, credentials or account IDs. Use the import reference shown below the composer or on Recent imports to find its events. A request stuck at `queued` has not reached the page fetch or AI provider. Check for a worker startup/heartbeat first.
 
 To retain diagnostics locally in PowerShell when running a separate worker, use `pnpm worker:imports | Tee-Object -FilePath import-worker.log`. Log files are ignored by Git.
 
-For an existing database, apply `packages/db/src/upgrades/reliable-imports.sql` before deploying. It only adds columns and makes the source URL nullable. New databases can use the normal `pnpm db:push` setup.
+The versioned migration chain includes durable import columns and nullable source URLs. Use the runbook's migrate/verify sequence or reviewed legacy adoption before starting the release.
 
 Server settings, shared by every web and worker instance:
 
@@ -154,7 +160,7 @@ The website stores each request ID, input and destination in an account-scoped q
 
 Reservations are created atomically with admission. Failures before generation release the reservation. Once generation starts, failures and uncertain outcomes remain spent. SDK retries are disabled. Successful AI output is checkpointed before saving, so save retries do not call AI again. Claims abandoned before generation can be recovered after three minutes; interrupted generation becomes terminal instead of running twice. AI calls have a 90-second timeout, and claim tokens prevent an obsolete fetch worker from overwriting a newer claim.
 
-Checkpoint saves share an ordered, skip-locked claim path with queued work. Failed saves wait 5, 10, 20 and 40 seconds before retrying, then become terminal after five failed or abandoned save claims while retaining generated output and spent usage. Apply `packages/db/src/upgrades/import-save-retries.sql` before deploying this worker and web app. See [import save retries](docs/import-save-retries.md) for claim recovery, diagnostics and upgrade order.
+Checkpoint saves share an ordered, skip-locked claim path with queued work. Failed saves wait 5, 10, 20 and 40 seconds before retrying, then become terminal after five failed or abandoned save claims while retaining generated output and spent usage. Versioned migration `0002_import_save_retries.sql` adds the retry state. See [import save retries](docs/import-save-retries.md) for claim recovery, diagnostics and upgrade order.
 
 Keep job records for usage accounting and request deduplication. Do not purge saved or failed jobs when deleting recipes. Existing extension jobs remain compatible; historical website attempts made before this upgrade have no job record.
 

@@ -45,7 +45,7 @@ Run them through the isolated PostgreSQL wrapper:
 pnpm test apps/web/src/components/account-query-boundary.test.ts apps/web/src/components/auth-gate.test.ts apps/web/src/utils/query-client.test.ts
 ```
 
-## Verification on 11 October 2026
+## Historical verification on 11 October 2026
 
 - Full `pnpm test`: 35 files passed, 278 tests passed, seven live AI tests skipped.
   The wrapper removed its PostgreSQL container, volume and network. No paid AI
@@ -65,6 +65,8 @@ pnpm test apps/web/src/components/account-query-boundary.test.ts apps/web/src/co
   session refresh were not exercised. The browser harness's sign-in and identity
   switch endpoints were synthetic; the storage listener and session refresh
   client were real.
-- The standalone API type check still reports the existing inline PNG module
+- The standalone API type check at that time reported the inline PNG module
   declaration error in `packages/api/src/recipes/pdf.tsx:14` and UUID fixture
-  type error in `packages/api/src/shopping.integration.test.ts:213`.
+  type error in `packages/api/src/shopping.integration.test.ts:213`. These are
+  dated observations, not current failures. The current [release gate](release-checks.md)
+  includes the API compiler; verify the selected commit through that gate.

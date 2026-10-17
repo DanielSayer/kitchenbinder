@@ -10,21 +10,24 @@ Writes are account-scoped. Recipe additions check current access and run transac
 
 ## Database setup
 
-Apply the `shopping_item` and `shopping_plan` tables using the repository's existing schema-push workflow before running this version against a database:
+The versioned schema includes `shopping_item` and `shopping_plan`. From the repository root, with the direct migration credential injected as `DATABASE_URL`, run these before starting the candidate web and worker image:
 
 ```sh
-cd packages/db
-pnpm db:push
+pnpm db:migrate
+pnpm db:verify
 ```
+
+Stop web and worker before migration and restore runtime credentials before startup. An unversioned installation requires a backup, restored-copy rehearsal and explicitly reviewed `pnpm db:adopt`, followed by verification. Follow the [deployment runbook](deployment.md); do not push the schema of a deployed database.
 
 ## Verification
 
 ```sh
-node node_modules/vitest/vitest.mjs run packages/api/src/shopping.integration.test.ts
-node node_modules/typescript/bin/tsc --noEmit -p apps/web/tsconfig.json
+pnpm build:release
+pnpm check-types
+pnpm test packages/api/src/shopping.integration.test.ts
 ```
 
-The integration tests use the configured PostgreSQL database, create isolated fixture accounts, and clean them up afterwards. They cover authentication, personal versus shared recipe access, list privacy, concurrent duplicate additions, ingredient snapshots, item edits, owned/bought restoration, clear and reset.
+The build generates web routes before type checking on a clean checkout. The `pnpm test` wrapper provisions and removes a disposable PostgreSQL 18 database; never invoke Vitest directly or use the development/production database. The integration tests create isolated fixture accounts and clean them up afterwards. They cover authentication, personal versus shared recipe access, list privacy, concurrent duplicate additions, ingredient snapshots, item edits, owned/bought restoration, clear and reset.
 
 ## Generated shopping trip
 
