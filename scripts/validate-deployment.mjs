@@ -1,3 +1,4 @@
+/* biome-ignore-all lint/suspicious/noUndeclaredEnvVars: Standalone Node validation, never cached by Turbo. */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -14,7 +15,9 @@ import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("../", import.meta.url));
 const directory = await mkdtemp(join(tmpdir(), "prep-sheet-ingress-"));
 const name = `prep-sheet-ingress-${randomUUID()}`;
-const nginx = process.env.NGINX_TEST_IMAGE ?? "nginx:stable-alpine";
+const nginx =
+  process.env.NGINX_TEST_IMAGE ??
+  "nginx:stable-alpine@sha256:ed84151ed2d47ef93c0939eb9b9754c6990db6092cd2081e11988a47a83d47ea";
 const node =
   process.env.NODE_TEST_IMAGE ??
   "node:26.7.0-bookworm-slim@sha256:4db36457f406501e6f608802e5da617e5fbd0e80b75901b6a09de1ae5a667d32";

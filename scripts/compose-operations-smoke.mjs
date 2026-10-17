@@ -112,6 +112,17 @@ try {
       run("docker", ["inspect", "--format", "{{.State.Health.Status}}", id]),
       "healthy",
     );
+  // Confirm Docker applied Compose's cgroup limits, not just that YAML parsed.
+  for (const id of [webId, workerId]) {
+    const limits = JSON.parse(
+      run("docker", ["inspect", "--format", "{{json .HostConfig}}", id]),
+    );
+    assert.ok(limits.Memory > 0 && limits.NanoCpus > 0);
+    assert.equal(limits.MemorySwap, limits.Memory);
+    assert.ok(limits.MemoryReservation > 0);
+    assert.ok(limits.MemoryReservation < limits.Memory);
+    assert.ok(limits.PidsLimit > 0);
+  }
   assert.equal(
     run("docker", [
       "inspect",

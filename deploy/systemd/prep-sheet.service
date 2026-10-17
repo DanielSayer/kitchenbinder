@@ -1,0 +1,21 @@
+# Review paths and environment before installing. Docker supervises containers;
+# this unit orders full-grace Compose stop before Docker stops during shutdown.
+[Unit]
+Description=Prep Sheet web and import worker
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/prep-sheet
+ExecStart=/usr/bin/docker compose --env-file /etc/prep-sheet/runtime.env -f deploy/compose.yml up -d --wait --wait-timeout 120 web worker
+# If monitoring is accepted, uncomment to start it on every boot too:
+# ExecStart=/usr/bin/docker compose --env-file /etc/prep-sheet/runtime.env -f deploy/compose.yml --profile monitoring up -d monitor
+ExecStop=/usr/bin/docker compose --env-file /etc/prep-sheet/runtime.env -f deploy/compose.yml --profile monitoring stop
+TimeoutStartSec=180
+TimeoutStopSec=300
+
+[Install]
+WantedBy=multi-user.target
