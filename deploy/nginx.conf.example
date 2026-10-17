@@ -1,33 +1,106 @@
-# Install inside nginx's http {} configuration. Replace the uppercase values.
-# TLS certificate provisioning and the default catch-all virtual host belong
-# to the operator. Do not expose the upstream port on a public interface.
+# Install in http {}, replacing PUBLIC_HOST and certificate paths.
+# See docs/lightsail-neon.md for bootstrap, secret delivery and live acceptance.
+# DNS-only Cloudflare: do not enable real_ip_header or trust forwarding headers.
+limit_req_zone $binary_remote_addr zone=prep_client:10m rate=10r/s;
+limit_req_zone $server_name zone=prep_host:1m rate=50r/s;
+limit_conn_zone $binary_remote_addr zone=prep_connections:10m;
+limit_conn_zone $server_name zone=prep_total:1m;
+limit_req_zone $binary_remote_addr zone=prep_probe:1m rate=2r/s;
+limit_conn_zone $binary_remote_addr zone=prep_probe_connections:1m;
+map $http_content_encoding $prep_unsupported_encoding {
+    default 1;
+    "" 0;
+    ~*^identity$ 0;
+}
+
+# No certificate needed to reject an unknown SNI name. Never proxy unknown Host.
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+    return 444;
+}
+server {
+    listen 443 ssl default_server;
+    listen [::]:443 ssl default_server;
+    ssl_reject_handshake on;
+    server_name _;
+    return 444;
+}
+server {
+    listen 80;
+    listen [::]:80;
+    server_name PUBLIC_HOST;
+    client_header_timeout 10s;
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/lib/letsencrypt;
+        default_type text/plain;
+        try_files $uri =404;
+    }
+    location / { return 308 https://PUBLIC_HOST$request_uri; }
+}
 server {
     listen 443 ssl;
     listen [::]:443 ssl;
     server_name PUBLIC_HOST;
+    # Also reject an unknown HTTP Host sent under a valid SNI name.
+    if ($host != PUBLIC_HOST) { return 444; }
     ssl_certificate TLS_CERTIFICATE_PATH;
     ssl_certificate_key TLS_PRIVATE_KEY_PATH;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:prep_tls:1m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+    server_tokens off;
+    # Avoid recording OAuth codes, cookies, private paths and query strings.
+    access_log off;
+    error_log /var/log/nginx/prep-sheet-error.log crit;
+    add_header Strict-Transport-Security "max-age=86400" always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options DENY always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+    # Review script/style/connect sources against the built app and real OAuth
+    # before adding a restrictive full CSP.
+    add_header Content-Security-Policy "base-uri 'self'; object-src 'none'; frame-ancestors 'none'" always;
 
-    # Store this include outside source control, readable only by the proxy
-    # administrator. It defines one proxy_set_header directive with the same
-    # WEB_PROXY_SECRET supplied to the web containers. See docs/auth-proxy.md.
+    if ($prep_unsupported_encoding) { return 415; }
+    client_max_body_size 16384;
+    client_header_timeout 10s;
+    client_body_timeout 10s;
+    client_body_buffer_size 16k;
+    large_client_header_buffers 4 16k;
+    keepalive_timeout 15s;
+    keepalive_requests 100;
+    send_timeout 15s;
+    reset_timedout_connection on;
+    limit_req_status 429;
+    limit_conn_status 429;
+    # No delayed admission queue. Initial limits need representative load tests.
+    limit_req zone=prep_client burst=40 nodelay;
+    limit_req zone=prep_host burst=100 nodelay;
+    limit_conn prep_connections 12;
+    limit_conn prep_total 64;
+
+    location ~ ^/health/(live|ready)$ {
+        # Independent finite allowance, so ordinary overload cannot spend probes.
+        limit_req zone=prep_probe burst=4 nodelay;
+        limit_conn prep_probe_connections 4;
+        include /etc/nginx/snippets/prep-sheet-proxy.conf;
+    }
+    location ^~ /api/trpc/ {
+        client_max_body_size 1572864;
+        include /etc/nginx/snippets/prep-sheet-proxy.conf;
+    }
+    location = /api/polar/webhooks {
+        client_max_body_size 262144;
+        include /etc/nginx/snippets/prep-sheet-proxy.conf;
+    }
+    location ^~ /api/extensions/ {
+        client_max_body_size 200000;
+        include /etc/nginx/snippets/prep-sheet-proxy.conf;
+    }
     location / {
-        include /etc/nginx/private/prep-sheet-proxy-secret.conf;
-        proxy_pass http://127.0.0.1:3001;
-        proxy_http_version 1.1;
-        proxy_set_header Connection "";
-        proxy_set_header Host PUBLIC_HOST;
-        proxy_set_header X-Prep-Sheet-Client-IP $remote_addr;
-        proxy_set_header Forwarded "";
-        proxy_set_header X-Forwarded-For "";
-        proxy_set_header X-Forwarded-Host "";
-        proxy_set_header X-Forwarded-Proto "";
-        proxy_set_header X-Forwarded-Port "";
-        proxy_set_header X-Real-IP "";
-        proxy_set_header True-Client-IP "";
-        proxy_set_header CF-Connecting-IP "";
-        proxy_cache off;
-        proxy_connect_timeout 5s;
-        proxy_read_timeout 120s;
+        include /etc/nginx/snippets/prep-sheet-proxy.conf;
     }
 }

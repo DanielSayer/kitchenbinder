@@ -1,0 +1,20 @@
+# HTTP-only first-certificate configuration, installed in http {}.
+# Replace PUBLIC_HOST. Remove this file when installing nginx.conf.example.
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+    return 444;
+}
+server {
+    listen 80;
+    listen [::]:80;
+    server_name PUBLIC_HOST;
+    client_header_timeout 10s;
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/lib/letsencrypt;
+        default_type text/plain;
+        try_files $uri =404;
+    }
+    location / { return 503; }
+}

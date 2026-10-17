@@ -42,6 +42,12 @@ x-runtime: &runtime
 services:
   web:
     <<: *runtime
+    # Initial 4 GiB / 2 vCPU host budget. PDF worker heaps are not RSS caps.
+    cpus: ${WEB_CPUS:-1.5}
+    mem_limit: ${WEB_MEMORY_LIMIT:-1536m}
+    mem_reservation: ${WEB_MEMORY_RESERVATION:-768m}
+    memswap_limit: ${WEB_MEMORY_LIMIT:-1536m}
+    pids_limit: 128
     command: ["node", "scripts/start-web.mjs"]
     ports: ["127.0.0.1:3001:3001"]
     stop_grace_period: 40s
@@ -58,6 +64,11 @@ services:
       WEB_PROXY_SECRET: ${WEB_PROXY_SECRET:?Set the shared proxy authentication secret}
   worker:
     <<: *runtime
+    cpus: ${WORKER_CPUS:-0.75}
+    mem_limit: ${WORKER_MEMORY_LIMIT:-768m}
+    mem_reservation: ${WORKER_MEMORY_RESERVATION:-256m}
+    memswap_limit: ${WORKER_MEMORY_LIMIT:-768m}
+    pids_limit: 128
     command: ["node", "scripts/start-worker.mjs"]
     stop_grace_period: 200s
     volumes: ["operations:/app/tmp/operations"]
@@ -72,6 +83,11 @@ services:
       WORKER_SHUTDOWN_TIMEOUT_MS: "180000"
   monitor:
     <<: *runtime
+    cpus: ${MONITOR_CPUS:-0.25}
+    mem_limit: ${MONITOR_MEMORY_LIMIT:-192m}
+    mem_reservation: ${MONITOR_MEMORY_RESERVATION:-64m}
+    memswap_limit: ${MONITOR_MEMORY_LIMIT:-192m}
+    pids_limit: 64
     profiles: ["monitoring"]
     command: ["node", "scripts/monitor-operations.mjs"]
     volumes: ["operations:/app/tmp/operations:ro"]
