@@ -4,6 +4,10 @@ This release supports Node 26.7.0, pnpm 11.21.0 and PostgreSQL 18 built with ICU
 It runs the website and import worker as separate supervised processes from the
 same immutable image. No hosting provider is required to build or test it.
 
+Kitchenbinder uses `https://kitchenbinder.app` in production. Apply the
+[rebrand and domain cutover checklist](kitchenbinder-rebrand.md) alongside this
+runbook when preparing an existing installation for the new domain.
+
 The selected deployment is one Amazon Lightsail Linux instance running the
 existing Docker Compose web, import worker and monitoring topology, Neon
 PostgreSQL 18, and Cloudflare domain/DNS. This document prepares that release;

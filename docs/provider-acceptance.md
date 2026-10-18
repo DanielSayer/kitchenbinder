@@ -53,6 +53,15 @@ in deployments. Database tests run only through `pnpm test`.
 
 ## HTTPS OAuth acceptance
 
+Kitchenbinder production uses `https://kitchenbinder.app`. Register
+`https://kitchenbinder.app/api/auth/callback/google` and, when enabled,
+`https://kitchenbinder.app/api/auth/callback/discord`. Update provider application
+names and public links to Kitchenbinder. Preserve existing provider applications
+and account identities when rebranding. The
+[domain cutover checklist](kitchenbinder-rebrand.md) covers extension releases,
+support and billing destinations too. A staging deployment needs its own exact
+hostname and callbacks.
+
 For the first private staging deployment, use a dedicated HTTPS subdomain of the
 chosen production domain, Google only, `AI_ENABLED=false` and
 `BILLING_MODE=disabled`. Confirm Google's callback and login/logout/account switching

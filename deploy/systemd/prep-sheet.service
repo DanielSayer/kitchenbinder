@@ -1,7 +1,7 @@
 # Review paths and environment before installing. Docker supervises containers;
 # this unit orders full-grace Compose stop before Docker stops during shutdown.
 [Unit]
-Description=Prep Sheet web and import worker
+Description=Kitchenbinder web and import worker
 Wants=network-online.target
 After=network-online.target docker.service
 Requires=docker.service

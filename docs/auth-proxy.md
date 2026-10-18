@@ -47,6 +47,11 @@ actual HTTPS host and match `BETTER_AUTH_URL` to it. Provision TLS and a default
 virtual host that rejects unknown hosts through the host's normal procedure.
 The example needs no real-IP module for direct public connections.
 
+For Kitchenbinder production, `PUBLIC_HOST` is `kitchenbinder.app` and
+`BETTER_AUTH_URL` is `https://kitchenbinder.app`. Keep the existing
+`X-Prep-Sheet-*` header names in nginx and the application. They are internal
+protocol identifiers and must agree on both sides.
+
 Generate the proxy secret with a cryptographic secret manager or
 `node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('base64url'))"`
 in a private terminal. Store the same value as the web container's

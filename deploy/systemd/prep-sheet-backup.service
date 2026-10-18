@@ -1,6 +1,6 @@
 # Example only. Set installation, secret-file and archive paths for the actual host.
 [Unit]
-Description=Prep Sheet PostgreSQL backup
+Description=Kitchenbinder PostgreSQL backup
 After=docker.service
 Requires=docker.service
 

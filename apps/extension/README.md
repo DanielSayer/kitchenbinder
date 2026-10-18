@@ -1,4 +1,4 @@
-# Prep Sheet extension
+# Kitchenbinder extension
 
 Chrome and Edge Manifest V3 app built with [WXT](https://wxt.dev/), React and TypeScript. WXT handles entrypoint bundling, development reloads, manifests and ZIP packaging. The workspace uses the repository's React and TypeScript catalog versions.
 
@@ -17,15 +17,15 @@ pnpm install
 pnpm dev:extension
 ```
 
-In `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select `apps/extension/.output/chrome-mv3-dev`. Pin Prep Sheet to the toolbar and click it to open the popup. The browser is not launched automatically.
+In `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select `apps/extension/.output/chrome-mv3-dev`. Pin Kitchenbinder to the toolbar and click it to open the popup. The browser is not launched automatically.
 
 For Edge, run `pnpm --filter @prep-sheet/extension dev:edge` and load `apps/extension/.output/edge-mv3-dev` from `edge://extensions`.
 
-Run the website separately with `pnpm dev:web` so **Open Prep Sheet** can reach it. The default website origin is `http://localhost:3001`; WXT's reload server uses a separate port. To change the website origin, put `WXT_PREP_SHEET_ORIGIN` in this app's `.env.development.local` and restart WXT. Use an origin only, without a path or query string.
+Run the website separately with `pnpm dev:web` so **Open Kitchenbinder** can reach it. The default website origin is `http://localhost:3001`; WXT's reload server uses a separate port. To change the website origin, put `WXT_PREP_SHEET_ORIGIN` in this app's `.env.development.local` and restart WXT. Use an origin only, without a path or query string.
 
 ## Build and verify
 
-For account connection, start PostgreSQL and apply the schema from `packages/db` with `docker compose up -d` and `pnpm exec drizzle-kit push`. Restart the website after dependency or server environment changes, then reload the unpacked extension. Choose **Connect to Prep Sheet**, sign in if needed and approve access. Use website **Settings → Extensions** to revoke a connection.
+For account connection, start PostgreSQL and apply the schema from `packages/db` with `docker compose up -d` and `pnpm exec drizzle-kit push`. Restart the website after dependency or server environment changes, then reload the unpacked extension. Choose **Connect to Kitchenbinder**, sign in if needed and approve access. Use website **Settings → Extensions** to revoke a connection.
 
 From the repository root:
 
@@ -46,7 +46,7 @@ The committed `config/development-identity.json` contains a public key, not a se
 No production deployment is configured. When a store listing and deployed website are available, configure these public build settings in `.env.production.local` or CI:
 
 ```dotenv
-WXT_PREP_SHEET_ORIGIN=https://your-deployed-domain
+WXT_PREP_SHEET_ORIGIN=https://kitchenbinder.app
 WXT_EXTENSION_PUBLIC_KEY=<base64 DER RSA public key from the store listing>
 ```
 
@@ -60,6 +60,12 @@ pnpm --filter @prep-sheet/extension package:production
 Production mode requires both settings and rejects HTTP, loopback and `.example` origins. If Chrome and Edge listings have different identities, provide their respective keys in `.env.production.chrome.local` and `.env.production.edge.local`. Configure the store-issued IDs in the website EXTENSION_IDS allowlist as described in AUTH.md. The manifest key stabilises unpacked identity; it does not register a store listing or authenticate the extension.
 
 Never add server secrets, database credentials or OpenAI keys to extension settings. Browser bundles and manifest values are public.
+
+Keep existing store listings, public keys and IDs when rebranding an installed
+extension. A change to the website origin requires reconnection and does not move
+pending requests between origins. Follow the
+[domain cutover checklist](../../docs/kitchenbinder-rebrand.md) before updating an
+existing installation.
 
 ## Capture a loaded recipe
 
@@ -101,7 +107,7 @@ Server input text is cleared after processing or failure, and checkpointed outpu
 - `src/entrypoints/popup/Capture.tsx`: capture action, recipe choices and local text preview.
 - `src/lib/config.ts` and `origin.ts`: validated website origin used by the popup and background worker. Extension tokens are accepted only by dedicated extension endpoints, not website tRPC.
 
-Static builds request `activeTab`, `scripting`, `identity`, `storage` and the configured Prep Sheet host only. No content scripts are registered on all sites. WXT's live development server may add local reload permissions and content security policy entries; static packages do not need those additions.
+Static builds request `activeTab`, `scripting`, `identity`, `storage` and the configured Kitchenbinder host only. No content scripts are registered on all sites. WXT's live development server may add local reload permissions and content security policy entries; static packages do not need those additions.
 
 ## Verification so far
 
