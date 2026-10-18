@@ -146,7 +146,7 @@ export async function recipePdf(
   ].filter((item) => item.value !== null && item.value !== "");
   const columnLength = Math.ceil(content.ingredients.length / 2);
   return renderToBuffer(
-    <Document title={content.title} author="Prep Sheet">
+    <Document title={content.title} author="Kitchenbinder">
       <Page size="A4" style={s.page}>
         <View style={s.brand}>
           <Image src={logo} style={s.brandLogo} />

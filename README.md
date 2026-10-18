@@ -1,6 +1,11 @@
-# Prep Sheet
+# Kitchenbinder
 
 A recipe keeper with private personal collections and shared group collections. Paste a recipe, import a public recipe link, or describe a dish. The app saves a structured recipe and opens a printable PDF when you select it from your collection.
+
+The production domain is `https://kitchenbinder.app`. See the
+[rebrand and domain cutover checklist](docs/kitchenbinder-rebrand.md) for deployment,
+provider settings and preserving work when moving an existing installation.
+Internal `prep-sheet` package and database identifiers remain compatible.
 
 ## Run locally
 
@@ -24,7 +29,7 @@ If enabling Discord locally, register `http://localhost:3001/api/auth/callback/d
 
 For Google, configure the OAuth consent screen and create a Web application client in Google Cloud Console. Register `http://localhost:3001/api/auth/callback/google` as an authorized redirect URI. Add the equivalent HTTPS URI for your production domain. While the consent screen is in testing mode, add your test accounts; make the app available to your intended audience before public launch. Set both Google environment variables and restart the server. Only basic profile and email access is used.
 
-Existing Discord users should sign in with Discord and choose **Settings > Account > Link Google** to keep their recipes and groups, before Discord is disabled on that installation. Linking requires a session created within the last ten minutes and matching email addresses. Users with older sessions must sign out and sign in again. Matching emails never silently merge accounts. An identity already attached to another Prep Sheet account cannot be linked or merged through this flow. Email/password sign-in is not enabled.
+Existing Discord users should sign in with Discord and choose **Settings > Account > Link Google** to keep their recipes and groups, before Discord is disabled on that installation. Linking requires a session created within the last ten minutes and matching email addresses. Users with older sessions must sign out and sign in again. Matching emails never silently merge accounts. An identity already attached to another Kitchenbinder account cannot be linked or merged through this flow. Email/password sign-in is not enabled.
 
 ```sh
 node --env-file=apps/web/.env packages/db/scripts/migrate.mjs
@@ -138,7 +143,7 @@ The selected deployment is one Amazon Lightsail Linux instance running the exist
 
 Use the [deployment runbook](docs/deployment.md) to migrate or explicitly adopt the database, verify it separately, then start web and worker from the same immutable image. The actual Lightsail host, HTTPS origin, Cloudflare DNS, Neon PostgreSQL 18/ICU and verified TLS, direct migration connection, restricted runtime/migration roles, Google credentials/callbacks and support owner/mailbox remain pending inputs and acceptance. Review connection and query wait budgets, ingress capacity, off-host recovery and independent alerts before launch. Local Docker data does not automatically sync to Neon. Repository checks do not prove live host or provider acceptance.
 
-Local development automatically retires service workers left by other projects on the same origin, including the old Korex worker on port 3001. The dev server serves a replacement when the browser updates that worker; it unregisters itself, clears Workbox caches and reloads its controlled tabs. Prep Sheet also removes leftover registrations when its development page loads. Cookies, local storage and session storage are preserved. HTML responses use `Cache-Control: no-store`, and Vite fails if port 3001 is occupied instead of silently switching ports. These recovery handlers are development-only. Restart the dev server after upgrading, then open `http://localhost:3001/` normally; a stale tab may reload once as its worker updates.
+Local development automatically retires service workers left by other projects on the same origin, including the old Korex worker on port 3001. The dev server serves a replacement when the browser updates that worker; it unregisters itself, clears Workbox caches and reloads its controlled tabs. Kitchenbinder also removes leftover registrations when its development page loads. Cookies, local storage and session storage are preserved. HTML responses use `Cache-Control: no-store`, and Vite fails if port 3001 is occupied instead of silently switching ports. These recovery handlers are development-only. Restart the dev server after upgrading, then open `http://localhost:3001/` normally; a stale tab may reload once as its worker updates.
 
 ## Durable imports and AI allowance
 

@@ -11,7 +11,7 @@ function Privacy() {
           <h1>
             Privacy<span className="title-dot">.</span>
           </h1>
-          <p>How Prep Sheet handles your recipes and account.</p>
+          <p>How Kitchenbinder handles your recipes and account.</p>
         </div>
       </div>
       <PrivacyPolicy />

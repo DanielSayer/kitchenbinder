@@ -30,7 +30,7 @@ export function ConnectedExtensions() {
     >
       <h2 id="extensions-heading">Connected extensions</h2>
       <p className="settings-intro">
-        Manage browser access to your Prep Sheet account.
+        Manage browser access to your Kitchenbinder account.
       </p>
       <ErrorNotice
         message={revoke.error?.message || connections.error?.message}
@@ -46,7 +46,7 @@ export function ConnectedExtensions() {
           {connections.data?.map((connection) => (
             <li key={connection.id}>
               <div>
-                <strong>Prep Sheet extension</strong>
+                <strong>Kitchenbinder extension</strong>
                 <p>
                   Connected {new Date(connection.createdAt).toLocaleString()}.
                   <br />

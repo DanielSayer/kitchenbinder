@@ -75,7 +75,7 @@ export async function handleExtensionRequest(
     if (extensionAction) {
       const connection = await authenticateExtension(request);
       if (!connection)
-        return reply({ error: "Please reconnect to Prep Sheet." }, 401);
+        return reply({ error: "Please reconnect to Kitchenbinder." }, 401);
       if (action === "disconnect") {
         await revokeExtension(connection.account.id, connection.credentialId);
         return reply({ ok: true });
@@ -90,7 +90,8 @@ export async function handleExtensionRequest(
       return reply({ ok: true });
     }
     const session = await auth.api.getSession({ headers: request.headers });
-    if (!session) return reply({ error: "Sign in to Prep Sheet first." }, 401);
+    if (!session)
+      return reply({ error: "Sign in to Kitchenbinder first." }, 401);
     switch (action) {
       case "authorize":
         return reply({

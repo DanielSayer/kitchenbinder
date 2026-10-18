@@ -125,7 +125,7 @@ reference and operator, not a copy of the deleted account's email or content.
 
 Deletion does not remove the Google/Discord account, erase device browser storage,
 recall prior provider processing or erase backups. Signing in again creates a new
-Prep Sheet account. Follow the production backup/provider retention arrangements
+Kitchenbinder account. Follow the production backup/provider retention arrangements
 separately.
 
 ## Disposable rehearsal and verification

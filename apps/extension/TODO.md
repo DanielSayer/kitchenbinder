@@ -1,6 +1,6 @@
-# Prep Sheet browser extension
+# Kitchenbinder browser extension
 
-Build a Chrome and Edge extension that captures a recipe from the page the user has opened, lets them choose a collection, and saves it directly to Prep Sheet. The popup handles connection, collection selection, progress and the saved recipe link.
+Build a Chrome and Edge extension that captures a recipe from the page the user has opened, lets them choose a collection, and saves it directly to Kitchenbinder. The popup handles connection, collection selection, progress and the saved recipe link.
 
 Parts 1 to 5 are implemented. Automated account and capture checks pass; real Chrome/Edge installation and login verification remain in part 6. Capture was checked against the loaded Kitchen Sanctuary butter chicken page. Imports use a PostgreSQL queue and a separate server worker. See [README.md](./README.md) for setup and [AUTH.md](./AUTH.md) for the credential design.
 
@@ -9,12 +9,12 @@ Parts 1 to 5 are implemented. Automated account and capture checks pass; real Ch
 - [x] Create `apps/extension` as a TypeScript and React workspace app using Manifest V3. Use WXT with its React module and the repository's React/TypeScript versions.
 - [x] Add development, build, type-check and packaging commands to the existing pnpm/Turbo workflow.
 - [x] Separate the popup, background service worker, page extraction script and API client.
-- [x] Configure local development and production Prep Sheet origins, with stable extension IDs for auth configuration. Local defaults and a fixed development ID are ready; production builds require the future deployment origin and store public key, as no production deployment exists yet.
-- [x] Declare temporary active-tab access and scripting permission, plus access to the configured Prep Sheet origin. Page injection will be connected to a user click in part 3; there is no automatic access to every website.
+- [x] Configure local development and production Kitchenbinder origins, with stable extension IDs for auth configuration. Local defaults and a fixed development ID are ready; production builds require the future deployment origin and store public key, as no production deployment exists yet.
+- [x] Declare temporary active-tab access and scripting permission, plus access to the configured Kitchenbinder origin. Page injection will be connected to a user click in part 3; there is no automatic access to every website.
 
 ## 2. Connect an account
 
-- [x] Add a **Connect to Prep Sheet** flow that opens the website and reuses its existing Better Auth and Discord login.
+- [x] Add a **Connect to Kitchenbinder** flow that opens the website and reuses its existing Better Auth and Discord login.
 - [x] Implement an explicit extension authorisation handoff using a short-lived, single-use code bound to the initiating extension with state and PKCE. Validate the extension ID and callback destination.
 - [x] Choose how extension credentials integrate with Better Auth. Prefer a revocable, narrowly scoped extension credential over copying the website's session cookie. Define expiry, renewal and server-side storage before implementation.
 - [x] Keep credentials in extension-only storage, restrict content-script access and keep credentials out of page messages, URLs and logs. Include no server secrets or OpenAI keys in the extension bundle.
@@ -40,7 +40,7 @@ Parts 1 to 5 are implemented. Automated account and capture checks pass; real Ch
 
 ## 5. Popup experience
 
-- [x] Build signed-out, loading, ready, importing, success and error states using Prep Sheet's visual style.
+- [x] Build signed-out, loading, ready, importing, success and error states using Kitchenbinder's visual style.
 - [x] Show the detected recipe title, a collection picker and one primary **Save recipe** action.
 - [x] Remember the last valid collection per account and recover if access changes.
 - [x] Keep progress recoverable when the popup closes. On success, link to the saved recipe.

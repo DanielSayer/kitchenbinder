@@ -17,7 +17,7 @@ export function RecipeSheetPreview() {
       <article className="sample-sheet">
         <div className="sample-sheet-brand">
           <img src="/branding/icon-192.png" alt="" width={32} height={32} />
-          <span>prep sheet</span>
+          <span>kitchenbinder</span>
           <small>Example recipe</small>
         </div>
         <h2>Lemon &amp; chickpea pasta</h2>

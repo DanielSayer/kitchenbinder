@@ -52,7 +52,7 @@ export async function handleExtensionRequest(
   try {
     const connection = await authenticateExtension(request);
     if (!connection)
-      return reply({ error: "Please reconnect to Prep Sheet." }, 401);
+      return reply({ error: "Please reconnect to Kitchenbinder." }, 401);
     const scope =
       action === "collections" ? "collections:read" : "recipes:import";
     if (!connection.scope.split(" ").includes(scope))

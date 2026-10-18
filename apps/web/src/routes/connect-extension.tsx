@@ -83,7 +83,7 @@ function ConnectExtension() {
       <div className="login-card">
         <h1>Connect your browser</h1>
         <p>
-          Let the Prep Sheet extension view your collections and save recipes
+          Let the Kitchenbinder extension view your collections and save recipes
           you choose to import.
         </p>
         {session && (

@@ -9,4 +9,4 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: Prep Sheet has at least five failed web requests per minute
+          summary: Kitchenbinder has at least five failed web requests per minute

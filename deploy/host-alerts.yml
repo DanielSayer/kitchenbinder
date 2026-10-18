@@ -9,32 +9,32 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: Prep Sheet host telemetry is unavailable
+          summary: Kitchenbinder host telemetry is unavailable
       - alert: PrepSheetDiskSpaceLow
         expr: node_filesystem_avail_bytes{job="prep-sheet-host",fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes < 0.15
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: Prep Sheet host has less than 15 percent disk space free
+          summary: Kitchenbinder host has less than 15 percent disk space free
       - alert: PrepSheetMemoryLow
         expr: node_memory_MemAvailable_bytes{job="prep-sheet-host"} / node_memory_MemTotal_bytes < 0.10
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: Prep Sheet host has less than 10 percent memory available
+          summary: Kitchenbinder host has less than 10 percent memory available
       - alert: PrepSheetCpuSaturated
         expr: 1 - avg by(instance) (rate(node_cpu_seconds_total{job="prep-sheet-host",mode="idle"}[5m])) > 0.90
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: Prep Sheet host CPU exceeds 90 percent
+          summary: Kitchenbinder host CPU exceeds 90 percent
       - alert: PrepSheetHostTelemetryAbsent
         expr: absent(up{job="prep-sheet-host"})
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: Prep Sheet host monitoring target is absent
+          summary: Kitchenbinder host monitoring target is absent

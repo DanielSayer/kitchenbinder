@@ -131,7 +131,7 @@ try {
   const home = await request("/");
   assert.equal(home.status, 200);
   const html = await home.text();
-  assert.match(html, /Prep Sheet/);
+  assert.match(html, /Kitchenbinder/);
   const asset = html.match(
     /(?:src|href)="([^"]*\/assets\/[^"]+\.(?:js|css))"/,
   )?.[1];

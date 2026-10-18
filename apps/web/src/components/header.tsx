@@ -5,7 +5,7 @@ import UserMenu from "./user-menu";
 export default function Header() {
   return (
     <header className="site-header">
-      <Link to="/" className="brand" aria-label="Prep Sheet home">
+      <Link to="/" className="brand" aria-label="Kitchenbinder home">
         <img
           src="/branding/icon-192.png"
           alt=""
@@ -13,7 +13,7 @@ export default function Header() {
           width={40}
           height={40}
         />
-        <span className="brand-wordmark">prep sheet</span>
+        <span className="brand-wordmark">kitchenbinder</span>
       </Link>
 
       <nav aria-label="Main navigation">
