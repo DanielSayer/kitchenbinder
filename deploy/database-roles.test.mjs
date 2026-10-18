@@ -22,15 +22,22 @@ it("accepts the runbook's restricted roles, migrations and actual query/lock bud
   const roles = ["migrate", "runtime", "backup"].map(
     (role) => `deploy_${role}_${suffix}`,
   );
+  const provisioner = `deploy_admin_${suffix}`;
   const password = randomUUID();
   const admin = new Client({ connectionString: url.href });
   await admin.connect();
   const clients = [];
   let owner;
   try {
-    await admin.query(`CREATE DATABASE "${database}"`);
+    await admin.query(
+      `CREATE ROLE "${provisioner}" LOGIN NOSUPERUSER CREATEDB CREATEROLE PASSWORD '${password}'`,
+    );
+    await admin.query(`CREATE DATABASE "${database}" OWNER "${provisioner}"`);
     url.pathname = `/${database}`;
-    owner = new Client({ connectionString: url.href });
+    const provisionerUrl = new URL(url);
+    provisionerUrl.username = provisioner;
+    provisionerUrl.password = password;
+    owner = new Client({ connectionString: provisionerUrl.href });
     await owner.connect();
     const document = await readFile(
       new URL("../docs/lightsail-neon.md", import.meta.url),
@@ -41,8 +48,8 @@ it("accepts the runbook's restricted roles, migrations and actual query/lock bud
     );
     assert.equal(
       blocks.length,
-      2,
-      "runbook provisioning and post-migration grants must remain explicit",
+      3,
+      "runbook administrator, migration-owner defaults and post-migration grants must remain explicit",
     );
     const render = (sql) =>
       roles.reduce(
@@ -56,12 +63,21 @@ it("accepts the runbook's restricted roles, migrations and actual query/lock bud
     await owner.query(render(blocks[0]));
     for (const role of roles)
       await owner.query(`ALTER ROLE "${role}" PASSWORD '${password}'`);
+    await assert.rejects(
+      owner.query(render(blocks[1])),
+      (error) => error.code === "42501",
+      "a role administrator is not automatically allowed to set another role's default privileges",
+    );
     const roleUrl = (role) => {
       const target = new URL(url);
       target.username = role;
       target.password = password;
       return target.href;
     };
+    const migrationOwner = new Client({ connectionString: roleUrl(roles[0]) });
+    clients.push(migrationOwner);
+    await migrationOwner.connect();
+    await migrationOwner.query(render(blocks[1]));
     const runner = fileURLToPath(
       new URL("../packages/db/scripts/migrate.mjs", import.meta.url),
     );
@@ -77,10 +93,7 @@ it("accepts the runbook's restricted roles, migrations and actual query/lock bud
         "restricted migration owner must migrate and replay verification",
       );
     }
-    const migrationOwner = new Client({ connectionString: roleUrl(roles[0]) });
-    clients.push(migrationOwner);
-    await migrationOwner.connect();
-    await migrationOwner.query(render(blocks[1]));
+    await migrationOwner.query(render(blocks[2]));
     const runtime = new Client({ connectionString: roleUrl(roles[1]) });
     const backup = new Client({ connectionString: roleUrl(roles[2]) });
     clients.push(runtime, backup);
@@ -129,8 +142,10 @@ it("accepts the runbook's restricted roles, migrations and actual query/lock bud
       backup.query("DELETE FROM public.auth_rate_limit"),
       (error) => error.code === "42501",
     );
-    await owner.query("BEGIN");
-    await owner.query("LOCK public.auth_rate_limit IN ACCESS EXCLUSIVE MODE");
+    await migrationOwner.query("BEGIN");
+    await migrationOwner.query(
+      "LOCK public.auth_rate_limit IN ACCESS EXCLUSIVE MODE",
+    );
     const lockStart = Date.now();
     await assert.rejects(
       runtime.query("SELECT * FROM public.auth_rate_limit"),
@@ -140,7 +155,7 @@ it("accepts the runbook's restricted roles, migrations and actual query/lock bud
       Date.now() - lockStart < 6000,
       "lock wait must be bounded by the configured role default",
     );
-    await owner.query("ROLLBACK");
+    await migrationOwner.query("ROLLBACK");
     await assert.rejects(
       runtime.query("SELECT pg_sleep(16)"),
       (error) => error.code === "57014",
@@ -155,6 +170,7 @@ it("accepts the runbook's restricted roles, migrations and actual query/lock bud
     await admin.query(`DROP DATABASE IF EXISTS "${database}" WITH (FORCE)`);
     for (const role of roles)
       await admin.query(`DROP ROLE IF EXISTS "${role}"`);
+    await admin.query(`DROP ROLE IF EXISTS "${provisioner}"`);
     await admin.end();
   }
 });

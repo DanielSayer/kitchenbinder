@@ -146,14 +146,6 @@ GRANT CONNECT ON DATABASE PREP_DATABASE TO prep_sheet_runtime, prep_sheet_backup
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
 GRANT USAGE, CREATE ON SCHEMA public TO prep_sheet_migrate;
 GRANT USAGE ON SCHEMA public TO prep_sheet_runtime, prep_sheet_backup;
-ALTER DEFAULT PRIVILEGES FOR ROLE prep_sheet_migrate IN SCHEMA public
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO prep_sheet_runtime;
-ALTER DEFAULT PRIVILEGES FOR ROLE prep_sheet_migrate IN SCHEMA public
-  GRANT USAGE, SELECT ON SEQUENCES TO prep_sheet_runtime;
-ALTER DEFAULT PRIVILEGES FOR ROLE prep_sheet_migrate IN SCHEMA public
-  GRANT SELECT ON TABLES TO prep_sheet_backup;
-ALTER DEFAULT PRIVILEGES FOR ROLE prep_sheet_migrate IN SCHEMA public
-  GRANT SELECT ON SEQUENCES TO prep_sheet_backup;
 -- Initial wait budgets, validate under actual contention and imports.
 ALTER ROLE prep_sheet_runtime IN DATABASE PREP_DATABASE SET statement_timeout = '15s';
 ALTER ROLE prep_sheet_runtime IN DATABASE PREP_DATABASE SET lock_timeout = '3s';
@@ -163,6 +155,25 @@ ALTER ROLE prep_sheet_backup IN DATABASE PREP_DATABASE SET statement_timeout = '
 ALTER ROLE prep_sheet_backup IN DATABASE PREP_DATABASE SET lock_timeout = '10s';
 ALTER ROLE prep_sheet_backup IN DATABASE PREP_DATABASE SET idle_in_transaction_session_timeout = '60s';
 ```
+
+Set passwords for the three new roles, then reconnect to PREP_DATABASE as
+`prep_sheet_migrate`. Before running migrations, apply these default privileges
+as that role:
+
+```sql
+ALTER DEFAULT PRIVILEGES FOR ROLE prep_sheet_migrate IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO prep_sheet_runtime;
+ALTER DEFAULT PRIVILEGES FOR ROLE prep_sheet_migrate IN SCHEMA public
+  GRANT USAGE, SELECT ON SEQUENCES TO prep_sheet_runtime;
+ALTER DEFAULT PRIVILEGES FOR ROLE prep_sheet_migrate IN SCHEMA public
+  GRANT SELECT ON TABLES TO prep_sheet_backup;
+ALTER DEFAULT PRIVILEGES FOR ROLE prep_sheet_migrate IN SCHEMA public
+  GRANT SELECT ON SEQUENCES TO prep_sheet_backup;
+```
+
+Neon's administrator is not a PostgreSQL superuser and cannot automatically set
+another role's default privileges. Running this block as the migration owner
+avoids granting administrator membership to the runtime or backup roles.
 
 The migration role owns every application object it creates and can create/drop
 the runner's temporary verification schema and ICU collation. It is not delivered
@@ -183,7 +194,7 @@ sudo docker run --rm --env-file /etc/prep-sheet/migrate.env RELEASE_IMAGE node p
 
 For an empty installation run normal migrations. For legacy databases follow the
 stopped-writer backup/adoption procedure in deployment.md. Never use db:push or
-replay upgrade SQL independently. After each migration, as owner, refresh grants
+replay upgrade SQL independently. After each migration, as `prep_sheet_migrate`, refresh grants
 and restrict the ledger, since default privileges also apply to that table:
 
 ```sql
@@ -195,9 +206,12 @@ REVOKE ALL ON TABLE public.prep_sheet_migration FROM prep_sheet_runtime;
 GRANT SELECT ON TABLE public.prep_sheet_migration TO prep_sheet_runtime;
 ```
 
-Reconnect with each actual login. SHOW all four runtime timeouts; check pg_stat_ssl,
-PostgreSQL major 18 and ICU verification. Verify a wrong hostname/untrusted CA
-fails. Runtime must perform app DML but not DDL or ledger writes. Backup must read
+Reconnect with each actual login. SHOW all four runtime timeouts; check
+PostgreSQL major 18 and ICU verification. Confirm the client connection is
+encrypted and validates the certificate chain and hostname. `pg_stat_ssl`
+describes the backend connection and can report no TLS behind Neon's proxy even
+when the client has verified TLS. Verify a wrong hostname/untrusted CA fails.
+Runtime must perform app DML but not DDL or ledger writes. Backup must read
 all records/sequences without writes/DDL. In isolated staging, test lock contention,
 statement cancellation, failover/reconnect, idle transaction termination and cold
 starts. Runtime has no CREATE or TEMP grant in this template.
@@ -397,3 +411,29 @@ real load capacity or any of the live acceptance items above.
 
 No purchase, remote DB mutation, registry publication, real certificate request,
 external alert or deployment was performed by this preparation.
+
+## Neon branch validation on 18 October 2026
+
+A temporary child branch in the selected Sydney Neon project passed PostgreSQL
+18, UTF-8, certificate-chain and hostname validation, and rejection of an untrusted
+CA and mismatched certificate identity. The client TLS socket was encrypted and
+authorised; the backend `pg_stat_ssl` value was false behind Neon's proxy.
+
+The restricted migration role applied and verified all five versioned migrations,
+including temporary-schema replay and ICU numeric/case/accent comparisons.
+Runtime and backup logins passed their intended read/write and denied-DDL checks,
+runtime could not write the ledger, and none of the three roles had
+`neon_superuser` membership. The configured lock and statement timeouts cancelled
+real waits, and a subsequent runtime query succeeded. The connection budget
+exceeded the documented minimum.
+
+The original administrator-first default-privilege sequence failed on Neon with
+`permission denied to change default privileges`. The sequence above now applies
+defaults after reconnecting as the migration owner. The deployment regression
+also uses a non-superuser provisioner so this failure cannot be hidden by the
+disposable server's superuser.
+
+The parent branch was not migrated. This validation does not accept the future
+Lightsail connection, deployed application startup, cold starts, failover,
+backups/PITR or operational alert delivery. Repeat the role and release checks
+when provisioning the actual deployment database.
