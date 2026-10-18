@@ -32,24 +32,24 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
         content: "width=device-width, initial-scale=1, viewport-fit=cover",
       },
       {
-        title: "Prep Sheet · Good recipes, all together",
+        title: "Kitchenbinder · Good recipes, all together",
       },
       {
         name: "description",
         content:
-          "Your recipes, ready to cook. Save and organise recipes with Prep Sheet.",
+          "Your recipes, ready to cook. Save and organise recipes with Kitchenbinder.",
       },
       { name: "theme-color", content: "#faf7ef" },
       { property: "og:type", content: "website" },
-      { property: "og:site_name", content: "Prep Sheet" },
+      { property: "og:site_name", content: "Kitchenbinder" },
       {
         property: "og:title",
-        content: "Prep Sheet · Good recipes, all together",
+        content: "Kitchenbinder · Good recipes, all together",
       },
       {
         property: "og:description",
         content:
-          "Your recipes, ready to cook. Save and organise recipes with Prep Sheet.",
+          "Your recipes, ready to cook. Save and organise recipes with Kitchenbinder.",
       },
       {
         property: "og:image",
@@ -61,17 +61,17 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
       {
         property: "og:image:alt",
         content:
-          "Prep Sheet. Your recipes, ready to cook. Recipe sheet and kitchen knife logo.",
+          "Kitchenbinder. Your recipes, ready to cook. Recipe sheet and kitchen knife logo.",
       },
       { name: "twitter:card", content: "summary_large_image" },
       {
         name: "twitter:title",
-        content: "Prep Sheet · Good recipes, all together",
+        content: "Kitchenbinder · Good recipes, all together",
       },
       {
         name: "twitter:description",
         content:
-          "Your recipes, ready to cook. Save and organise recipes with Prep Sheet.",
+          "Your recipes, ready to cook. Save and organise recipes with Kitchenbinder.",
       },
       {
         name: "twitter:image",
@@ -79,7 +79,7 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
       },
       {
         name: "twitter:image:alt",
-        content: "Prep Sheet. Your recipes, ready to cook.",
+        content: "Kitchenbinder. Your recipes, ready to cook.",
       },
     ],
     links: [

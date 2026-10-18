@@ -51,7 +51,7 @@ export async function fetchPage(
       {
         signal,
         headers: {
-          "User-Agent": "PrepSheet/1.0 recipe importer",
+          "User-Agent": "Kitchenbinder/1.0 recipe importer",
           Accept: "text/html",
           "Accept-Encoding": "identity",
         },

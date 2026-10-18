@@ -16,7 +16,7 @@ export async function extensionRequest<T>(
     throw new Error(
       error.success
         ? error.data.error
-        : "Couldn't reach Prep Sheet. Please try again.",
+        : "Couldn't reach Kitchenbinder. Please try again.",
     );
   }
   return schema.parse(value);

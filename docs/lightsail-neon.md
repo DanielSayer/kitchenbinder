@@ -6,6 +6,13 @@ PostgreSQL 18 is external. It does not provision anything. The release and schem
 contract remains [deployment.md](deployment.md). Read [auth-proxy.md](auth-proxy.md),
 [resource-limits.md](resource-limits.md) and [operations.md](operations.md) too.
 
+For Kitchenbinder production, replace `PUBLIC_HOST` in all three nginx templates
+with `kitchenbinder.app` and use `BETTER_AUTH_URL=https://kitchenbinder.app`.
+Certificate paths must refer to that hostname. See the
+[domain cutover checklist](kitchenbinder-rebrand.md) for provider callbacks,
+extension releases and existing browser drafts. Use the staging hostname instead
+when preparing a separate private staging installation.
+
 ## Record the inputs
 
 Replace every uppercase placeholder before running host commands. Record the

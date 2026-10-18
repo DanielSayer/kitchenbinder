@@ -116,7 +116,7 @@ export default defineBackground(() => {
         throw new Error(
           error.success
             ? error.data.error
-            : "Couldn't reach Prep Sheet. Try again.",
+            : "Couldn't reach Kitchenbinder. Try again.",
         );
       }
       return value;
@@ -440,7 +440,7 @@ export default defineBackground(() => {
         respond({
           ok: false,
           error:
-            "Couldn't reach Prep Sheet. Check the website is available and try again.",
+            "Couldn't reach Kitchenbinder. Check the website is available and try again.",
         }),
       );
     return true;

@@ -29,14 +29,14 @@ export default defineConfig({
   manifest: ({ mode }) => {
     const { origin, key, development } = getBuildSettings(mode);
     return {
-      name: development ? "Prep Sheet (development)" : "Prep Sheet",
-      description: "Save recipes from your browser to Prep Sheet.",
+      name: development ? "Kitchenbinder (development)" : "Kitchenbinder",
+      description: "Save recipes from your browser to Kitchenbinder.",
       key,
       permissions: ["activeTab", "scripting", "identity", "storage"],
       minimum_chrome_version: "116",
       host_permissions: [`${origin}/*`],
       icons,
-      action: { default_title: "Prep Sheet", default_icon: icons },
+      action: { default_title: "Kitchenbinder", default_icon: icons },
     };
   },
   vite: ({ mode }) => ({

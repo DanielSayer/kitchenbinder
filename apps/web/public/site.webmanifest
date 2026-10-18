@@ -1,6 +1,6 @@
 {
-  "name": "Prep Sheet",
-  "short_name": "Prep Sheet",
+  "name": "Kitchenbinder",
+  "short_name": "Kitchenbinder",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#faf7ef",

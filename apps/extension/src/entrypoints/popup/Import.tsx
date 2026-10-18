@@ -56,7 +56,7 @@ export function Import({
     setError(
       cause instanceof Error
         ? cause.message
-        : "Couldn't reach Prep Sheet. Try again.",
+        : "Couldn't reach Kitchenbinder. Try again.",
     );
     setReconnect(cause instanceof PopupError && cause.reconnect);
   }, []);

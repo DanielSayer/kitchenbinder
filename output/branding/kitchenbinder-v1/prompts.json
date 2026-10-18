@@ -1,0 +1,18 @@
+{
+  "tool": "built-in image_gen",
+  "useCase": "text-localization",
+  "prompts": [
+    {
+      "asset": "logo",
+      "prompt": "Use case: text-localization. Edit target: the provided transparent horizontal Prep Sheet logo. Replace only the words 'Prep Sheet' with the exact text 'Kitchenbinder'. Spell K-i-t-c-h-e-n-b-i-n-d-e-r, one word, capital K. Preserve the recipe-sheet-and-kitchen-knife symbol, forest green and orange colours, rounded heavy lettering style, clean edges, and generous clear space. Keep a wide horizontal composition with the symbol at the left and all lettering on one line at the right. Extend the canvas width if needed for the longer word. No tagline, extra objects, border, shadow or watermark. The background must remain genuinely transparent. Production logo asset."
+    },
+    {
+      "asset": "share-wide",
+      "prompt": "Use case: text-localization. Edit target: the provided wide social-preview artwork. Replace only the words 'Prep Sheet' with the exact text 'Kitchenbinder', one word with capital K, spelled K-i-t-c-h-e-n-b-i-n-d-e-r. Keep the exact tagline 'Your recipes, ready to cook.' Preserve the recipe-sheet-and-kitchen-knife symbol, cream background, forest green lettering, orange accent and rounded heavy lettering style. Rebalance the text sizing and spacing so the longer name fits comfortably without clipping. Keep the landscape social card composition and an approximately 1200 by 630 aspect ratio. No new objects, watermark or additional text."
+    },
+    {
+      "asset": "share-square",
+      "prompt": "Use case: text-localization. Edit target: the provided square social-preview artwork. Replace only the words 'Prep Sheet' with the exact text 'Kitchenbinder', one word with capital K, spelled K-i-t-c-h-e-n-b-i-n-d-e-r. Keep the exact tagline 'Your recipes, ready to cook.' Preserve the recipe-sheet-and-kitchen-knife symbol, cream background, forest green lettering, orange accent and rounded heavy lettering style. Rebalance the text sizing and spacing so the longer name fits comfortably without clipping. Keep a square social card composition. No new objects, watermark or additional text."
+    }
+  ]
+}

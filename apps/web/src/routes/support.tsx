@@ -38,7 +38,7 @@ function Support() {
       ) : (
         <section className="help-section">
           <h2>Report a problem</h2>
-          <p>Sign in to send a report linked to your Prep Sheet account.</p>
+          <p>Sign in to send a report linked to your Kitchenbinder account.</p>
           <Link to="/login" className="button button-primary">
             Sign in
           </Link>
