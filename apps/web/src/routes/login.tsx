@@ -25,7 +25,7 @@ function Login() {
           callbackError === "email_does_not_match" ||
           callbackError === "account_already_linked_to_different_user" ||
           callbackError === "unable_to_link_account"
-        ? "Couldn't link that account. Use the same email address as your Prep Sheet account and make sure it isn't linked to another account. Return to Settings to try again."
+        ? "Couldn't link that account. Use the same email address as your Kitchenbinder account and make sure it isn't linked to another account. Return to Settings to try again."
         : callbackError === "access_denied"
           ? "Sign-in was cancelled. You can try again when you're ready."
           : callbackError

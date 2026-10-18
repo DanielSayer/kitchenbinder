@@ -57,7 +57,7 @@ export function App() {
           width={40}
           height={40}
         />
-        <span className="brand-wordmark">prep sheet</span>
+        <span className="brand-wordmark">kitchenbinder</span>
       </p>
       {connection?.kind === "connected" ? (
         <>
@@ -74,7 +74,7 @@ export function App() {
               target="_blank"
               rel="noreferrer"
             >
-              Prep Sheet <span aria-hidden="true">↗</span>
+              Kitchenbinder <span aria-hidden="true">↗</span>
             </a>
             <button
               className="secondary"
@@ -88,8 +88,8 @@ export function App() {
         </>
       ) : connection?.kind === "connecting" ? (
         <p role="status">
-          Finish connecting in the Prep Sheet window. You can close this popup
-          and reopen it afterwards.
+          Finish connecting in the Kitchenbinder window. You can close this
+          popup and reopen it afterwards.
         </p>
       ) : !connection && !error ? (
         <p role="status">Checking your account...</p>
@@ -97,7 +97,8 @@ export function App() {
         <>
           <h1>Save recipes from your browser</h1>
           <p>
-            Connect your Prep Sheet account to save a recipe to your collection.
+            Connect your Kitchenbinder account to save a recipe to your
+            collection.
           </p>
           {connection?.kind === "disconnected" && connection.message && (
             <p role="status">{connection.message}</p>
@@ -107,7 +108,7 @@ export function App() {
             onClick={() => void send("connect")}
             type="button"
           >
-            {busy ? "Checking connection..." : "Connect to Prep Sheet"}
+            {busy ? "Checking connection..." : "Connect to Kitchenbinder"}
           </button>
         </>
       )}

@@ -12,7 +12,7 @@ export function PrivacyPolicy({ embedded = false }: { embedded?: boolean }) {
           address and browser information.
         </p>
         <p>
-          Prep Sheet does not manage your Google or Discord password. Change
+          Kitchenbinder does not manage your Google or Discord password. Change
           your password, email and security settings with your sign-in provider.
         </p>
       </section>
@@ -26,9 +26,9 @@ export function PrivacyPolicy({ embedded = false }: { embedded?: boolean }) {
         <p>
           For a pasted link, our server fetches the page and extracts recipe
           content. The browser extension reads recipe content from the page you
-          choose to capture and sends that content and its source URL to Prep
-          Sheet. It does not send your browsing history or browser cookies.
-          Check the capture preview before sending.
+          choose to capture and sends that content and its source URL to
+          Kitchenbinder. It does not send your browsing history or browser
+          cookies. Check the capture preview before sending.
         </p>
         <p>
           Extension imports are stored with their input, source URL, processing
@@ -51,7 +51,7 @@ export function PrivacyPolicy({ embedded = false }: { embedded?: boolean }) {
           recipe.
         </p>
         <p>
-          Prep Sheet uses browser storage for preferences, recipe drafts and
+          Kitchenbinder uses browser storage for preferences, recipe drafts and
           cooking progress. These can remain on a device after you sign out.
           Clear this site's browser data on a shared device. Support reports
           contain the text you submit and are linked to your account so the
@@ -74,7 +74,7 @@ export function PrivacyPolicy({ embedded = false }: { embedded?: boolean }) {
         </p>
       </section>
       <section className="help-section">
-        <Heading>Leaving Prep Sheet</Heading>
+        <Heading>Leaving Kitchenbinder</Heading>
         <p>
           You can request deletion from account settings. The request is
           reviewed manually and can be cancelled while pending. It does not
