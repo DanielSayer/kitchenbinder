@@ -61,8 +61,9 @@ class ReleaseTests(unittest.TestCase):
             for name in ["runtime.env", "capacity.env", "migrate.env", "backup.env"]:
                 (config / name).write_text("PREP_SHEET_IMAGE=previous-image\n")
             (config / "nginx-maintenance.conf").write_text("maintenance")
+            (config / "nginx-serving.conf").write_text("serving")
             nginx = root / "nginx.conf"
-            nginx.write_text("serving")
+            nginx.write_text("maintenance" if scenario == "forward_repair" else "serving")
             compose = app / "deploy/compose.yml"
             compose.write_text("original compose")
             result = subprocess.run(
@@ -134,6 +135,12 @@ class ReleaseTests(unittest.TestCase):
 
     def test_success_records_digest_and_reopens_traffic(self):
         result, _, nginx, runtime = self.run_release()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(nginx, "serving")
+        self.assertIn(DIGEST, runtime)
+
+    def test_forward_repair_reopens_serving_config_after_failed_release(self):
+        result, _, nginx, runtime = self.run_release("forward_repair")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(nginx, "serving")
         self.assertIn(DIGEST, runtime)

@@ -1,10 +1,24 @@
 # GitHub build and deployment
 
-Open **Actions → Deploy production → Run workflow**, select `master`, and run.
-Select **dry_run** to check image publication, deployment access and server
-configuration without stopping services or issuing database commands.
-Feature branches cannot deploy. Pushes and pull requests continue to run release
-checks automatically; a push does not automatically deploy production.
+Every push to `master`, including a merged pull request, runs release checks,
+publishes the tested image and automatically deploys it after the checks pass.
+Pull requests run checks only. The required `release-checks` job remains the merge
+gate; production credentials are available only to the separate deployment job.
+
+For a manual rerun, open **Actions → Deploy production → Run workflow**, select
+`master`, and run. Select **dry_run** to check image publication, deployment access
+and server configuration without stopping services or issuing database commands.
+The manual workflow calls the same pipeline rather than maintaining another copy
+of the build or deployment steps. Manually running **Release checks** checks the
+selected branch by default; its optional **deploy** input is restricted to master,
+and its **dry_run** input defaults to true.
+
+Feature branches cannot deploy. Before obtaining deployment credentials, the
+deployment job checks that its commit is still the current `master` head. It
+reports a skipped release when a newer commit has superseded it. This avoids an
+older, slower build replacing a newer release. A commit already deploying is
+allowed to finish; subsequent eligible deployments share the same host lock and
+GitHub concurrency group. Intermediate queued commits may be superseded.
 
 The deployment workflow reuses all release checks, including the tests against
 the Linux image. It publishes that same image to `ghcr.io/danielsayer/prep-sheet`,
@@ -26,7 +40,13 @@ The `production` GitHub environment allows only the `master` branch. It contains
 
 The AWS account needs an OIDC provider for
 `https://token.actions.githubusercontent.com` with audience `sts.amazonaws.com`.
-The account's organisation policy can restrict managing that provider. The
+The account's organisation policy can restrict managing that provider. Upgrading
+the AWS billing plan and activating advanced features are separate steps. A paid
+upgrade alone does not remove the simplified Projects experience's IAM
+restrictions. Advanced activation requires management-email verification and
+explicit confirmation in AWS Settings; it permanently removes project spend
+limits. After activation, review the organisation policies and configure the
+provider with the administrator access available for this account. The
 versioned [trust policy](../deploy/github-oidc-trust.json) uses this repository's
 verified immutable subject prefix and the production environment. The
 [permission policy](../deploy/github-firewall-policy.json) grants only open/close
@@ -37,6 +57,13 @@ source in an always-run cleanup step. Existing operator sources are retained.
 An abruptly terminated runner can leave its narrow rule behind; inspect SSH
 sources after a cancelled or interrupted deployment and remove the stale `/32`.
 No AWS access keys are stored in GitHub.
+
+The host firewall must also accept IPv4 TCP 22 so the runner admitted by Lightsail
+can reach SSH. This host uses UFW with an IPv4 SSH allow rule; Lightsail provides
+the public source-address restriction. Keep Lightsail TCP 22 restricted to the
+operator address and the temporary runner `/32`, with no IPv6 SSH rule. Retaining
+only an operator-specific UFW rule would block GitHub even after the workflow
+opens its Lightsail rule. SSH still requires the dedicated restricted key.
 
 Install `deploy/release.sh` root-owned, mode 0755, as
 `/usr/local/sbin/prep-sheet-release`. Install `deploy/ssh-entry.sh` the same way as
@@ -55,6 +82,13 @@ password is the deployment job's short-lived read-only GitHub token, sent on SSH
 stdin and stored in a private temporary Docker configuration that is removed on
 exit. The application, database and provider secrets stay on Lightsail.
 
+After verifying the live nginx configuration is serving the healthy application,
+save a root-owned copy as `/etc/prep-sheet/nginx-serving.conf`. The release helper
+requires this accepted configuration separately from `nginx-maintenance.conf`.
+Update it when accepting a host nginx configuration change. A forward repair
+uses it to reopen traffic even when the preceding release left the active nginx
+file in maintenance mode.
+
 ## Release behaviour
 
 The helper uses `/opt/prep-sheet/deploy/compose.yml`, the existing `deploy` Compose
@@ -65,7 +99,7 @@ GitHub, outside the serving host.
 
 After checking the candidate image and Compose configuration, a real deployment:
 
-1. Records the previous image, runtime configuration, Compose file and nginx file
+1. Records the previous image, runtime configuration, Compose file and accepted serving nginx file
    in a private directory under `/etc/prep-sheet/releases`.
 2. Enables the existing nginx maintenance configuration and drains both services
    with their configured shutdown grace periods.
@@ -97,7 +131,7 @@ docker run --rm -v "$PWD:/workspace:ro" -w /workspace python:3.12-slim python3 d
 ```
 
 They cover dry-run isolation, wrong-commit rejection, backup/migration/startup
-failure, migration-incompatible recovery, capacity overrides and successful
+failure, migration-incompatible recovery, forward repair from maintenance, capacity overrides and successful
 completion. A hosted dry run separately checks actual OIDC, firewall, SSH and
 private image-pull permissions. Only a real deployment exercises backup,
 production migration and recovery against the serving installation.
