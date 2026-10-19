@@ -26,7 +26,7 @@ describe("provider configuration", () => {
       signInProviders: ["google"],
       aiEnabled: false,
       billingMode: "disabled",
-      model: "gpt-5.6-luna",
+      model: "gpt-6-luna",
     });
   });
 

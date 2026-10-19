@@ -23,7 +23,7 @@ Copy `apps/web/.env.example` to `apps/web/.env` and fill in the credentials. Kee
 - `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET`: optional alternative from your Discord application. Leave both blank for Google-only staging.
 - `AI_ENABLED=false` and `BILLING_MODE=disabled`: keep AI and billing disabled for initial setup and private staging.
 - `OPENAI_API_KEY`: needed only when explicitly enabling AI after provider acceptance.
-- `OPENAI_MODEL`: defaults to `gpt-5.6-luna`.
+- `OPENAI_MODEL`: defaults to `gpt-6-luna`.
 
 If enabling Discord locally, register `http://localhost:3001/api/auth/callback/discord` in the Discord Developer Portal under OAuth2 redirects. Use the same hostname for the app and callback.
 

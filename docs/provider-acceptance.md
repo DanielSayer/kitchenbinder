@@ -103,7 +103,7 @@ wildcards or substitute a synthetic session for this check.
 ## AI reservations and provider controls
 
 `packages/env/src/ai-policy.ts` is the reviewed envelope, not an invoice model.
-It currently approves `gpt-5.6-luna`, 160,000 UTF-8 bytes of content, 160,000 bytes
+It currently approves `gpt-6-luna`, 160,000 UTF-8 bytes of content, 160,000 bytes
 of complete system prompt including tags, and 7,000 output tokens. Both source
 paths and direct generation use the same byte check. Worker validation runs
 before reservation; an oversized input releases usage and makes no provider call.
@@ -111,14 +111,14 @@ Fetched text is additionally truncated to 40,000 characters; captured content is
 limited to 32,000 characters and typed input to 20,000. Byte limits still apply to
 multibyte text. SDK automatic retries are zero and service tier is `default`.
 
-The [official model documentation](https://developers.openai.com/api/docs/models/gpt-5.6-luna)
-checked 15 October 2026 lists standard pricing of US$0.20 per million input tokens
-and US$1.20 output. For a conservative review, count up to one token per UTF-8 byte,
+The [official model documentation](https://developers.openai.com/api/docs/models/gpt-6-luna)
+checked 19 October 2026 lists standard pricing of US$0.10 per million input tokens
+and US$0.50 output. For a conservative review, count up to one token per UTF-8 byte,
 allow 16,384 further tokens for schema/protocol overhead, and price the entire
 336,384-token input at twice the input rate plus a 25% cache-write allowance.
 Price all 7,000 output tokens at 1.5 times the output rate. This deliberately
 includes the documented long-context multipliers even for smaller requests.
-The resulting estimate is US$0.180792 per attempt, below the US$0.25 reservation.
+The resulting estimate is US$0.089346 per attempt, below the US$0.25 reservation.
 Startup rejects enabled AI if this reviewed estimate exceeds the reservation.
 This is an estimate under those assumptions, not a guaranteed invoice ceiling.
 Review schema/protocol growth against that overhead allowance, and recheck
@@ -156,6 +156,10 @@ Do not run `pnpm test:live` casually for acceptance. It can make multiple paid
 requests and calls generation directly rather than proving queue accounting.
 
 ## Polar sandbox acceptance
+
+The locked SDK 0.49 uses the `2026-04` API contract. Application requests pin
+`Polar-Version: 2026-04`; configure Raw webhook endpoints with that same version.
+Review SDK and webhook versions together before upgrading either contract.
 
 Use a separate sandbox organisation/product/token/webhook. Set both mode and
 server to `sandbox`. Follow Polar's

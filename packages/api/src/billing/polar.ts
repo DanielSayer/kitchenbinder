@@ -1,4 +1,4 @@
-import { Polar } from "@polar-sh/sdk";
+import { HTTPClient, Polar } from "@polar-sh/sdk";
 import { PolarError } from "@polar-sh/sdk/models/errors/polarerror";
 import { WebhookVerificationError } from "@polar-sh/sdk/webhooks";
 import { db } from "@prep-sheet/db";
@@ -31,6 +31,10 @@ function polar() {
     accessToken: env.POLAR_ACCESS_TOKEN,
     server: env.POLAR_SERVER,
     timeoutMs: 10000,
+    // Match SDK 0.49's schemas and the production webhook contract.
+    httpClient: new HTTPClient().addHook("beforeRequest", (request) => {
+      request.headers.set("Polar-Version", "2026-04");
+    }),
   });
 }
 

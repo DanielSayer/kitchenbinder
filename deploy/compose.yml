@@ -32,7 +32,7 @@ x-runtime: &runtime
     DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
     OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     AI_ENABLED: ${AI_ENABLED:?Choose true or false explicitly}
-    OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-luna}
+    OPENAI_MODEL: ${OPENAI_MODEL:-gpt-6-luna}
     POLAR_ACCESS_TOKEN: ${POLAR_ACCESS_TOKEN:-}
     BILLING_MODE: ${BILLING_MODE:?Choose disabled, sandbox or production explicitly}
     POLAR_WEBHOOK_SECRET: ${POLAR_WEBHOOK_SECRET:-}

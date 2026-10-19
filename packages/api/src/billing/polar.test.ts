@@ -160,6 +160,20 @@ const importInput = () => ({
 });
 
 describe("Polar synchronization and signed webhooks", () => {
+  it("pins real SDK requests to the webhook schema version", async () => {
+    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({
+        items: [],
+        pagination: { total_count: 0, max_page: 1 },
+      }),
+    );
+    expect(await hasUnfinishedSubscription(userId)).toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const sent = fetch.mock.calls[0]?.[0];
+    if (!(sent instanceof Request)) throw new Error("Expected an SDK request");
+    expect(new URL(sent.url).origin).toBe("https://sandbox-api.polar.sh");
+    expect(sent.headers.get("Polar-Version")).toBe("2026-04");
+  });
   it("blocks unresolved billing even when no active benefits remain", async () => {
     const prototype = Object.getPrototypeOf(
       new Polar({ accessToken: "test-token" }).subscriptions,
