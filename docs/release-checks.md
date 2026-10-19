@@ -53,7 +53,9 @@ services. See [deployment](deployment.md) and [PDF packaging](pdf-production.md)
 
 CI separately builds the web production artifact and packages development extensions for Chrome and Edge. Those ZIPs use the local development origin and identity. A store release still requires the real HTTPS origin, public key and matching website extension IDs, followed by installed-browser verification. Use `pnpm --filter @prep-sheet/extension package:production` with the release settings for that separate step.
 
-Make the `release-checks` job required in repository branch protection before relying on it to prevent merges. This workflow performs validation; it does not deploy the website, migrate a production database or verify the eventual host.
+Make the `release-checks` job required in repository branch protection before relying on it to prevent merges. Trusted `master` runs publish the exact tested Docker image to GitHub Container Registry after all checks pass. Pull requests never publish. The image carries its full commit revision and is consumed by digest.
+
+Production deployment is a separate manual workflow. See [GitHub deployment](github-deployment.md). Release checks alone do not restart the website, migrate production or verify the eventual host.
 
 ## Historical verification on 13 October 2026
 
