@@ -75,6 +75,13 @@ password is the deployment job's short-lived read-only GitHub token, sent on SSH
 stdin and stored in a private temporary Docker configuration that is removed on
 exit. The application, database and provider secrets stay on Lightsail.
 
+After verifying the live nginx configuration is serving the healthy application,
+save a root-owned copy as `/etc/prep-sheet/nginx-serving.conf`. The release helper
+requires this accepted configuration separately from `nginx-maintenance.conf`.
+Update it when accepting a host nginx configuration change. A forward repair
+uses it to reopen traffic even when the preceding release left the active nginx
+file in maintenance mode.
+
 ## Release behaviour
 
 The helper uses `/opt/prep-sheet/deploy/compose.yml`, the existing `deploy` Compose
@@ -85,7 +92,7 @@ GitHub, outside the serving host.
 
 After checking the candidate image and Compose configuration, a real deployment:
 
-1. Records the previous image, runtime configuration, Compose file and nginx file
+1. Records the previous image, runtime configuration, Compose file and accepted serving nginx file
    in a private directory under `/etc/prep-sheet/releases`.
 2. Enables the existing nginx maintenance configuration and drains both services
    with their configured shutdown grace periods.
@@ -117,7 +124,7 @@ docker run --rm -v "$PWD:/workspace:ro" -w /workspace python:3.12-slim python3 d
 ```
 
 They cover dry-run isolation, wrong-commit rejection, backup/migration/startup
-failure, migration-incompatible recovery, capacity overrides and successful
+failure, migration-incompatible recovery, forward repair from maintenance, capacity overrides and successful
 completion. A hosted dry run separately checks actual OIDC, firewall, SSH and
 private image-pull permissions. Only a real deployment exercises backup,
 production migration and recovery against the serving installation.

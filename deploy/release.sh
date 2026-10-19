@@ -65,7 +65,7 @@ failure() {
 trap cleanup EXIT
 trap failure ERR HUP INT TERM
 
-for file in runtime.env capacity.env migrate.env backup.env nginx-maintenance.conf; do
+for file in runtime.env capacity.env migrate.env backup.env nginx-maintenance.conf nginx-serving.conf; do
   [[ -s "$config/$file" ]]
 done
 [[ -s "$nginx" && -s "$app/deploy/compose.yml" ]]
@@ -92,7 +92,9 @@ docker image inspect "$previous" >/dev/null
 docker pull postgres:18
 install -m 600 "$config/runtime.env" "$temporary/runtime.env"
 install -m 644 "$app/deploy/compose.yml" "$temporary/compose-before.yml"
-install -m 644 "$nginx" "$temporary/nginx.conf"
+# A failed, migration-incompatible release can leave the active file in
+# maintenance. Forward repairs must reopen the last accepted serving config.
+install -m 644 "$config/nginx-serving.conf" "$temporary/nginx.conf"
 mkdir -p -m 700 "$backups" "$config/releases"
 release_record="$config/releases/$(date -u +%Y%m%dT%H%M%SZ)-$revision"
 mkdir -m 700 "$release_record"
