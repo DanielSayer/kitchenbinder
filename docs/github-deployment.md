@@ -58,6 +58,13 @@ An abruptly terminated runner can leave its narrow rule behind; inspect SSH
 sources after a cancelled or interrupted deployment and remove the stale `/32`.
 No AWS access keys are stored in GitHub.
 
+The host firewall must also accept IPv4 TCP 22 so the runner admitted by Lightsail
+can reach SSH. This host uses UFW with an IPv4 SSH allow rule; Lightsail provides
+the public source-address restriction. Keep Lightsail TCP 22 restricted to the
+operator address and the temporary runner `/32`, with no IPv6 SSH rule. Retaining
+only an operator-specific UFW rule would block GitHub even after the workflow
+opens its Lightsail rule. SSH still requires the dedicated restricted key.
+
 Install `deploy/release.sh` root-owned, mode 0755, as
 `/usr/local/sbin/prep-sheet-release`. Install `deploy/ssh-entry.sh` the same way as
 `/usr/local/bin/prep-sheet-ssh-entry`. Update these installed files when changing
