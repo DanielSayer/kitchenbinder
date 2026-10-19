@@ -1,10 +1,24 @@
 # GitHub build and deployment
 
-Open **Actions → Deploy production → Run workflow**, select `master`, and run.
-Select **dry_run** to check image publication, deployment access and server
-configuration without stopping services or issuing database commands.
-Feature branches cannot deploy. Pushes and pull requests continue to run release
-checks automatically; a push does not automatically deploy production.
+Every push to `master`, including a merged pull request, runs release checks,
+publishes the tested image and automatically deploys it after the checks pass.
+Pull requests run checks only. The required `release-checks` job remains the merge
+gate; production credentials are available only to the separate deployment job.
+
+For a manual rerun, open **Actions → Deploy production → Run workflow**, select
+`master`, and run. Select **dry_run** to check image publication, deployment access
+and server configuration without stopping services or issuing database commands.
+The manual workflow calls the same pipeline rather than maintaining another copy
+of the build or deployment steps. Manually running **Release checks** checks the
+selected branch by default; its optional **deploy** input is restricted to master,
+and its **dry_run** input defaults to true.
+
+Feature branches cannot deploy. Before obtaining deployment credentials, the
+deployment job checks that its commit is still the current `master` head. It
+reports a skipped release when a newer commit has superseded it. This avoids an
+older, slower build replacing a newer release. A commit already deploying is
+allowed to finish; subsequent eligible deployments share the same host lock and
+GitHub concurrency group. Intermediate queued commits may be superseded.
 
 The deployment workflow reuses all release checks, including the tests against
 the Linux image. It publishes that same image to `ghcr.io/danielsayer/prep-sheet`,
@@ -26,7 +40,13 @@ The `production` GitHub environment allows only the `master` branch. It contains
 
 The AWS account needs an OIDC provider for
 `https://token.actions.githubusercontent.com` with audience `sts.amazonaws.com`.
-The account's organisation policy can restrict managing that provider. The
+The account's organisation policy can restrict managing that provider. Upgrading
+the AWS billing plan and activating advanced features are separate steps. A paid
+upgrade alone does not remove the simplified Projects experience's IAM
+restrictions. Advanced activation requires management-email verification and
+explicit confirmation in AWS Settings; it permanently removes project spend
+limits. After activation, review the organisation policies and configure the
+provider with the administrator access available for this account. The
 versioned [trust policy](../deploy/github-oidc-trust.json) uses this repository's
 verified immutable subject prefix and the production environment. The
 [permission policy](../deploy/github-firewall-policy.json) grants only open/close

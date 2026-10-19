@@ -55,7 +55,7 @@ CI separately builds the web production artifact and packages development extens
 
 Make the `release-checks` job required in repository branch protection before relying on it to prevent merges. Trusted `master` runs publish the exact tested Docker image to GitHub Container Registry after all checks pass. Pull requests never publish. The image carries its full commit revision and is consumed by digest.
 
-Production deployment is a separate manual workflow. See [GitHub deployment](github-deployment.md). Release checks alone do not restart the website, migrate production or verify the eventual host.
+After a successful `master` push build, a separate `deploy` job in the same workflow deploys that exact image digest to production. Pull requests and ordinary manual check runs do not deploy. The separate **Deploy production** manual workflow calls this same pipeline with deployment explicitly enabled, including its optional dry run. Superseded commits are skipped before deployment access is requested. See [GitHub deployment](github-deployment.md) for concurrency, migration and recovery behaviour. Passing build checks alone does not prove that deployment or production health succeeded; inspect the deployment job too.
 
 ## Historical verification on 13 October 2026
 
