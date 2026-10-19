@@ -106,10 +106,14 @@ export function PublicPlans() {
   );
 }
 
-export function PricingFaq() {
+export function PricingFaq({
+  heading = "A few things to know",
+}: {
+  heading?: string;
+}) {
   return (
     <section className="pricing-faq" aria-labelledby="pricing-questions">
-      <h2 id="pricing-questions">A few things to know</h2>
+      <h2 id="pricing-questions">{heading}</h2>
       <details>
         <summary>How does the free trial work?</summary>
         <p>
