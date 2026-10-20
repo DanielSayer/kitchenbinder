@@ -257,27 +257,3 @@ textarea::placeholder {
   background: var(--surface-muted);
   border-radius: 10px;
 }
-/* Billing shares the settings page's type and button styles. */
-.billing-summary,
-.billing-offer {
-  padding: 1.25rem;
-  border: 1px solid var(--border);
-  border-radius: var(--control-radius);
-  margin-bottom: 1rem;
-}
-.billing-summary > strong {
-  font-size: 1.25rem;
-}
-.billing-offer h3 {
-  margin-top: 0;
-}
-.billing-offer ul {
-  padding-left: 1.25rem;
-}
-.billing-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}

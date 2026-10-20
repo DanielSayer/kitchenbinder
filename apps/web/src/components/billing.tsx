@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
+import { BillingPlan } from "@/components/billing-plan";
 import { ErrorNotice } from "@/components/feedback";
-import { PlanCards, PricingFaq } from "@/components/plan-cards";
+import { PricingFaq } from "@/components/plan-cards";
 import { useTRPC } from "@/utils/trpc";
 
 export function Billing() {
@@ -30,12 +31,22 @@ export function Billing() {
   );
   const plan = status.data;
   const busy = checkout.isPending || portal.isPending || refresh.isPending;
+  const manageSubscription = plan?.hasCustomer ? (
+    <button
+      type="button"
+      className="button button-outline button-small"
+      disabled={busy || !plan.available}
+      onClick={() => portal.mutate()}
+    >
+      {portal.isPending ? "Opening billing..." : "Manage subscription"}
+    </button>
+  ) : null;
   return (
     <section
       className="help-section billing-section"
       aria-labelledby="billing-heading"
     >
-      <h2 id="billing-heading">Your plan</h2>
+      <h2 id="billing-heading">Plan &amp; usage</h2>
       {status.isPending && <p role="status">Loading your plan...</p>}
       <ErrorNotice
         message={status.error?.message}
@@ -43,69 +54,15 @@ export function Billing() {
       />
       {plan && (
         <>
-          <div className="billing-summary">
-            <strong>
-              {plan.tier === "pro"
-                ? plan.bucket === "trial"
-                  ? "Pro trial"
-                  : "Pro"
-                : "Free"}
-            </strong>
-            <p>
-              {plan.saved}{" "}
-              {plan.recipes === null
-                ? "recipes saved"
-                : `of ${plan.recipes} recipes saved`}
-            </p>
-            {plan.recipes !== null && plan.saved >= plan.recipes && (
-              <p className="muted">
-                Your recipes are safe. Upgrade or remove a recipe before saving
-                another.
-              </p>
-            )}
-            <p>
-              {Math.max(0, plan.credits - plan.used)} of {plan.credits} AI
-              credits left
-              {plan.bucket === "free"
-                ? " for your account"
-                : plan.bucket === "trial"
-                  ? " for your trial"
-                  : " this month"}
-              .
-            </p>
-            {plan.resetsAt && (
-              <p className="muted">
-                {plan.bucket === "trial" ? "Trial ends" : "Credits reset"}{" "}
-                {new Date(plan.resetsAt).toLocaleDateString()}.
-              </p>
-            )}
-            {plan.cancelAtPeriodEnd && plan.validUntil && (
-              <p>
-                Pro ends {new Date(plan.validUntil).toLocaleDateString()}. Your
-                recipes stay readable and exportable.
-              </p>
-            )}
-          </div>
-          <PlanCards
-            trialEligible={plan.trialEligible && plan.tier === "free"}
-            freeAction={
-              <p className="plan-current">
-                {plan.tier === "free"
-                  ? "Your current plan"
-                  : "Included with Pro"}
-              </p>
-            }
-            proAction={
+          <BillingPlan
+            plan={plan}
+            action={
               plan.tier === "pro" ? (
-                <p className="plan-current">
-                  {plan.bucket === "trial"
-                    ? "Your trial is active"
-                    : "Your current plan"}
-                </p>
+                manageSubscription
               ) : (
                 <button
                   type="button"
-                  className="button button-primary"
+                  className="button button-primary button-small"
                   disabled={busy || !plan.available}
                   onClick={() => checkout.mutate()}
                 >
@@ -115,36 +72,27 @@ export function Billing() {
                       ? "Pro is coming soon"
                       : plan.trialEligible && plan.pricing.trial.days > 0
                         ? `Start ${plan.pricing.trial.days}-day free trial`
-                        : "Get Pro"}
+                        : "Upgrade to Pro"}
                 </button>
               )
             }
+            secondaryActions={
+              <>
+                {plan.tier === "free" && manageSubscription}
+                {plan.available && (
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={busy}
+                    onClick={() => refresh.mutate()}
+                  >
+                    {refresh.isPending ? "Checking plan..." : "Refresh plan"}
+                  </button>
+                )}
+              </>
+            }
           />
-          <div className="billing-actions">
-            {plan.hasCustomer && (
-              <button
-                type="button"
-                className="button button-outline"
-                disabled={busy || !plan.available}
-                onClick={() => portal.mutate()}
-              >
-                {portal.isPending
-                  ? "Opening billing..."
-                  : "Manage subscription"}
-              </button>
-            )}
-            {plan.available && (
-              <button
-                type="button"
-                className="text-button"
-                disabled={busy}
-                onClick={() => refresh.mutate()}
-              >
-                {refresh.isPending ? "Checking plan..." : "Refresh plan"}
-              </button>
-            )}
-          </div>
-          <PricingFaq />
+          <PricingFaq heading="Plan details" />
         </>
       )}
       <ErrorNotice
