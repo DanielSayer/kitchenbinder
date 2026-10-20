@@ -30,8 +30,9 @@ During the repository rename, the publisher also pushes the exact same image to
 `ghcr.io/danielsayer/prep-sheet` and verifies both registry digests match. This is
 a compatibility alias for installed host helpers, not a separate build. New host
 helpers pull the Kitchenbinder package. Keep the alias until every installed
-helper has been updated and verified. Keep existing old image versions available
-for rollback.
+helper has been updated and verified, then set the repository Actions variable
+`PUBLISH_LEGACY_IMAGE=false` to stop publishing under the old name. Keep existing
+old image versions available for rollback.
 
 The canonical repository is
 [`DanielSayer/kitchenbinder`](https://github.com/DanielSayer/kitchenbinder), with

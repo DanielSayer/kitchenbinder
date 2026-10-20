@@ -118,7 +118,9 @@ installed host paths remain compatible with existing installations.
    `https://github.com/DanielSayer/kitchenbinder.git`. Re-read the OIDC subject
    prefix at the renamed repository and confirm that the installed IAM trust
    policy matches it. Check the next deployment's authentication and image pull.
-6. In the new container package settings, confirm its repository connection and
+6. Once every deployed helper uses the new package, set the repository Actions
+   variable `PUBLISH_LEGACY_IMAGE=false` to retire the compatibility publisher.
+   In the new container package settings, confirm its repository connection and
    intended visibility. After accepting the new package and helper, remove the
    old package's repository connection if it should no longer appear in the
    repository sidebar. Retain its versions for rollback; do not delete the
@@ -126,8 +128,9 @@ installed host paths remain compatible with existing installations.
    for package settings, independently of repository administrator access.
 
 The repository rename redirects old GitHub repository links, but package image
-names do not follow that redirect. Keep publishing the compatibility alias until
-all deployed helpers use the canonical Kitchenbinder package.
+names do not follow that redirect. The compatibility publisher stays enabled
+unless `PUBLISH_LEGACY_IMAGE` is explicitly `false`. Keep it enabled until all
+deployed helpers use the canonical Kitchenbinder package.
 
 ## Acceptance before public launch
 

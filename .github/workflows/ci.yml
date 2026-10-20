@@ -93,6 +93,7 @@ jobs:
         if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
+          PUBLISH_LEGACY_IMAGE: ${{ vars.PUBLISH_LEGACY_IMAGE != 'false' }}
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/kitchenbinder"
           compatibility_image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/prep-sheet"
@@ -103,10 +104,12 @@ jobs:
           [[ "$reference" == "$image@sha256:"* ]]
           # Installed host helpers still pull the previous package name. Publish
           # the same image there until all helpers have been updated.
-          docker tag kitchenbinder-ci:local "$compatibility_image:$GITHUB_SHA"
-          docker push "$compatibility_image:$GITHUB_SHA"
-          compatibility_reference=$(docker image inspect "$compatibility_image:$GITHUB_SHA" --format '{{range .RepoDigests}}{{println .}}{{end}}' | grep -F "$compatibility_image@sha256:")
-          [[ "${reference##*@}" == "${compatibility_reference##*@}" ]]
+          if [[ "$PUBLISH_LEGACY_IMAGE" == true ]]; then
+            docker tag kitchenbinder-ci:local "$compatibility_image:$GITHUB_SHA"
+            docker push "$compatibility_image:$GITHUB_SHA"
+            compatibility_reference=$(docker image inspect "$compatibility_image:$GITHUB_SHA" --format '{{range .RepoDigests}}{{println .}}{{end}}' | grep -F "$compatibility_image@sha256:")
+            [[ "${reference##*@}" == "${compatibility_reference##*@}" ]]
+          fi
           echo "image=$reference" >> "$GITHUB_OUTPUT"
           echo "Tested image: \`$reference\`" >> "$GITHUB_STEP_SUMMARY"
   deploy:
