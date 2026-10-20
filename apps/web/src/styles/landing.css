@@ -219,21 +219,6 @@ body .home-page .idea-chips {
   }
 }
 @media (max-width: 850px) {
-  .app-shell .site-header {
-    height: calc(62px + env(safe-area-inset-top, 0px));
-    padding: env(safe-area-inset-top, 0px) var(--page-gutter) 0;
-    border: 0;
-  }
-  .app-shell .site-header > .brand {
-    display: inline-flex;
-  }
-  .brand-icon {
-    width: 32px;
-    height: 32px;
-  }
-  .brand-wordmark {
-    font-size: 23px;
-  }
   body .home-page {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
