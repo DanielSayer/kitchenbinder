@@ -127,7 +127,7 @@ export function Collection() {
       className="collection-page page-width"
       data-selecting={bulkMode}
     >
-      <div className="page-heading">
+      <div className="page-heading collection-heading">
         <div>
           <h1>
             <span className="desktop-collection-title">{name}</span>
