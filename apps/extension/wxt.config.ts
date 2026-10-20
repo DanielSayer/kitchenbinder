@@ -16,6 +16,7 @@ export default defineConfig({
   modules: ["@wxt-dev/module-react"],
   imports: false,
   webExt: { disabled: true },
+  zip: { name: "kitchenbinder" },
   hooks: {
     "build:publicAssets": (wxt, files) => {
       for (const relativeDest of Object.values(icons)) {
@@ -31,6 +32,7 @@ export default defineConfig({
     return {
       name: development ? "Kitchenbinder (development)" : "Kitchenbinder",
       description: "Save recipes from your browser to Kitchenbinder.",
+      homepage_url: "https://kitchenbinder.app",
       key,
       permissions: ["activeTab", "scripting", "identity", "storage"],
       minimum_chrome_version: "116",

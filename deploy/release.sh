@@ -13,7 +13,7 @@ app=${DEPLOY_APP_ROOT:-/opt/prep-sheet}
 config=${DEPLOY_CONFIG_ROOT:-/etc/prep-sheet}
 backups=${DEPLOY_BACKUP_ROOT:-/var/backups/prep-sheet}
 nginx=${DEPLOY_NGINX_FILE:-/etc/nginx/conf.d/prep-sheet.conf}
-image="ghcr.io/danielsayer/prep-sheet@$digest"
+image="ghcr.io/danielsayer/kitchenbinder@$digest"
 exec 9>"$config/deployment.lock"
 flock -n 9 || { echo 'Another deployment is running.' >&2; exit 75; }
 temporary=$(mktemp -d "$config/.release-XXXXXXXX")

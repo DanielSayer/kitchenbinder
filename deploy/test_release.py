@@ -134,10 +134,12 @@ class ReleaseTests(unittest.TestCase):
         self.assertIn("operator action", result.stderr)
 
     def test_success_records_digest_and_reopens_traffic(self):
-        result, _, nginx, runtime = self.run_release()
+        result, calls, nginx, runtime = self.run_release()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(nginx, "serving")
         self.assertIn(DIGEST, runtime)
+        self.assertIn(["docker", "pull", f"ghcr.io/danielsayer/kitchenbinder@{DIGEST}"], calls)
+        self.assertIn(f"ghcr.io/danielsayer/kitchenbinder@{DIGEST}", runtime)
 
     def test_forward_repair_reopens_serving_config_after_failed_release(self):
         result, _, nginx, runtime = self.run_release("forward_repair")

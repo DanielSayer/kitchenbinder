@@ -74,11 +74,12 @@ supplied for this release.
 
 ## Identifiers retained for compatibility
 
-The repository and `@prep-sheet/*` packages, package filters, environment-variable
+The `@prep-sheet/*` packages, package filters, environment-variable
 names, database names/roles/volumes, migration ledger and applied migration files
 stay unchanged. The same applies to systemd paths, image variables, monitoring
 labels, browser-storage keys, `pse_` tokens and `X-Prep-Sheet-*` proxy headers.
-These identifiers do not appear as the public product name.
+These identifiers preserve existing data and installations. The repository,
+root package metadata, container package and extension ZIP names use Kitchenbinder.
 
 The extension's `https://<id>.chromiumapp.org/prep-sheet` callback suffix is also
 unchanged. Client and server validate it exactly. Keep existing extension keys,
@@ -87,6 +88,49 @@ IDs and allowlists. Routes, API contracts, pricing and data models are unchanged
 Branding assets and the image-generation prompts are documented in
 [the branding notes](../output/branding/kitchenbinder-v1/README.md). Historical
 reports, prototypes and original Prep Sheet artwork remain historical.
+
+## Repository and package cutover
+
+The canonical names are `DanielSayer/kitchenbinder`,
+`ghcr.io/danielsayer/kitchenbinder` and `kitchenbinder-<version>-<browser>.zip`.
+Development extension archives add `-dev`. Internal workspace package names and
+installed host paths remain compatible with existing installations.
+
+1. Set the repository description, About website `https://kitchenbinder.app` and
+   recipe/meal-planning topics. Keep the repository's existing visibility.
+2. Before the rename, apply `deploy/github-oidc-trust.json` to the existing
+   `KitchenbinderGitHubDeploy` role. It accepts only the old and new exact
+   repository subjects, with the same immutable owner/repository IDs, audience
+   and `production` environment. It does not grant additional AWS actions.
+   Record the actual GitHub subject using
+   `gh api repos/DanielSayer/prep-sheet/actions/oidc/customization/sub`.
+3. Merge the branding change and let the existing release checks publish the
+   tested image under the new package name and the old compatibility name. Both
+   references must have the same digest. The existing installed helper can
+   continue pulling the old alias while its replacement is installed.
+4. Install the reviewed `deploy/release.sh` root-owned, mode 0755, at
+   `/usr/local/sbin/prep-sheet-release`. Keep its filename, forced-command SSH
+   account, sudoers rule and configuration paths unchanged. Run the deployment
+   workflow with `dry_run=true` to verify the new package and helper without
+   restarting services or running migrations.
+5. Rename the existing repository to `kitchenbinder` rather than creating a new
+   repository. Update local remotes to
+   `https://github.com/DanielSayer/kitchenbinder.git`. Re-read the OIDC subject
+   prefix at the renamed repository and confirm that the installed IAM trust
+   policy matches it. Check the next deployment's authentication and image pull.
+6. Once every deployed helper uses the new package, set the repository Actions
+   variable `PUBLISH_LEGACY_IMAGE=false` to retire the compatibility publisher.
+   In the new container package settings, confirm its repository connection and
+   intended visibility. After accepting the new package and helper, remove the
+   old package's repository connection if it should no longer appear in the
+   repository sidebar. Retain its versions for rollback; do not delete the
+   package as part of the rename. The GitHub CLI token may need package scopes
+   for package settings, independently of repository administrator access.
+
+The repository rename redirects old GitHub repository links, but package image
+names do not follow that redirect. The compatibility publisher stays enabled
+unless `PUBLISH_LEGACY_IMAGE` is explicitly `false`. Keep it enabled until all
+deployed helpers use the canonical Kitchenbinder package.
 
 ## Acceptance before public launch
 
