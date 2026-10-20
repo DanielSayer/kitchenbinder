@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { db } from "@prep-sheet/db";
 import { user } from "@prep-sheet/db/schema/auth";
+import { group, groupMember } from "@prep-sheet/db/schema/group";
 import { tag } from "@prep-sheet/db/schema/tag";
 import { eq, inArray, isNull, sql } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
@@ -103,7 +104,7 @@ describe("tag admission and ownership with PostgreSQL", () => {
     for (const failure of failures)
       expect(failure.reason).toMatchObject({
         code: "BAD_REQUEST",
-        message: "You can create up to 100 custom tags.",
+        message: "You can create up to 100 custom tags per collection.",
       });
     expect(
       await db.select().from(tag).where(eq(tag.userId, userId)),
@@ -271,6 +272,65 @@ describe("tag admission and ownership with PostgreSQL", () => {
     expect((await api.list()).find((item) => item.id === custom.id)).toEqual(
       custom,
     );
+  });
+
+  it("serializes shared-collection names and limits across different members", async () => {
+    const secondId = await createUser();
+    const groupId = randomUUID();
+    await db
+      .insert(group)
+      .values({ id: groupId, ownerId: userId, name: "Tag admission" });
+    try {
+      await db.insert(groupMember).values([
+        { groupId, userId },
+        { groupId, userId: secondId },
+      ]);
+      await db.insert(tag).values(
+        Array.from({ length: 99 }, (_, index) => ({
+          id: randomUUID(),
+          groupId,
+          name: `Shared ${index}`,
+        })),
+      );
+      const results = await Promise.allSettled(
+        Array.from({ length: 8 }, (_, index) =>
+          caller(index % 2 ? userId : secondId).create({
+            groupId,
+            name: `Final ${index}`,
+          }),
+        ),
+      );
+      expect(
+        results.filter((item) => item.status === "fulfilled"),
+      ).toHaveLength(1);
+      for (const result of results)
+        if (result.status === "rejected")
+          expect(result.reason).toMatchObject({ code: "BAD_REQUEST" });
+      const existing = (await caller(secondId).list({ groupId })).find(
+        (item) => item.groupId === groupId,
+      );
+      if (!existing) throw new Error("Missing shared tag");
+      await caller(secondId).delete({ id: existing.id, groupId });
+      const collisions = await Promise.allSettled([
+        caller(userId).create({ groupId, name: "Same shared name" }),
+        caller(secondId).create({ groupId, name: "SAME SHARED NAME" }),
+      ]);
+      expect(
+        collisions.filter((item) => item.status === "fulfilled"),
+      ).toHaveLength(1);
+      expect(
+        collisions.find((item) => item.status === "rejected"),
+      ).toMatchObject({ reason: conflict });
+      // Shared definitions are independent of the member who created them.
+      await db.delete(user).where(eq(user.id, secondId));
+      expect(
+        (await caller(userId).list({ groupId })).filter(
+          (item) => item.groupId === groupId,
+        ),
+      ).toHaveLength(100);
+    } finally {
+      await db.delete(group).where(eq(group.id, groupId));
+    }
   });
 
   it("keeps tags account-owned while allowing matching names in different accounts", async () => {

@@ -46,7 +46,8 @@ export function PrivacyPolicy({ embedded = false }: { embedded?: boolean }) {
         <p>
           Personal recipes are available to your account. Recipes saved to a
           group are available to its members. Group members can see member
-          names. Tags, favourites, ratings, cooking notes, shopping lists and
+          names. Recipe tags and custom tag definitions are shared within the
+          collection. Favourites, ratings, cooking notes, shopping lists and
           meal plans belong to your account, including when you use a shared
           recipe.
         </p>

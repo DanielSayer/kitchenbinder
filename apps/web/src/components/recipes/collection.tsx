@@ -38,7 +38,7 @@ export function Collection() {
   const unratedOnly = filters.unrated ?? false;
   const selectedTags = filters.tags?.split(",").filter(Boolean) ?? [];
   const sort = filters.sort ?? "newest";
-  const tags = useQuery(trpc.tags.list.queryOptions());
+  const tags = useQuery(trpc.tags.list.queryOptions({ groupId }));
   const activeTags = selectedTags.filter((id) =>
     tags.data?.some((tag) => tag.id === id),
   );
