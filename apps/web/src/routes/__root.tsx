@@ -11,6 +11,7 @@ import type { TRPCOptionsProxy } from "@trpc/tanstack-react-query";
 import { AccountQueryBoundary } from "../components/account-query-boundary";
 import { CollectionProvider } from "../components/groups/collection-context";
 import Header from "../components/header";
+import { InstallAppProvider } from "../components/install-app";
 import { getSiteOrigin } from "../functions/get-site-origin";
 
 import appCss from "../index.css?url";
@@ -128,12 +129,14 @@ function RootDocument() {
         </a>
 
         <div className="app-shell">
-          <AccountQueryBoundary>
-            <CollectionProvider>
-              <Header />
-              <Outlet />
-            </CollectionProvider>
-          </AccountQueryBoundary>
+          <InstallAppProvider>
+            <AccountQueryBoundary>
+              <CollectionProvider>
+                <Header />
+                <Outlet />
+              </CollectionProvider>
+            </AccountQueryBoundary>
+          </InstallAppProvider>
         </div>
 
         <Toaster richColors theme="light" />
