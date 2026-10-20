@@ -138,10 +138,14 @@ it("accepts the runbook's restricted roles, migrations and actual query/lock bud
         runtime.query(sql),
         (error) => error.code === "42501",
       );
-    await assert.rejects(
-      backup.query("DELETE FROM public.auth_rate_limit"),
-      (error) => error.code === "42501",
-    );
+    for (const sql of [
+      "DELETE FROM public.auth_rate_limit",
+      "CREATE TEMP TABLE forbidden(id int)",
+    ])
+      await assert.rejects(
+        backup.query(sql),
+        (error) => error.code === "42501",
+      );
     await migrationOwner.query("BEGIN");
     await migrationOwner.query(
       "LOCK public.auth_rate_limit IN ACCESS EXCLUSIVE MODE",
@@ -173,4 +177,4 @@ it("accepts the runbook's restricted roles, migrations and actual query/lock bud
     await admin.query(`DROP ROLE IF EXISTS "${provisioner}"`);
     await admin.end();
   }
-});
+}, 90_000);

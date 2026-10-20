@@ -147,7 +147,7 @@ CREATE ROLE prep_sheet_migrate LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLI
 CREATE ROLE prep_sheet_runtime LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
 CREATE ROLE prep_sheet_backup LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
 REVOKE ALL ON DATABASE PREP_DATABASE FROM PUBLIC;
-GRANT CONNECT, CREATE ON DATABASE PREP_DATABASE TO prep_sheet_migrate;
+GRANT CONNECT, CREATE, TEMPORARY ON DATABASE PREP_DATABASE TO prep_sheet_migrate;
 GRANT CONNECT ON DATABASE PREP_DATABASE TO prep_sheet_runtime, prep_sheet_backup;
 -- Run the remaining commands while connected to PREP_DATABASE.
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
@@ -183,7 +183,11 @@ another role's default privileges. Running this block as the migration owner
 avoids granting administrator membership to the runtime or backup roles.
 
 The migration role owns every application object it creates and can create/drop
-the runner's temporary verification schema and ICU collation. It is not delivered
+the runner's temporary verification schema, ICU collation and migration scratch
+tables. Existing installations need the database administrator to run
+`GRANT TEMPORARY ON DATABASE PREP_DATABASE TO prep_sheet_migrate` before applying
+migrations that use temporary tables, including `0005_collection_recipe_tags.sql`.
+Do not grant this permission to the runtime or backup roles. The migration role is not delivered
 to web/worker/monitor. The runner applies its own 10-second lock and 60-second
 statement budgets. Keep ownership consistent on every release; review legacy
 ownership separately before adoption. Neon ICU creation, catalogue permissions,
