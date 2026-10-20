@@ -2,9 +2,11 @@
 
 A recipe keeper with private personal collections and shared group collections. Paste a recipe, import a public recipe link, or describe a dish. The app saves a structured recipe and opens a printable PDF when you select it from your collection.
 
-The production domain is `https://kitchenbinder.app`. See the
-[rebrand and domain cutover checklist](docs/kitchenbinder-rebrand.md) for deployment,
-provider settings and preserving work when moving an existing installation.
+[Open Kitchenbinder](https://kitchenbinder.app) ·
+[Report an issue](https://github.com/DanielSayer/kitchenbinder/issues)
+
+The [rebrand and domain cutover checklist](docs/kitchenbinder-rebrand.md) covers
+deployment, provider settings and preserving work when moving an existing installation.
 Internal `prep-sheet` package and database identifiers remain compatible.
 
 ## Run locally

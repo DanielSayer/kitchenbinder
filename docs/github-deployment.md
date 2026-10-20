@@ -21,10 +21,23 @@ allowed to finish; subsequent eligible deployments share the same host lock and
 GitHub concurrency group. Intermediate queued commits may be superseded.
 
 The deployment workflow reuses all release checks, including the tests against
-the Linux image. It publishes that same image to `ghcr.io/danielsayer/prep-sheet`,
+the Linux image. It publishes that same image to `ghcr.io/danielsayer/kitchenbinder`,
 then passes its digest and full commit to Lightsail. The server verifies the
 image's revision label. Web, worker and migrations use that digest. Development
 extension ZIPs are checked separately and are not store releases.
+
+During the repository rename, the publisher also pushes the exact same image to
+`ghcr.io/danielsayer/prep-sheet` and verifies both registry digests match. This is
+a compatibility alias for installed host helpers, not a separate build. New host
+helpers pull the Kitchenbinder package. Keep the alias until every installed
+helper has been updated and verified. Keep existing old image versions available
+for rollback.
+
+The canonical repository is
+[`DanielSayer/kitchenbinder`](https://github.com/DanielSayer/kitchenbinder), with
+[`kitchenbinder.app`](https://kitchenbinder.app) as its About website. Follow the
+[repository and package cutover](kitchenbinder-rebrand.md#repository-and-package-cutover)
+procedure when updating these names on an existing installation.
 
 ## One-time access configuration
 
