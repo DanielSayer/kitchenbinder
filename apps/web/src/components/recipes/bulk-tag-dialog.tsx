@@ -88,7 +88,9 @@ export function ApplyTagDialog({
   tag,
   onClose,
   onApplied,
+  groupId,
 }: {
+  groupId: string | null;
   tag: TagOption;
   onClose: () => void;
   onApplied?: () => void;
@@ -102,6 +104,7 @@ export function ApplyTagDialog({
     trpc.recipes.taggingList.queryOptions({
       search,
       excludeTagId: tag.id,
+      groupId,
       page,
       pageSize: recipePageSize,
     }),

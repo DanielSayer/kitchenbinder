@@ -8,7 +8,6 @@ import {
   recipeFavourite,
   recipeRating,
 } from "@prep-sheet/db/schema/recipe";
-import { recipeTag, tag } from "@prep-sheet/db/schema/tag";
 import { TRPCError } from "@trpc/server";
 import {
   and,
@@ -17,10 +16,8 @@ import {
   eq,
   getTableColumns,
   gt,
-  inArray,
   isNotNull,
   isNull,
-  or,
   sql,
 } from "drizzle-orm";
 import { z } from "zod";
@@ -49,6 +46,7 @@ import {
   taggingRecipePage,
   tagsOf,
 } from "../recipes/list";
+import { copyRecipeTags, setRecipeTags } from "../tags/recipes";
 
 const idInput = z.object({ id: z.uuid() });
 const owned = (id: string, userId: string) =>
@@ -63,7 +61,7 @@ export async function getRecipe(id: string, userId: string) {
       isFavourite: favouriteOf(userId),
       rating: ratingOf(userId),
       ...cookingSummary(userId),
-      tagIds: tagsOf(userId),
+      tagIds: tagsOf(),
     })
     .from(recipe)
     .where(owned(id, userId));
@@ -217,33 +215,9 @@ export const recipesRouter = router({
     .input(idInput.extend({ tagId: z.uuid(), selected: z.boolean() }))
     .mutation(async ({ input, ctx }) => {
       const userId = ctx.session.user.id;
-      await getRecipe(input.id, userId);
-      const [available] = await db
-        .select()
-        .from(tag)
-        .where(
-          and(
-            eq(tag.id, input.tagId),
-            or(isNull(tag.userId), eq(tag.userId, userId)),
-          ),
-        );
-      if (!available)
-        throw new TRPCError({ code: "NOT_FOUND", message: "Tag not found." });
-      if (input.selected)
-        await db
-          .insert(recipeTag)
-          .values({ userId, recipeId: input.id, tagId: input.tagId })
-          .onConflictDoNothing();
-      else
-        await db
-          .delete(recipeTag)
-          .where(
-            and(
-              eq(recipeTag.userId, userId),
-              eq(recipeTag.recipeId, input.id),
-              eq(recipeTag.tagId, input.tagId),
-            ),
-          );
+      await db.transaction((tx) =>
+        setRecipeTags(tx, userId, [input.id], [input.tagId], input.selected),
+      );
       return { success: true };
     }),
   setTags: protectedProcedure
@@ -258,52 +232,9 @@ export const recipesRouter = router({
       const userId = ctx.session.user.id;
       const recipeIds = [...new Set(input.recipeIds)];
       const tagIds = [...new Set(input.tagIds)];
-      const [recipes, tags] = await Promise.all([
-        db
-          .select({ id: recipe.id })
-          .from(recipe)
-          .where(and(inArray(recipe.id, recipeIds), accessibleRecipe(userId))),
-        db
-          .select({ id: tag.id })
-          .from(tag)
-          .where(
-            and(
-              inArray(tag.id, tagIds),
-              or(isNull(tag.userId), eq(tag.userId, userId)),
-            ),
-          ),
-      ]);
-      if (recipes.length !== recipeIds.length)
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "One or more recipes could not be found.",
-        });
-      if (tags.length !== tagIds.length)
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "One or more tags could not be found.",
-        });
-
-      if (input.operation === "add") {
-        await db
-          .insert(recipeTag)
-          .values(
-            recipeIds.flatMap((recipeId) =>
-              tagIds.map((tagId) => ({ userId, recipeId, tagId })),
-            ),
-          )
-          .onConflictDoNothing();
-      } else {
-        await db
-          .delete(recipeTag)
-          .where(
-            and(
-              eq(recipeTag.userId, userId),
-              inArray(recipeTag.recipeId, recipeIds),
-              inArray(recipeTag.tagId, tagIds),
-            ),
-          );
-      }
+      await db.transaction((tx) =>
+        setRecipeTags(tx, userId, recipeIds, tagIds, input.operation === "add"),
+      );
       return {
         success: true,
         recipeCount: recipeIds.length,
@@ -476,18 +407,7 @@ export const recipesRouter = router({
             message:
               "This copy has already been saved. Refresh your collection.",
           });
-        const sourceTags = await tx
-          .select({ tagId: recipeTag.tagId })
-          .from(recipeTag)
-          .where(
-            and(eq(recipeTag.recipeId, input.id), eq(recipeTag.userId, userId)),
-          );
-        if (sourceTags.length)
-          await tx
-            .insert(recipeTag)
-            .values(
-              sourceTags.map((t) => ({ ...t, userId, recipeId: saved.id })),
-            );
+        await copyRecipeTags(tx, userId, input.id, saved.id, input.groupId);
         return saved;
       }),
     ),

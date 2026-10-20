@@ -566,7 +566,7 @@ export async function processNextImport(
             job.id,
           )
         : { content: job.input, sourceUrl: job.sourceUrl };
-    const tags = await availableTags(job.userId);
+    const tags = await availableTags(job.userId, job.groupId);
     // A missing provider key must fail before reserving spend or consuming AI usage.
     ensureProviderReady();
     recipeSystemPrompt(prepared.content, tags, prepared.sourceUrl);

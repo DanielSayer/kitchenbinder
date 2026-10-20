@@ -28,7 +28,9 @@ export function RecipeOrganise({
 }) {
   const trpc = useTRPC();
   const client = useQueryClient();
-  const tags = useQuery(trpc.tags.list.queryOptions());
+  const tags = useQuery(
+    trpc.tags.list.queryOptions({ groupId: recipe.groupId }),
+  );
   const [dialog, setDialog] = useState<"tags" | "copy" | "rating" | null>(null);
   const update = useMutation(
     trpc.recipes.setTag.mutationOptions({
@@ -146,7 +148,9 @@ export function RecipeOrganise({
           title="Choose your tags"
           onClose={() => setDialog(null)}
         >
-          <p>Select tags to add or remove. Your tags stay private.</p>
+          <p>
+            Select tags to add or remove. Tags are shared with this collection.
+          </p>
           <ErrorNotice
             message={tags.error?.message}
             retry={() => void tags.refetch()}

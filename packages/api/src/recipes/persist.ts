@@ -1,7 +1,8 @@
 import { recipe } from "@prep-sheet/db/schema/recipe";
 import { recipeTag, tag } from "@prep-sheet/db/schema/tag";
-import { and, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, inArray } from "drizzle-orm";
 import type { Database } from "../groups/access";
+import { collectionTagScope } from "../tags/access";
 
 export async function persistRecipe(
   database: Database,
@@ -22,13 +23,13 @@ export async function persistRecipe(
     .where(
       and(
         inArray(tag.id, tagIds),
-        or(isNull(tag.userId), eq(tag.userId, userId)),
+        collectionTagScope(userId, value.groupId ?? null),
       ),
     );
   if (valid.length)
     await database
       .insert(recipeTag)
-      .values(valid.map((t) => ({ userId, recipeId: value.id, tagId: t.id })))
+      .values(valid.map((t) => ({ recipeId: value.id, tagId: t.id })))
       .onConflictDoNothing();
   return true;
 }

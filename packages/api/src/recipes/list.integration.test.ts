@@ -158,7 +158,7 @@ describe("paginated recipe lists with PostgreSQL", () => {
         rows
           .filter((_, index) => index % 4 === 0)
           .flatMap(({ id }) =>
-            tagIds.map((tagId) => ({ recipeId: id, userId: ownerId, tagId })),
+            tagIds.map((tagId) => ({ recipeId: id, tagId })),
           ),
       );
     await db.insert(recipeCooking).values([

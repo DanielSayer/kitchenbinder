@@ -50,9 +50,9 @@ export function AccountControls() {
             removed.
           </li>
           <li>
-            Shared recipes stay in surviving groups with your account link
-            removed. Copies saved by others remain. Review any personal details
-            in shared recipe text first.
+            Shared recipes and collection tags stay in surviving groups with
+            your account link removed. Copies saved by others remain. Review any
+            personal details in shared recipe text first.
           </li>
           <li>
             Transfer groups you own or explicitly delete them before deletion

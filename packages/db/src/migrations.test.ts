@@ -112,7 +112,7 @@ it("provisions a clean database with ICU and preserves all data on repeated migr
           "SELECT count(*)::int AS total FROM prep_sheet_migration",
         )
       ).rows[0].total,
-    ).toBe(5);
+    ).toBe(6);
     expect(
       (
         await client.query(
@@ -327,5 +327,101 @@ it("refuses changed migration hashes and incorrectly defined ICU collations", as
         )
       ).rows[0].collation,
     ).toBeNull();
+  });
+}, 60_000);
+
+it("migrates all members' recipe tags, deduplicates assignments and retains shared tags after account deletion", async () => {
+  await database(async (client, run) => {
+    await client.query(
+      "CREATE TABLE prep_sheet_migration (name text PRIMARY KEY, hash text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())",
+    );
+    for (const name of [
+      "0000_production_baseline.sql",
+      "0001_recipe_name.sql",
+      "0002_import_save_retries.sql",
+      "0003_manual_request_identity.sql",
+      "0004_auth_rate_limit.sql",
+    ]) {
+      const migrationSql = readFileSync(
+        new URL(`./migrations/${name}`, import.meta.url),
+        "utf8",
+      ).replaceAll("\r\n", "\n");
+      await client.query(migrationSql);
+      await client.query(
+        "INSERT INTO prep_sheet_migration(name,hash) VALUES ($1,$2)",
+        [name, createHash("sha256").update(migrationSql).digest("hex")],
+      );
+    }
+    await seed(client);
+    await client.query(`
+      INSERT INTO "user" (id,name,email) VALUES ('tag-member','Member','tag-member@example.test');
+      INSERT INTO "group" (id,name,owner_id) VALUES ('10000000-0000-4000-8000-000000000001','Shared','migration-user');
+      INSERT INTO group_member (group_id,user_id) VALUES ('10000000-0000-4000-8000-000000000001','migration-user'), ('10000000-0000-4000-8000-000000000001','tag-member');
+      INSERT INTO recipe (id,user_id,group_id,title,content,origin) VALUES ('10000000-0000-4000-8000-000000000002','tag-member','10000000-0000-4000-8000-000000000001','Shared recipe','{}','manual');
+      INSERT INTO tag (id,user_id,name,description) VALUES ('20000000-0000-4000-8000-000000000001','migration-user','Lunch','Pack cold'), ('20000000-0000-4000-8000-000000000002','tag-member','LUNCH','Other description'), ('20000000-0000-4000-8000-000000000003',NULL,'Built in','Global');
+      INSERT INTO recipe_tag (user_id,recipe_id,tag_id) VALUES
+        ('migration-user','00000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000001'),
+        ('migration-user','10000000-0000-4000-8000-000000000002','20000000-0000-4000-8000-000000000001'),
+        ('tag-member','10000000-0000-4000-8000-000000000002','20000000-0000-4000-8000-000000000002'),
+        ('migration-user','10000000-0000-4000-8000-000000000002','20000000-0000-4000-8000-000000000003'),
+        ('tag-member','10000000-0000-4000-8000-000000000002','20000000-0000-4000-8000-000000000003');
+    `);
+    await client.query(`INSERT INTO tag (id,user_id,name,description) VALUES ('20000000-0000-4000-8000-000000000004','tag-member','Checkpoint only','Preserve pending tag');
+      UPDATE recipe_import SET group_id='10000000-0000-4000-8000-000000000001', generated='{"preserve":"checkpoint","tagIds":["20000000-0000-4000-8000-000000000002","20000000-0000-4000-8000-000000000004"]}'`);
+    expect(run()).toContain("verified");
+    expect(run("--verify")).toContain("verified");
+    const checkpoint = (
+      await client.query("SELECT generated FROM recipe_import")
+    ).rows[0].generated;
+    expect(checkpoint.preserve).toBe("checkpoint");
+    const checkpointTags = await client.query(
+      "SELECT name, user_id, group_id FROM tag WHERE id = ANY($1::uuid[]) ORDER BY name",
+      [checkpoint.tagIds],
+    );
+    expect(checkpointTags.rows).toEqual([
+      {
+        name: "Checkpoint only",
+        user_id: null,
+        group_id: "10000000-0000-4000-8000-000000000001",
+      },
+      {
+        name: "Lunch",
+        user_id: null,
+        group_id: "10000000-0000-4000-8000-000000000001",
+      },
+    ]);
+    const applied = await client.query(
+      `SELECT t.name,t.description,t.user_id,t.group_id FROM recipe_tag rt JOIN tag t ON t.id=rt.tag_id WHERE rt.recipe_id='10000000-0000-4000-8000-000000000002' ORDER BY t.name`,
+    );
+    expect(applied.rows).toEqual([
+      {
+        name: "Built in",
+        description: "Global",
+        user_id: null,
+        group_id: null,
+      },
+      {
+        name: "Lunch",
+        description: "Pack cold",
+        user_id: null,
+        group_id: "10000000-0000-4000-8000-000000000001",
+      },
+    ]);
+    expect(
+      (
+        await client.query(
+          `SELECT tag_id FROM recipe_tag WHERE recipe_id='00000000-0000-4000-8000-000000000001'`,
+        )
+      ).rows,
+    ).toEqual([{ tag_id: "20000000-0000-4000-8000-000000000001" }]);
+    await client.query(`DELETE FROM "user" WHERE id='tag-member'`);
+    expect(
+      (
+        await client.query(
+          `SELECT count(*)::int AS total FROM recipe_tag WHERE recipe_id='10000000-0000-4000-8000-000000000002'`,
+        )
+      ).rows[0].total,
+    ).toBe(2);
+    expect(run()).toContain("verified");
   });
 }, 60_000);
