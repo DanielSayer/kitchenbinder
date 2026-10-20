@@ -1,0 +1,127 @@
+.install-suggestion,
+.install-menu-item {
+  display: none;
+}
+.install-guide {
+  width: 440px;
+}
+.install-guide-app {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 22px 0;
+}
+.install-guide-app img {
+  flex-shrink: 0;
+  border-radius: 12px;
+}
+.install-guide-app h3 {
+  font-size: 19px;
+}
+.install-guide-app p {
+  margin-top: 3px;
+  color: var(--muted-ink);
+  font-size: 14px;
+}
+.install-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 20px;
+  counter-reset: install-step;
+}
+.install-steps li {
+  display: grid;
+  grid-template-columns: 26px 24px 1fr;
+  gap: 10px;
+  align-items: start;
+  font-size: 15px;
+  line-height: 1.5;
+  counter-increment: install-step;
+}
+.install-steps li::before {
+  content: counter(install-step);
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  background: var(--surface-muted);
+  border-radius: 50%;
+  font-weight: 800;
+  font-size: 13px;
+}
+.install-steps svg {
+  margin-top: 2px;
+  color: var(--green-dark);
+}
+.install-steps span {
+  display: block;
+  color: var(--muted-ink);
+  font-size: 14px;
+  margin-top: 3px;
+}
+.install-guide > .install-guide-note {
+  color: var(--muted-ink);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 22px 0 0;
+}
+.install-guide .organise-dialog-footer {
+  justify-content: flex-end;
+}
+@media (max-width: 850px) {
+  .install-menu-item {
+    display: flex;
+    min-height: 44px;
+  }
+  .install-suggestion {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    margin: 16px var(--page-gutter) 0;
+    padding: 14px;
+    background: #fffdf7;
+    border: 1px solid var(--control-line);
+    border-radius: 14px;
+  }
+  .install-suggestion > img {
+    flex-shrink: 0;
+    border-radius: 9px;
+  }
+  .install-suggestion > div {
+    flex: 1;
+    min-width: 0;
+  }
+  .install-suggestion p {
+    font-size: 14px;
+    font-weight: 800;
+  }
+  .install-suggestion span {
+    display: block;
+    color: var(--muted-ink);
+    font-size: 13px;
+    line-height: 1.5;
+    margin-top: 3px;
+  }
+  .install-suggestion-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 6px 0 0;
+    border: 0;
+    background: none;
+    color: var(--green-dark);
+    font-weight: 800;
+    font-size: 13px;
+    text-align: left;
+  }
+  .install-suggestion > .icon-button {
+    flex-shrink: 0;
+    margin: -7px -7px 0 0;
+  }
+  .install-guide .organise-dialog-footer .button {
+    width: 100%;
+  }
+}

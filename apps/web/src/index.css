@@ -16,6 +16,7 @@
 @import "./styles/support.css";
 @import "./styles/landing.css";
 @import "./styles/pricing.css";
+@import "./styles/install-app.css";
 .mobile-screen-title {
   display: none;
 }

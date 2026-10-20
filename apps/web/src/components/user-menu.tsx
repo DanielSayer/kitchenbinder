@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client";
+import { InstallMenuItem } from "./install-app";
 
 export default function UserMenu() {
   const { data: session, isPending } = authClient.useSession();
@@ -73,6 +74,7 @@ export default function UserMenu() {
           align="end"
           sideOffset={8}
         >
+          <InstallMenuItem />
           <DropdownMenuItem
             className="collection-select-manage"
             render={<Link to="/login" />}
@@ -144,6 +146,7 @@ export default function UserMenu() {
           <DropdownMenuLabel className="account-menu-name">
             {session.user.name}
           </DropdownMenuLabel>
+          <InstallMenuItem />
           <DropdownMenuItem
             className="collection-select-manage"
             render={<Link to="/settings" />}
