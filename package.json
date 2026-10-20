@@ -1,5 +1,14 @@
 {
-  "name": "prep-sheet",
+  "name": "kitchenbinder",
+  "description": "Save, organise and share recipes, plan meals and build shopping lists.",
+  "homepage": "https://kitchenbinder.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DanielSayer/kitchenbinder.git"
+  },
+  "bugs": {
+    "url": "https://github.com/DanielSayer/kitchenbinder/issues"
+  },
   "private": true,
   "workspaces": [
     "apps/*",

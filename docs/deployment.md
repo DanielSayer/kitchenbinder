@@ -46,7 +46,7 @@ pnpm check
 pnpm build:release
 pnpm check-types
 pnpm test
-docker build -t prep-sheet:RELEASE_COMMIT .
+docker build -t kitchenbinder:RELEASE_COMMIT .
 ```
 
 The web build must precede type checking on a clean checkout because it generates

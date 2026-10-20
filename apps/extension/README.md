@@ -35,7 +35,7 @@ pnpm --filter @prep-sheet/extension check-types
 pnpm package:extension
 ```
 
-The default build and package commands target the local website. Packaging builds both browsers and writes `*-chrome-dev.zip` and `*-edge-dev.zip` under `.output`. These are development packages, not store releases.
+The default build and package commands target the local website. Packaging builds both browsers and writes `kitchenbinder-<version>-chrome-dev.zip` and `kitchenbinder-<version>-edge-dev.zip` under `.output`. Store packages use the same Kitchenbinder prefix without `-dev`. Development packages are not store releases.
 
 Stop the extension development server before building or packaging the same browser, since these commands write to the same output directory. After a static build, reload the unpacked extension in the browser. Generated `.output` and `.wxt` files are ignored by Git and Biome; Turbo caches build and package outputs.
 

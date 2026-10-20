@@ -100,7 +100,7 @@ are future operator actions, not actions performed by this preparation:
 
 ```sh
 # On the build machine, after the release checks in deployment.md:
-docker buildx build --platform linux/amd64 -t REGISTRY/OWNER/prep-sheet:RELEASE_COMMIT --push .
+docker buildx build --platform linux/amd64 -t ghcr.io/danielsayer/kitchenbinder:RELEASE_COMMIT --push .
 # On the host, with the actual digest in runtime.env:
 cd /opt/prep-sheet
 sudo docker compose --env-file /etc/prep-sheet/runtime.env -f deploy/compose.yml pull
