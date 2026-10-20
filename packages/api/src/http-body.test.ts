@@ -1,3 +1,6 @@
+import { createServer } from "node:http";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { bodyByteLimit, boundedRequest } from "../../../scripts/http-body.mjs";
 
@@ -15,6 +18,74 @@ function streamingRequest(
 }
 
 describe("body admission before parsers", () => {
+  it("forwards the real development server's request wrapper without changing its metadata or bytes", async () => {
+    // Resolve the adapter from TanStack so this exercises the version used by Vite.
+    const webRequire = createRequire(
+      new URL("../../../apps/web/package.json", import.meta.url),
+    );
+    const startRequire = createRequire(
+      webRequire.resolve("@tanstack/react-start/package.json"),
+    );
+    const pluginRequire = createRequire(
+      startRequire.resolve("@tanstack/start-plugin-core/package.json"),
+    );
+    const { NodeRequest } = await import(
+      pathToFileURL(pluginRequire.resolve("srvx/node")).href
+    );
+    let requestError: unknown;
+    const server = createServer(async (incoming, outgoing) => {
+      try {
+        const result = await boundedRequest(
+          new NodeRequest({ req: incoming, res: outgoing }),
+        );
+        if (result instanceof Response) {
+          outgoing.writeHead(result.status).end();
+          return;
+        }
+        outgoing.setHeader("content-type", "application/json");
+        outgoing.end(
+          JSON.stringify({
+            url: result.url,
+            method: result.method,
+            signature: result.headers.get("webhook-signature"),
+            body: await result.text(),
+          }),
+        );
+      } catch (error) {
+        requestError = error;
+        outgoing.writeHead(500).end();
+      }
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string")
+        throw new Error("Expected a local TCP listener");
+      const url = `http://127.0.0.1:${address.port}/api/polar/webhooks?source=dev`;
+      const body = ' {"name":"crème fraîche"}\r\n';
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "webhook-signature": "original-signature" },
+        body,
+      });
+      expect(requestError).toBeUndefined();
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        url,
+        method: "POST",
+        signature: "original-signature",
+        body,
+      });
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
   it("stops chunked input at the byte budget and cancels the producer", async () => {
     let pulls = 0;
     let cancelled = false;
@@ -66,6 +137,7 @@ describe("body admission before parsers", () => {
   });
 
   it("preserves the exact signed webhook bytes at the limit", async () => {
+    const controller = new AbortController();
     const bytes = new TextEncoder().encode(' {"name":"crème fraîche"}\r\n');
     const body = new Uint8Array(bodyByteLimit("/api/polar/webhooks"));
     body.fill(32);
@@ -75,6 +147,7 @@ describe("body admission before parsers", () => {
         method: "POST",
         body,
         headers: { "webhook-signature": "original-signature" },
+        signal: controller.signal,
       }),
     );
     expect(result).toBeInstanceOf(Request);
@@ -82,6 +155,8 @@ describe("body admission before parsers", () => {
       throw new Error("Expected admitted request");
     expect(result.headers.get("webhook-signature")).toBe("original-signature");
     expect(new Uint8Array(await result.arrayBuffer())).toEqual(body);
+    controller.abort();
+    expect(result.signal.aborted).toBe(true);
   });
 
   it("rejects a slow unfinished body without waiting for its cancel hook", async () => {
