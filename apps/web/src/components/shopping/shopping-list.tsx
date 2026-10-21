@@ -3,6 +3,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@prep-sheet/ui/components/dropdown-menu";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -15,11 +16,11 @@ import {
   ShoppingBasket,
   Trash2,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import { useTRPC } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
-import { TripSummary } from "../planner/plan-shop";
+import { MealListNotice } from "../planner/plan-shop";
 import { OrganiseDialog } from "../recipes/organise-dialog";
 import { RecipePicker } from "./add-recipes";
 import { ShoppingListAction } from "./generated-list";
@@ -54,6 +55,14 @@ function ShoppingRow({ item, userId }: { item: Item; userId: string }) {
     item.text,
   );
   const [editing, setEditing] = useState(draft !== item.text);
+  const editInput = useRef<HTMLInputElement>(null);
+  const actionTrigger = useRef<HTMLButtonElement>(null);
+  const wasEditing = useRef(false);
+  useEffect(() => {
+    if (editing) editInput.current?.focus();
+    else if (wasEditing.current) actionTrigger.current?.focus();
+    wasEditing.current = editing;
+  }, [editing]);
   const refresh = () =>
     client.invalidateQueries({ queryKey: trpc.shopping.pathKey() });
   const update = useMutation(
@@ -88,6 +97,7 @@ function ShoppingRow({ item, userId }: { item: Item; userId: string }) {
           <label className="shopping-field">
             Edit item
             <input
+              ref={editInput}
               value={draft}
               maxLength={2000}
               onChange={(e) => setDraft(e.target.value)}
@@ -135,51 +145,53 @@ function ShoppingRow({ item, userId }: { item: Item; userId: string }) {
               {item.text}
             </span>
           </label>
-          <div className="shopping-row-actions">
-            <button
-              type="button"
-              className="text-button"
+          <button
+            type="button"
+            className="shopping-status-action"
+            disabled={pending}
+            aria-label={`${item.status === "needed" ? "Already have it" : "Need this"}: ${item.text}`}
+            onClick={() =>
+              update.mutate({
+                kind: "status",
+                id: item.id,
+                status: item.status === "needed" ? "owned" : "needed",
+              })
+            }
+          >
+            {item.status === "needed" ? "Have it" : "Need this"}
+          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              ref={actionTrigger}
+              className="icon-button"
+              aria-label={`Actions for ${item.text}`}
               disabled={pending}
-              onClick={() =>
-                update.mutate({
-                  kind: "status",
-                  id: item.id,
-                  status: item.status === "needed" ? "owned" : "needed",
-                })
-              }
             >
-              {item.status === "needed" ? "Already have" : "Need this"}
-            </button>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                className="icon-button"
-                aria-label={`Actions for ${item.text}`}
-                disabled={pending}
+              <MoreHorizontal size={18} />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              className="collection-select-menu shopping-item-menu"
+              align="end"
+            >
+              <DropdownMenuItem
+                className="collection-select-manage shopping-item-action"
+                onClick={() => {
+                  setDraft(item.text);
+                  setEditing(true);
+                }}
               >
-                <MoreHorizontal size={18} />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                className="collection-select-menu"
-                align="end"
+                <Pencil size={16} /> Edit item
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="collection-select-divider" />
+              <DropdownMenuItem
+                className="collection-select-manage shopping-item-action"
+                variant="destructive"
+                onClick={() => remove.mutate({ id: item.id })}
               >
-                <DropdownMenuItem
-                  className="collection-select-manage"
-                  onClick={() => {
-                    setDraft(item.text);
-                    setEditing(true);
-                  }}
-                >
-                  <Pencil size={16} /> Edit item
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="collection-select-manage"
-                  onClick={() => remove.mutate({ id: item.id })}
-                >
-                  <Trash2 size={16} /> Remove item
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+                <Trash2 size={16} /> Remove item
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </>
       )}
       <ErrorNotice
@@ -222,13 +234,6 @@ function ItemGroups({ items, userId }: { items: Item[]; userId: string }) {
                   "Other groceries"
                 )}
               </h2>
-              {first.servings && (
-                <p className="muted">
-                  {first.plannedMealId
-                    ? first.servings
-                    : `Original yield: ${first.servings}`}
-                </p>
-              )}
             </div>
             <ul>
               {group.map((item) => (
@@ -303,7 +308,7 @@ function PersonalList({ userId }: { userId: string }) {
           Add recipes
         </button>
       </div>
-      <TripSummary />
+      <MealListNotice />
       {list.isSuccess && (
         <div className="shopping-trip-bar">
           <strong role="status">
