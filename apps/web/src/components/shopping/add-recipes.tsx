@@ -186,13 +186,7 @@ export function RecipePicker({ onClose }: { onClose: () => void }) {
                           )?.name ?? "Shared collection")
                         : "Personal collection"}
                     </small>
-                    <small>
-                      {existing.has(recipe.id)
-                        ? "On your list"
-                        : recipe.servings
-                          ? `Original yield: ${recipe.servings}`
-                          : "Original quantities"}
-                    </small>
+                    {existing.has(recipe.id) && <small>On your list</small>}
                   </span>
                 </label>
               ))}

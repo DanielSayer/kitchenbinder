@@ -222,13 +222,6 @@ function ItemGroups({ items, userId }: { items: Item[]; userId: string }) {
                   "Other groceries"
                 )}
               </h2>
-              {first.servings && (
-                <p className="muted">
-                  {first.plannedMealId
-                    ? first.servings
-                    : `Original yield: ${first.servings}`}
-                </p>
-              )}
             </div>
             <ul>
               {group.map((item) => (
