@@ -212,24 +212,6 @@
   font-weight: 800;
   white-space: nowrap;
 }
-.generated-sources {
-  margin: 2px 0 0 37px;
-  color: var(--muted-ink);
-  font-size: 13px;
-}
-.generated-sources summary {
-  padding: 7px 0;
-  cursor: pointer;
-}
-.generated-sources li {
-  padding: 8px 0;
-  display: grid;
-  gap: 3px;
-  overflow-wrap: anywhere;
-}
-.generated-sources a {
-  text-decoration: underline;
-}
 .shopping-stale {
   background: #fff0d7;
   border: 1px solid #d7b274;
@@ -239,6 +221,10 @@
 }
 .shopping-stale p {
   margin-top: 6px;
+}
+.shopping-stale .shopping-generate-action {
+  justify-items: start;
+  margin-top: 12px;
 }
 @media (max-width: 600px) {
   .shopping-generate-footer {

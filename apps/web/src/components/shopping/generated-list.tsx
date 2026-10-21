@@ -4,7 +4,7 @@ import {
 } from "@prep-sheet/db/shopping-plan";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, ShoppingBasket } from "lucide-react";
+import { Pencil, RefreshCw, ShoppingBasket } from "lucide-react";
 import { useState } from "react";
 import { useTRPC } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
@@ -41,7 +41,11 @@ function GenerateListButton({
       )}
       <button
         type="button"
-        className="button button-primary"
+        className={
+          mode === "update"
+            ? "button button-small button-outline"
+            : "button button-primary"
+        }
         disabled={
           (disabled && !planner.data?.stale) ||
           generate.isPending ||
@@ -56,15 +60,21 @@ function GenerateListButton({
               : generate.mutate()
         }
       >
-        <ShoppingBasket size={18} />
+        {mode === "update" ? (
+          <RefreshCw size={16} />
+        ) : (
+          <ShoppingBasket size={18} />
+        )}
         {planner.data?.stale
           ? "Review meal changes"
           : generate.isPending
-            ? "Preparing trip..."
+            ? mode === "update"
+              ? "Updating..."
+              : "Preparing trip..."
             : mode === "open"
               ? "Start shopping"
               : mode === "update"
-                ? "Update shopping trip"
+                ? "Update list"
                 : "Prepare shopping trip"}
       </button>
       <ErrorNotice
@@ -170,41 +180,10 @@ export function GeneratedShoppingList() {
           )}
         </span>
       </label>
-      <details className="generated-sources">
-        <summary>
-          {row.items.length === 1
-            ? "Source"
-            : `${row.items.length} original items`}
-        </summary>
-        <ul>
-          {row.items.map((item) => (
-            <li key={item.id}>
-              <span>
-                {item.text}
-                {item.status === "bought" ? " · Bought" : ""}
-              </span>
-              {item.recipeId ? (
-                <Link
-                  to="/recipes/$recipeId"
-                  params={{ recipeId: item.recipeId }}
-                >
-                  {item.recipeTitle}
-                </Link>
-              ) : (
-                <small>Other groceries</small>
-              )}
-            </li>
-          ))}
-        </ul>
-      </details>
     </li>
   );
   return (
     <main id="main-content" className="shopping-page page-width">
-      <Link to="/shopping" className="back-link">
-        <ArrowLeft size={17} />
-        Edit ingredients
-      </Link>
       <div className="page-heading">
         <div>
           <h1>
@@ -213,10 +192,14 @@ export function GeneratedShoppingList() {
           <p>Grouped by aisle, with matching quantities combined.</p>
         </div>
         {plan && (
-          <GenerateListButton
-            mode="update"
-            disabled={!plan.items.some((item) => item.status === "needed")}
-          />
+          <Link
+            to="/shopping"
+            className="button button-small button-outline"
+            aria-label="Edit shopping list"
+          >
+            <Pencil size={16} />
+            Edit
+          </Link>
         )}
       </div>
       <TripSummary />
@@ -242,13 +225,20 @@ export function GeneratedShoppingList() {
         )}
         {plan && (
           <>
-            {plan.stale && (
+            {(plan.stale || planner.data?.stale) && (
               <div className="shopping-stale" role="status">
-                <strong>Your ingredients have changed.</strong>
-                <p>
-                  Update your shopping trip to refresh groups and quantities
-                  before ticking items off.
-                </p>
+                <strong>
+                  {planner.data?.stale
+                    ? "Your meal plan has changed."
+                    : "Your ingredients have changed."}
+                </strong>
+                <p>Review changes before ticking items off.</p>
+                <GenerateListButton
+                  mode="update"
+                  disabled={
+                    !plan.items.some((item) => item.status === "needed")
+                  }
+                />
               </div>
             )}
             <div className="shopping-summary">
