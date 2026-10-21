@@ -71,7 +71,7 @@ function GenerateListButton({
               ? "Updating..."
               : "Preparing trip..."
             : mode === "open"
-              ? "Start shopping"
+              ? "Shop by aisle"
               : mode === "update"
                 ? "Update list"
                 : "Prepare shopping trip"}

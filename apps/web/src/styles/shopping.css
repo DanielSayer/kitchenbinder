@@ -62,12 +62,53 @@
   list-style: none;
 }
 .shopping-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 44px;
   align-items: center;
-  gap: 10px;
-  padding: 10px 16px;
+  gap: 8px;
+  padding: 8px 16px;
   border-top: 1px solid var(--line);
+}
+.shopping-row > .icon-button {
+  width: 44px;
+  height: 44px;
+}
+.shopping-row > .icon-button[data-popup-open] {
+  background: var(--surface-muted);
+}
+.shopping-status-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-muted);
+  color: var(--green-dark);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.shopping-status-action:hover:not(:disabled) {
+  background: var(--success-background);
+  border-color: var(--control-line);
+}
+.shopping-item-menu {
+  width: 200px;
+}
+.shopping-item-menu .shopping-item-action {
+  min-height: 44px;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 400;
+}
+.shopping-item-action[data-variant="destructive"] {
+  color: var(--error-ink);
+}
+.shopping-item-action[data-variant="destructive"][data-highlighted] {
+  background: var(--error-background);
+  color: var(--error-ink);
 }
 .shopping-check {
   display: flex;
@@ -78,6 +119,9 @@
   min-height: 44px;
   cursor: pointer;
   overflow-wrap: anywhere;
+}
+.shopping-row > .shopping-check {
+  min-width: 0;
 }
 .shopping-check input,
 .shopping-recipe-choice input {
@@ -100,6 +144,7 @@
   height: 44px;
 }
 .shopping-edit {
+  grid-column: 1 / -1;
   width: 100%;
   display: grid;
   gap: 12px;
@@ -280,13 +325,17 @@
     width: 100%;
   }
   .shopping-row {
-    padding: 10px 12px;
+    gap: 6px;
+    padding: 8px 12px;
   }
   .shopping-row-actions {
     margin-left: auto;
   }
   .shopping-check {
     min-width: 0;
+  }
+  .shopping-row > .shopping-check {
+    gap: 8px;
   }
   .shopping-group-heading {
     padding: 14px 16px;
@@ -315,15 +364,8 @@
   min-height: 44px;
   padding: 10px 14px;
 }
-.shopping-row > .shopping-check {
-  flex: 1 1 180px;
-}
-.shopping-row > .shopping-row-actions {
-  justify-content: space-between;
-  gap: 4px;
-}
 .shopping-row .error-notice {
-  flex-basis: 100%;
+  grid-column: 1 / -1;
 }
 .shopping-picker[open] {
   display: flex;
@@ -445,16 +487,6 @@
   }
 }
 @media (max-width: 600px) {
-  .shopping-row {
-    gap: 0;
-  }
-  .shopping-row > .shopping-check {
-    flex-basis: 100%;
-  }
-  .shopping-row > .shopping-row-actions {
-    width: 100%;
-    padding-left: 33px;
-  }
   .collection-page .page-heading {
     gap: 10px;
     margin-bottom: 16px;
