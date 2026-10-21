@@ -42,7 +42,12 @@ export async function boundedRequest(
       bytes.set(next.value, size);
       size += next.value.byteLength;
     }
-    return new Request(request, {
+    // Development adapters can implement Request without Node's private fields.
+    // Rebuild from public fields rather than cloning the adapter as a native Request.
+    return new Request(request.url, {
+      method: request.method,
+      headers: request.headers,
+      signal: request.signal,
       body: bytes.subarray(0, size),
       duplex: "half",
     });

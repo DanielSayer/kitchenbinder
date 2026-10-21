@@ -389,6 +389,178 @@ describe("recipes API with PostgreSQL", () => {
     await owner.recipes.delete(copied);
     vi.mocked(generateRecipe).mockClear();
   });
+  it("shares automatic and manual tags across members, scopes definitions and preserves copied tags", async () => {
+    const owner = caller(ids[0]);
+    const member = caller(ids[1]);
+    const outsider = caller(ids[2]);
+    const shared = await owner.groups.create({ name: "Shared tags" });
+    const invite = await owner.groups.invite({ groupId: shared.id });
+    await member.groups.acceptInvite({ token: invite.token });
+    const personalTag = await member.tags.create({
+      name: "Private import tag",
+    });
+    const sharedTag = await owner.tags.create({
+      groupId: shared.id,
+      name: "Shared lunch",
+      description: "Pack for lunch",
+    });
+    expect(sharedTag).toMatchObject({ groupId: shared.id, userId: null });
+    expect(await member.tags.list({ groupId: shared.id })).toContainEqual(
+      sharedTag,
+    );
+    expect(await member.tags.list()).not.toContainEqual(sharedTag);
+    expect(await owner.tags.list({ groupId: shared.id })).not.toContainEqual(
+      personalTag,
+    );
+    await expect(
+      outsider.tags.list({ groupId: shared.id }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(
+      outsider.tags.create({ groupId: shared.id, name: "Intruder" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(
+      outsider.tags.delete({ id: sharedTag.id, groupId: shared.id }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(
+      member.tags.update({ id: sharedTag.id, name: "Wrong scope" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(
+      member.tags.create({ groupId: shared.id, name: "SHARED LUNCH" }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    const renamed = await member.tags.update({
+      id: sharedTag.id,
+      groupId: shared.id,
+      name: "Lunch to share",
+      description: sharedTag.description,
+    });
+    vi.mocked(generateRecipe).mockResolvedValueOnce({
+      content: sampleRecipe,
+      origin: "generated",
+      sourceUrl: null,
+      tagIds: [sharedTag.id, personalTag.id],
+    });
+    const imported = await createAndWait(member, {
+      id: randomUUID(),
+      input: "Shared packed lunch",
+      groupId: shared.id,
+    });
+    expect(generateRecipe).toHaveBeenLastCalledWith(
+      "Shared packed lunch",
+      expect.arrayContaining([renamed]),
+      undefined,
+    );
+    const offeredTags = vi.mocked(generateRecipe).mock.lastCall?.[1];
+    expect(offeredTags).not.toContainEqual(personalTag);
+    expect((await owner.recipes.get(imported)).tagIds).toEqual([sharedTag.id]);
+    for (const api of [owner, member]) {
+      const filtered = await api.recipes.list({
+        groupId: shared.id,
+        tagIds: [sharedTag.id],
+      });
+      expect(filtered.items.map((item) => item.id)).toEqual([imported.id]);
+      expect(filtered.items[0]?.tagIds).toEqual([sharedTag.id]);
+      expect(
+        (
+          await api.recipes.taggingList({
+            groupId: shared.id,
+            excludeTagId: sharedTag.id,
+          })
+        ).total,
+      ).toBe(0);
+    }
+    await owner.recipes.setTag({
+      id: imported.id,
+      tagId: sharedTag.id,
+      selected: false,
+    });
+    expect((await member.recipes.get(imported)).tagIds).toEqual([]);
+    await Promise.all(
+      [owner, member].map((api) =>
+        api.recipes.setTag({
+          id: imported.id,
+          tagId: sharedTag.id,
+          selected: true,
+        }),
+      ),
+    );
+    expect((await owner.recipes.get(imported)).tagIds).toEqual([sharedTag.id]);
+    await member.recipes.setTags({
+      recipeIds: [imported.id],
+      tagIds: [sharedTag.id],
+      operation: "remove",
+    });
+    expect((await owner.recipes.get(imported)).tagIds).toEqual([]);
+    await owner.recipes.setTags({
+      recipeIds: [imported.id],
+      tagIds: [sharedTag.id],
+      operation: "add",
+    });
+    await expect(
+      member.recipes.setTag({
+        id: imported.id,
+        tagId: personalTag.id,
+        selected: true,
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(
+      outsider.recipes.setTag({
+        id: imported.id,
+        tagId: sharedTag.id,
+        selected: false,
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    const personal = await member.recipes.copy({
+      id: imported.id,
+      newId: randomUUID(),
+      groupId: null,
+    });
+    const copiedTags = (await member.tags.list()).filter(
+      (item) => item.name === renamed.name,
+    );
+    expect(copiedTags).toHaveLength(1);
+    const copiedTag = copiedTags[0];
+    if (!copiedTag) throw new Error("Missing copied tag");
+    expect(copiedTag).toMatchObject({
+      userId: ids[1],
+      groupId: null,
+      description: renamed.description,
+    });
+    expect(copiedTag.id).not.toBe(sharedTag.id);
+    expect((await member.recipes.get(personal)).tagIds).toEqual([copiedTag.id]);
+    const copiedBack = await member.recipes.copy({
+      id: personal.id,
+      newId: randomUUID(),
+      groupId: shared.id,
+    });
+    expect((await owner.recipes.get(copiedBack)).tagIds).toEqual([
+      sharedTag.id,
+    ]);
+    // A mixed-scope batch must fail atomically before changing either recipe.
+    await expect(
+      member.recipes.setTags({
+        recipeIds: [imported.id, personal.id],
+        tagIds: [sharedTag.id],
+        operation: "remove",
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect((await owner.recipes.get(imported)).tagIds).toEqual([sharedTag.id]);
+    await owner.groups.removeMember({ groupId: shared.id, userId: ids[1] });
+    expect((await owner.recipes.get(imported)).tagIds).toEqual([sharedTag.id]);
+    await expect(
+      member.tags.update({
+        id: sharedTag.id,
+        groupId: shared.id,
+        name: "After leaving",
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await owner.tags.delete({ id: sharedTag.id, groupId: shared.id });
+    expect((await owner.recipes.get(imported)).tagIds).toEqual([]);
+    expect((await member.recipes.get(personal)).tagIds).toEqual([copiedTag.id]);
+    await member.tags.delete({ id: personalTag.id });
+    await member.tags.delete({ id: copiedTag.id });
+    await db.delete(recipe).where(eq(recipe.id, personal.id));
+    await db.delete(group).where(eq(group.id, shared.id));
+  });
   it("saves JSONB, avoids duplicate saves, isolates users, edits and deletes", async () => {
     const owner = caller(ids[0]);
     const other = caller(ids[1]);
@@ -692,7 +864,9 @@ describe("recipes API with PostgreSQL", () => {
     expect((await member.recipes.get({ id: shared.id })).tagIds).toEqual([
       sharedTag.id,
     ]);
-    expect((await owner.recipes.get({ id: shared.id })).tagIds).toEqual([]);
+    expect((await owner.recipes.get({ id: shared.id })).tagIds).toEqual([
+      sharedTag.id,
+    ]);
     expect((await member.recipes.get({ id: shared.id })).isFavourite).toBe(
       true,
     );

@@ -233,6 +233,11 @@ export async function migrate(
           ).replace(/^BEGIN;|^COMMIT;/gm, "");
           await client.query(sql);
         }
+        await client.query(
+          migrations.find(
+            (migration) => migration.name === "0005_collection_recipe_tags.sql",
+          ).sql,
+        );
       } else {
         for (const migration of migrations) await client.query(migration.sql);
       }

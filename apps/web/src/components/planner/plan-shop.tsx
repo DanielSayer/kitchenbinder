@@ -4,13 +4,13 @@ import {
   type Meal,
 } from "@prep-sheet/db/meal-planner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { ShoppingBasket } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useTRPC } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
 import { OrganiseDialog } from "../recipes/organise-dialog";
-import { addDays, dateLabel, localDate } from "./dates";
+import { addDays, dateLabel, localDate, weekStart } from "./dates";
 
 export function mealTitle(meal: Meal, meals: Meal[]) {
   if (meal.kind === "recipe") return meal.title;
@@ -19,7 +19,7 @@ export function mealTitle(meal: Meal, meals: Meal[]) {
   return source?.kind === "recipe" ? `${source.title} leftovers` : "Leftovers";
 }
 
-export function TripSummary() {
+export function MealListNotice() {
   const trpc = useTRPC();
   const query = useQuery(trpc.planner.get.queryOptions());
   const [review, setReview] = useState(false);
@@ -31,76 +31,49 @@ export function TripSummary() {
         retry={() => void query.refetch()}
       />
     );
-  if (!trip || !query.data) return null;
+  if (!trip || !query.data?.stale) return null;
   return (
     <>
-      <section
-        className={`meal-trip-summary ${query.data.stale ? "meal-trip-stale" : ""}`}
-        aria-label="Planned shopping trip"
-      >
-        <details className="meal-trip-details">
-          <summary>Shop {dateLabel(trip.shoppingDate)}</summary>
-          <p>
-            Meals {dateLabel(trip.start)} to {dateLabel(trip.end)}
-          </p>
-          {query.data.stale && (
-            <p className="meal-warning" role="status">
-              Planned meals changed.
-            </p>
-          )}
-        </details>
-        <div className="meal-trip-actions">
-          <Link className="text-button" to="/planner">
-            Meal plan →
-          </Link>
-          {query.data.stale && (
-            <button
-              className="button button-small button-primary"
-              type="button"
-              onClick={() => setReview(true)}
-            >
-              Review changes
-            </button>
-          )}
-        </div>
-      </section>
-      {review && (
-        <PlanShop
-          initial={trip}
-          replace={false}
-          onClose={() => setReview(false)}
-        />
-      )}
+      <div className="meal-list-notice" role="status">
+        <p>Your meals changed.</p>
+        <button
+          className="button button-small button-outline"
+          type="button"
+          onClick={() => setReview(true)}
+        >
+          Review list
+        </button>
+      </div>
+      {review && <PlanShop initial={trip} onClose={() => setReview(false)} />}
     </>
   );
 }
 
 export function PlanShop({
   initial,
-  replace,
   onClose,
 }: {
   initial?: Coverage;
-  replace: boolean;
   onClose: () => void;
 }) {
   const trpc = useTRPC();
   const client = useQueryClient();
   const navigate = useNavigate();
   const planner = useQuery(trpc.planner.get.queryOptions());
+  const datesId = useId();
   const [coverage, setCoverage] = useState<Coverage>(
     initial ?? {
-      shoppingDate: localDate(),
-      start: localDate(),
-      end: addDays(localDate(), 6),
+      shoppingDate: weekStart(localDate()),
+      start: weekStart(localDate()),
+      end: addDays(weekStart(localDate()), 6),
     },
   );
   const [reviewed, setReviewed] = useState<Coverage | null>(null);
   const [error, setError] = useState("");
-  const [confirmed, setConfirmed] = useState(false);
+  const [changeDates, setChangeDates] = useState(false);
   const preview = useQuery(
     trpc.planner.preview.queryOptions(
-      { coverage: reviewed ?? coverage, replace },
+      { coverage: reviewed ?? coverage, replace: false },
       { enabled: reviewed !== null, staleTime: 0 },
     ),
   );
@@ -116,32 +89,35 @@ export function PlanShop({
       },
     }),
   );
-  const set = (patch: Partial<Coverage>) => {
-    setCoverage((current) => ({ ...current, ...patch }));
+  const set = (patch: Partial<Pick<Coverage, "start" | "end">>) => {
+    setCoverage((current) => ({
+      ...current,
+      ...patch,
+      shoppingDate:
+        patch.start && patch.start < current.shoppingDate
+          ? patch.start
+          : current.shoppingDate,
+    }));
     setReviewed(null);
     apply.reset();
-    setConfirmed(false);
+    setError("");
   };
-  const needsConfirmation =
-    replace &&
-    (Boolean(planner.data?.trip) ||
-      Boolean(
-        preview.data?.changes.some((change) => change.kind === "remove"),
-      ));
   return (
     <OrganiseDialog
-      title={replace ? "Plan shop" : "Update shopping trip"}
+      title="Make shopping list"
       className="meal-dialog meal-shop-dialog"
       onClose={() => {
         if (!apply.isPending) onClose();
       }}
     >
       <form
+        noValidate
         onSubmit={(event) => {
           event.preventDefault();
           const parsed = coverageInput.safeParse(coverage);
           if (!parsed.success) {
             setError(parsed.error.issues[0]?.message ?? "Check the dates.");
+            setChangeDates(true);
             return;
           }
           setError("");
@@ -149,31 +125,37 @@ export function PlanShop({
         }}
       >
         <fieldset disabled={apply.isPending} className="meal-form">
-          <label className="shopping-field">
-            Shopping date
-            <input
-              type="date"
-              required
-              min="2000-01-01"
-              max="2100-12-31"
-              value={coverage.shoppingDate}
-              onChange={(event) => set({ shoppingDate: event.target.value })}
-            />
-          </label>
-          <div className="meal-form-grid">
+          <div className="meal-list-dates">
+            <div>
+              <h3>Which days are you shopping for?</h3>
+              <p>
+                {dateLabel(coverage.start)} to {dateLabel(coverage.end)}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="text-button"
+              aria-expanded={changeDates}
+              aria-controls={datesId}
+              onClick={() => setChangeDates((current) => !current)}
+            >
+              {changeDates ? "Hide dates" : "Change dates"}
+            </button>
+          </div>
+          <div id={datesId} className="meal-form-grid" hidden={!changeDates}>
             <label className="shopping-field">
-              First meal date
+              From
               <input
                 type="date"
                 required
-                min={coverage.shoppingDate}
+                min="2000-01-01"
                 max="2100-12-31"
                 value={coverage.start}
                 onChange={(event) => set({ start: event.target.value })}
               />
             </label>
             <label className="shopping-field">
-              Last meal date
+              Through
               <input
                 type="date"
                 required
@@ -184,8 +166,9 @@ export function PlanShop({
               />
             </label>
           </div>
+          <ErrorNotice message={error} />
           <ErrorNotice
-            message={error || planner.error?.message}
+            message={planner.error?.message}
             retry={() => void planner.refetch()}
           />
           {!reviewed && (
@@ -198,7 +181,7 @@ export function PlanShop({
                 Cancel
               </button>
               <button className="button button-primary" type="submit">
-                Preview shopping list
+                Review ingredients
               </button>
             </div>
           )}
@@ -217,7 +200,7 @@ export function PlanShop({
             {preview.data && !preview.isError && (
               <>
                 <section className="meal-review-section">
-                  <h3>Meals covered</h3>
+                  <h3>Included meals</h3>
                   {!preview.data.meals.length && (
                     <p>No meals planned. You can still shop for groceries.</p>
                   )}
@@ -296,20 +279,6 @@ export function PlanShop({
                     </ul>
                   </div>
                 )}
-                {needsConfirmation && (
-                  <label className="meal-replace-confirm">
-                    <input
-                      type="checkbox"
-                      checked={confirmed}
-                      disabled={apply.isPending}
-                      onChange={(event) => setConfirmed(event.target.checked)}
-                    />
-                    <span>
-                      Replace the active trip and its recipe ingredients,
-                      including bought recipe items. Keep other groceries.
-                    </span>
-                  </label>
-                )}
                 <ErrorNotice
                   message={apply.error?.message}
                   retry={() => {
@@ -332,24 +301,19 @@ export function PlanShop({
                     disabled={
                       apply.isPending ||
                       preview.isFetching ||
-                      preview.data.issues.length > 0 ||
-                      (needsConfirmation && !confirmed)
+                      preview.data.issues.length > 0
                     }
                     onClick={() => {
                       if (preview.data)
                         apply.mutate({
                           coverage: reviewed,
-                          replace,
+                          replace: false,
                           token: preview.data.token,
                         });
                     }}
                   >
                     <ShoppingBasket size={17} />
-                    {apply.isPending
-                      ? "Preparing..."
-                      : replace
-                        ? "Generate shopping list"
-                        : "Apply changes"}
+                    {apply.isPending ? "Saving..." : "Save shopping list"}
                   </button>
                 </div>
               </>

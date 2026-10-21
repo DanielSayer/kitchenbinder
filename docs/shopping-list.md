@@ -4,7 +4,7 @@ Each signed-in account has one persistent list at `/shopping`. Ingredients can b
 
 Ingredients retain their original text, recipe title and yield. List edits do not change recipes, and recipe updates or deletion do not change copied ingredients. Duplicate ingredient lines are kept separately. A recipe cannot be added again while any of its items remain on the list. Clearing or removing all of its items makes it available again.
 
-Items have three states: needed, bought and owned. The checkbox marks an item bought; Already have marks it owned. Both can return to needed. Clear bought items removes only bought items. Reset list asks for confirmation before removing everything.
+Items have three states: needed, bought and owned. The checkbox marks an item bought. Each row has a visible Have it button to mark it owned in one tap; Need this returns owned or bought items to needed. The checkbox, ingredient, Have it button and action menu share one row, with ingredient text wrapping when needed. Edit item and Remove item are in the action menu. Clear bought items removes only bought items. Reset list asks for confirmation before removing everything.
 
 Writes are account-scoped. Recipe additions check current access and run transactionally; simultaneous additions of the same recipe do not duplicate its ingredients. A list holds up to 1,000 items, with up to 100 recipes per addition. Miscellaneous groceries use a request ID so retrying a save does not duplicate them. Unfinished text is stored locally by account and item, while saved items persist in PostgreSQL.
 

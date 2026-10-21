@@ -54,6 +54,7 @@ export const taggingInput = z
     ...pagination,
     search: z.string().max(2000).default(""),
     excludeTagId: z.uuid().optional(),
+    groupId: z.uuid().nullable().optional(),
   })
   .prefault({});
 
@@ -65,9 +66,9 @@ export const ratingOf = (userId: string) => sql<number | null>`(
   select ${recipeRating.rating} from ${recipeRating}
   where ${recipeRating.recipeId} = ${recipe.id} and ${recipeRating.userId} = ${userId}
 )`;
-export const tagsOf = (userId: string) => sql<string[]>`coalesce((
+export const tagsOf = () => sql<string[]>`coalesce((
   select json_agg(${recipeTag.tagId}) from ${recipeTag}
-  where ${recipeTag.recipeId} = ${recipe.id} and ${recipeTag.userId} = ${userId}
+  where ${recipeTag.recipeId} = ${recipe.id}
 ), '[]'::json)`;
 export const cookingSummary = (userId: string) => ({
   cookedCount: sql<number>`(select count(*)::int from ${recipeCooking} where ${recipeCooking.recipeId} = ${recipe}.${sql.identifier("id")} and ${recipeCooking.userId} = ${userId})`,
@@ -75,9 +76,9 @@ export const cookingSummary = (userId: string) => ({
     string | null
   >`(select max(${recipeCooking.cookedOn})::text from ${recipeCooking} where ${recipeCooking.recipeId} = ${recipe}.${sql.identifier("id")} and ${recipeCooking.userId} = ${userId})`,
 });
-const hasTag = (userId: string, tagId: string) => sql<boolean>`exists (
+const hasTag = (tagId: string) => sql<boolean>`exists (
   select 1 from ${recipeTag} where ${recipeTag.recipeId} = ${recipe.id}
-  and ${recipeTag.userId} = ${userId} and ${recipeTag.tagId} = ${tagId}
+  and ${recipeTag.tagId} = ${tagId}
 )`;
 
 // ICU numeric collation preserves natural, case/accent-insensitive name ordering.
@@ -116,7 +117,7 @@ export function collectionQueries(
     input.cookedBefore
       ? sql`${history.lastCookedOn} < ${input.cookedBefore}`
       : undefined,
-    ...input.tagIds.map((id) => hasTag(userId, id)),
+    ...input.tagIds.map((id) => hasTag(id)),
   );
   const order = (() => {
     switch (input.sort) {
@@ -162,7 +163,7 @@ export function collectionQueries(
         isFavourite: favouriteOf(userId),
         rating: ratingOf(userId),
         ...history,
-        tagIds: tagsOf(userId),
+        tagIds: tagsOf(),
       })
       .from(recipe)
       .where(where)
@@ -232,12 +233,16 @@ export async function taggingRecipePage(
   userId: string,
   input: z.infer<typeof taggingInput>,
 ) {
+  if (input.groupId) await requireGroup(db, input.groupId, userId);
   const where = and(
     accessibleRecipe(userId),
     input.search.trim() ? titleMatches(input.search) : undefined,
-    input.excludeTagId
-      ? sql`not ${hasTag(userId, input.excludeTagId)}`
-      : undefined,
+    input.groupId === undefined
+      ? undefined
+      : input.groupId
+        ? eq(recipe.groupId, input.groupId)
+        : isNull(recipe.groupId),
+    input.excludeTagId ? sql`not ${hasTag(input.excludeTagId)}` : undefined,
   );
   return db.transaction(
     async (tx) => {

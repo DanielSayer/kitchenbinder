@@ -16,6 +16,10 @@ import { AccountControls } from "@/components/account-controls";
 import { Billing } from "@/components/billing";
 import { ConnectedExtensions } from "@/components/connected-extensions";
 import { ErrorNotice, LoadingState } from "@/components/feedback";
+import {
+  CollectionSelect,
+  useCollection,
+} from "@/components/groups/collection-context";
 import { PrivacyPolicy } from "@/components/privacy-policy";
 import { ApplyTagDialog } from "@/components/recipes/bulk-tag-dialog";
 import { ReportForm } from "@/components/report-form";
@@ -57,51 +61,6 @@ function Settings() {
   const search = Route.useSearch();
   const [activeTab, setActiveTab] = useState(
     search.billing ? "billing" : "account",
-  );
-  const trpc = useTRPC();
-  const client = useQueryClient();
-  const tags = useQuery(trpc.tags.list.queryOptions());
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  type TagDetails = Pick<
-    NonNullable<typeof tags.data>[number],
-    "id" | "name" | "description"
-  >;
-  const [editing, setEditing] = useState<TagDetails>();
-  const [applyTag, setApplyTag] = useState<TagDetails>();
-  const [createdTag, setCreatedTag] = useState<TagDetails>();
-  const refresh = async () => {
-    await Promise.all([
-      client.invalidateQueries({ queryKey: trpc.tags.list.queryKey() }),
-      client.invalidateQueries({ queryKey: trpc.recipes.pathKey() }),
-    ]);
-  };
-  const create = useMutation(
-    trpc.tags.create.mutationOptions({
-      onSuccess: async (saved) => {
-        setName("");
-        setDescription("");
-        setCreatedTag(saved);
-        await refresh();
-      },
-    }),
-  );
-  const update = useMutation(
-    trpc.tags.update.mutationOptions({
-      onSuccess: async (saved) => {
-        if (createdTag?.id === saved.id) setCreatedTag(saved);
-        setEditing(undefined);
-        await refresh();
-      },
-    }),
-  );
-  const remove = useMutation(
-    trpc.tags.delete.mutationOptions({
-      onSuccess: async (_result, variables) => {
-        if (createdTag?.id === variables.id) setCreatedTag(undefined);
-        await refresh();
-      },
-    }),
   );
   return (
     <main id="main-content" className="page-width settings-page">
@@ -179,207 +138,7 @@ function Settings() {
             tabIndex={0}
             hidden={activeTab !== "tags"}
           >
-            <section aria-labelledby="tags-heading">
-              <h2 id="tags-heading">Your tags</h2>
-              <p className="settings-intro">
-                New recipes use these tags automatically. Your tags and
-                favourites stay private, even in groups. Edit tags on any
-                recipe.
-              </p>
-              <form
-                className="tag-form"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  create.mutate({ name, description });
-                }}
-              >
-                <label>
-                  Tag name
-                  <input
-                    required
-                    maxLength={40}
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    placeholder="e.g. Lunchbox"
-                  />
-                </label>
-                <label>
-                  When to use it <span className="muted">optional</span>
-                  <input
-                    maxLength={300}
-                    value={description}
-                    onChange={(event) => setDescription(event.target.value)}
-                    placeholder="e.g. Easy to pack and eat cold"
-                  />
-                </label>
-                <button
-                  className="button button-primary"
-                  type="submit"
-                  disabled={create.isPending || !name.trim()}
-                >
-                  {create.isPending ? "Adding..." : "Add tag"}
-                </button>
-              </form>
-              {createdTag && (
-                <div className="tag-created-callout" role="status">
-                  <div>
-                    <strong>{createdTag.name} created.</strong>
-                    <p>Add it to recipes you already have.</p>
-                  </div>
-                  <div className="tag-row-actions">
-                    <button
-                      type="button"
-                      className="button button-small button-primary"
-                      onClick={() => setApplyTag(createdTag)}
-                    >
-                      <Tags size={16} aria-hidden="true" /> Add to recipes
-                    </button>
-                    <button
-                      type="button"
-                      className="text-button"
-                      onClick={() => setCreatedTag(undefined)}
-                    >
-                      Not now
-                    </button>
-                  </div>
-                </div>
-              )}
-              <ErrorNotice
-                message={create.error?.message || remove.error?.message}
-              />
-              <LoadingState pending={tags.isPending}>
-                <ErrorNotice
-                  message={tags.error?.message}
-                  retry={() => void tags.refetch()}
-                />
-                <ul className="settings-tags">
-                  {tags.data?.map((tag) => (
-                    <li key={tag.id}>
-                      {editing?.id === tag.id ? (
-                        <form
-                          className="tag-edit-form"
-                          onSubmit={(event) => {
-                            event.preventDefault();
-                            update.mutate(editing);
-                          }}
-                        >
-                          <label>
-                            Tag name
-                            <input
-                              required
-                              maxLength={40}
-                              value={editing.name}
-                              disabled={update.isPending}
-                              onChange={(event) =>
-                                setEditing({
-                                  ...editing,
-                                  name: event.target.value,
-                                })
-                              }
-                            />
-                          </label>
-                          <label>
-                            <span>
-                              When to use it{" "}
-                              <span className="muted">optional</span>
-                            </span>
-                            <input
-                              maxLength={300}
-                              value={editing.description}
-                              disabled={update.isPending}
-                              onChange={(event) =>
-                                setEditing({
-                                  ...editing,
-                                  description: event.target.value,
-                                })
-                              }
-                            />
-                          </label>
-                          <ErrorNotice message={update.error?.message} />
-                          <div className="tag-row-actions">
-                            <button
-                              type="submit"
-                              className="button button-small button-primary"
-                              disabled={
-                                update.isPending || !editing.name.trim()
-                              }
-                            >
-                              {update.isPending ? "Saving..." : "Save changes"}
-                            </button>
-                            <button
-                              type="button"
-                              className="text-button"
-                              disabled={update.isPending}
-                              onClick={() => {
-                                update.reset();
-                                setEditing(undefined);
-                              }}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </form>
-                      ) : (
-                        <>
-                          <div>
-                            <div className="tag-row-heading">
-                              <strong>{tag.name}</strong>
-                              {!tag.userId && (
-                                <span className="built-in">Built in</span>
-                              )}
-                            </div>
-                            <p>{tag.description}</p>
-                          </div>
-                          <div className="tag-row-actions">
-                            <button
-                              type="button"
-                              className="button button-small button-outline"
-                              onClick={() => setApplyTag(tag)}
-                            >
-                              <Tags size={16} aria-hidden="true" /> Add to
-                              recipes
-                            </button>
-                            {tag.userId ? (
-                              <>
-                                <button
-                                  type="button"
-                                  className="icon-button"
-                                  aria-label={`Edit ${tag.name} tag`}
-                                  disabled={editing !== undefined}
-                                  onClick={() => {
-                                    update.reset();
-                                    setEditing({
-                                      id: tag.id,
-                                      name: tag.name,
-                                      description: tag.description,
-                                    });
-                                  }}
-                                >
-                                  <Pencil size={17} />
-                                </button>
-                                <button
-                                  type="button"
-                                  className="icon-button"
-                                  aria-label={`Delete ${tag.name} tag`}
-                                  disabled={remove.isPending}
-                                  onClick={() => remove.mutate({ id: tag.id })}
-                                >
-                                  <Trash2 size={17} />
-                                </button>
-                              </>
-                            ) : null}
-                          </div>
-                        </>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </LoadingState>
-              <p className="muted">
-                Deleting a tag removes it from your recipes. Adding a tag won't
-                change existing recipes.
-              </p>
-            </section>
+            <CollectionTags />
           </div>
           <div
             id="settings-panel-extensions"
@@ -415,15 +174,280 @@ function Settings() {
           </div>
         </div>
       </div>
+    </main>
+  );
+}
+
+function CollectionTags() {
+  const { groupId } = useCollection();
+  return <TagSettings key={groupId ?? "personal"} groupId={groupId} />;
+}
+
+function TagSettings({ groupId }: { groupId: string | null }) {
+  const trpc = useTRPC();
+  const client = useQueryClient();
+  const tags = useQuery(trpc.tags.list.queryOptions({ groupId }));
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  type TagDetails = Pick<
+    NonNullable<typeof tags.data>[number],
+    "id" | "name" | "description"
+  >;
+  const [editing, setEditing] = useState<TagDetails>();
+  const [applyTag, setApplyTag] = useState<TagDetails>();
+  const [createdTag, setCreatedTag] = useState<TagDetails>();
+  const refresh = async () => {
+    await Promise.all([
+      client.invalidateQueries({ queryKey: trpc.tags.list.queryKey() }),
+      client.invalidateQueries({ queryKey: trpc.recipes.pathKey() }),
+    ]);
+  };
+  const create = useMutation(
+    trpc.tags.create.mutationOptions({
+      onSuccess: async (saved) => {
+        setName("");
+        setDescription("");
+        setCreatedTag(saved);
+        await refresh();
+      },
+    }),
+  );
+  const update = useMutation(
+    trpc.tags.update.mutationOptions({
+      onSuccess: async (saved) => {
+        if (createdTag?.id === saved.id) setCreatedTag(saved);
+        setEditing(undefined);
+        await refresh();
+      },
+    }),
+  );
+  const remove = useMutation(
+    trpc.tags.delete.mutationOptions({
+      onSuccess: async (_result, variables) => {
+        if (createdTag?.id === variables.id) setCreatedTag(undefined);
+        await refresh();
+      },
+    }),
+  );
+  return (
+    <>
+      <section aria-labelledby="tags-heading">
+        <h2 id="tags-heading">Collection tags</h2>
+        <p className="settings-intro">
+          New recipes use this collection's tags automatically. Everyone in a
+          shared collection can see and edit its tags.
+        </p>
+        <CollectionSelect
+          disabled={
+            create.isPending ||
+            update.isPending ||
+            remove.isPending ||
+            !!editing ||
+            !!applyTag ||
+            !!name ||
+            !!description
+          }
+        />
+        <form
+          className="tag-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            create.mutate({ name, description, groupId });
+          }}
+        >
+          <label>
+            Tag name
+            <input
+              required
+              maxLength={40}
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="e.g. Lunchbox"
+            />
+          </label>
+          <label>
+            When to use it <span className="muted">optional</span>
+            <input
+              maxLength={300}
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="e.g. Easy to pack and eat cold"
+            />
+          </label>
+          <button
+            className="button button-primary"
+            type="submit"
+            disabled={create.isPending || !name.trim()}
+          >
+            {create.isPending ? "Adding..." : "Add tag"}
+          </button>
+        </form>
+        {createdTag && (
+          <div className="tag-created-callout" role="status">
+            <div>
+              <strong>{createdTag.name} created.</strong>
+              <p>Add it to recipes you already have.</p>
+            </div>
+            <div className="tag-row-actions">
+              <button
+                type="button"
+                className="button button-small button-primary"
+                onClick={() => setApplyTag(createdTag)}
+              >
+                <Tags size={16} aria-hidden="true" /> Add to recipes
+              </button>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => setCreatedTag(undefined)}
+              >
+                Not now
+              </button>
+            </div>
+          </div>
+        )}
+        <ErrorNotice message={create.error?.message || remove.error?.message} />
+        <LoadingState pending={tags.isPending}>
+          <ErrorNotice
+            message={tags.error?.message}
+            retry={() => void tags.refetch()}
+          />
+          <ul className="settings-tags">
+            {tags.data?.map((tag) => (
+              <li key={tag.id}>
+                {editing?.id === tag.id ? (
+                  <form
+                    className="tag-edit-form"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      update.mutate({ ...editing, groupId });
+                    }}
+                  >
+                    <label>
+                      Tag name
+                      <input
+                        required
+                        maxLength={40}
+                        value={editing.name}
+                        disabled={update.isPending}
+                        onChange={(event) =>
+                          setEditing({
+                            ...editing,
+                            name: event.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>
+                        When to use it <span className="muted">optional</span>
+                      </span>
+                      <input
+                        maxLength={300}
+                        value={editing.description}
+                        disabled={update.isPending}
+                        onChange={(event) =>
+                          setEditing({
+                            ...editing,
+                            description: event.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <ErrorNotice message={update.error?.message} />
+                    <div className="tag-row-actions">
+                      <button
+                        type="submit"
+                        className="button button-small button-primary"
+                        disabled={update.isPending || !editing.name.trim()}
+                      >
+                        {update.isPending ? "Saving..." : "Save changes"}
+                      </button>
+                      <button
+                        type="button"
+                        className="text-button"
+                        disabled={update.isPending}
+                        onClick={() => {
+                          update.reset();
+                          setEditing(undefined);
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <>
+                    <div>
+                      <div className="tag-row-heading">
+                        <strong>{tag.name}</strong>
+                        {!tag.userId && !tag.groupId && (
+                          <span className="built-in">Built in</span>
+                        )}
+                      </div>
+                      <p>{tag.description}</p>
+                    </div>
+                    <div className="tag-row-actions">
+                      <button
+                        type="button"
+                        className="button button-small button-outline"
+                        onClick={() => setApplyTag(tag)}
+                      >
+                        <Tags size={16} aria-hidden="true" /> Add to recipes
+                      </button>
+                      {tag.userId || tag.groupId ? (
+                        <>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            aria-label={`Edit ${tag.name} tag`}
+                            disabled={editing !== undefined}
+                            onClick={() => {
+                              update.reset();
+                              setEditing({
+                                id: tag.id,
+                                name: tag.name,
+                                description: tag.description,
+                              });
+                            }}
+                          >
+                            <Pencil size={17} />
+                          </button>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            aria-label={`Delete ${tag.name} tag`}
+                            disabled={remove.isPending}
+                            onClick={() =>
+                              remove.mutate({ id: tag.id, groupId })
+                            }
+                          >
+                            <Trash2 size={17} />
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        </LoadingState>
+        <p className="muted">
+          Deleting a tag removes it from this collection's recipes. Adding a tag
+          won't change existing recipes.
+        </p>
+      </section>
       {applyTag && (
         <ApplyTagDialog
           tag={applyTag}
+          groupId={groupId}
           onClose={() => setApplyTag(undefined)}
           onApplied={() => {
             if (createdTag?.id === applyTag.id) setCreatedTag(undefined);
           }}
         />
       )}
-    </main>
+    </>
   );
 }

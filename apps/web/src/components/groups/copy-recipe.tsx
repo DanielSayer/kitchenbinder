@@ -20,9 +20,10 @@ export function CopyRecipe({
   const copy = useMutation(
     trpc.recipes.copy.mutationOptions({
       onSuccess: async () => {
-        await client.invalidateQueries({
-          queryKey: trpc.recipes.list.queryKey(),
-        });
+        await Promise.all([
+          client.invalidateQueries({ queryKey: trpc.recipes.list.queryKey() }),
+          client.invalidateQueries({ queryKey: trpc.tags.list.queryKey() }),
+        ]);
         toast.success("Recipe copied. Each copy can be edited separately.");
       },
     }),
