@@ -1,4 +1,4 @@
-import type { Meal } from "@prep-sheet/db/meal-planner";
+import type { Coverage, Meal } from "@prep-sheet/db/meal-planner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,13 +8,14 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
-  CalendarDays,
+  Check,
   ChevronLeft,
   ChevronRight,
   CookingPot,
   MoreHorizontal,
   Plus,
   RotateCcw,
+  ShoppingBasket,
   Utensils,
 } from "lucide-react";
 import { useState } from "react";
@@ -23,7 +24,7 @@ import { ErrorNotice, LoadingState } from "../feedback";
 import { OrganiseDialog } from "../recipes/organise-dialog";
 import { addDays, dateLabel, localDate, weekStart } from "./dates";
 import { MealEditor } from "./meal-editor";
-import { mealTitle, PlanShop } from "./plan-shop";
+import { MealListNotice, mealTitle, PlanShop } from "./plan-shop";
 
 type Editor = {
   date: string;
@@ -40,7 +41,7 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
   const [editor, setEditor] = useState<Editor | null>(
     recipeId ? { date: today, recipeId } : null,
   );
-  const [shop, setShop] = useState<"new" | "update" | null>(null);
+  const [shop, setShop] = useState<Coverage | null>(null);
   const [removing, setRemoving] = useState<Meal | null>(null);
   const remove = useMutation(
     trpc.planner.remove.mutationOptions({
@@ -56,6 +57,7 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
   const days = Array.from({ length: 7 }, (_, index) => addDays(week, index));
   const meals = query.data?.meals ?? [];
   const trip = query.data?.trip;
+  const listedMeals = new Set(trip?.demands.map((demand) => demand.mealId));
   return (
     <main id="main-content" className="planner-page page-width">
       <div className="page-heading">
@@ -71,51 +73,19 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
           type="button"
           className="button button-primary"
           disabled={!query.isSuccess}
-          onClick={() => setShop("new")}
+          onClick={() =>
+            setShop({
+              shoppingDate: week < today ? week : today,
+              start: week,
+              end: addDays(week, 6),
+            })
+          }
         >
-          <CalendarDays size={18} />
-          Plan shop
+          <ShoppingBasket size={18} />
+          Make shopping list
         </button>
       </div>
-      {trip && (
-        <section
-          className={`meal-trip-summary ${query.data?.stale ? "meal-trip-stale" : ""}`}
-          aria-label="Active shopping trip"
-        >
-          <details className="meal-trip-details">
-            <summary>Shop {dateLabel(trip.shoppingDate)}</summary>
-            <p>
-              Meals {dateLabel(trip.start)} to {dateLabel(trip.end)}
-            </p>
-            {query.data?.stale && (
-              <p className="meal-warning" role="status">
-                Planned meals changed.
-              </p>
-            )}
-            <button
-              type="button"
-              className="text-button"
-              onClick={() => setShop("update")}
-            >
-              Edit coverage
-            </button>
-          </details>
-          <div className="meal-trip-actions">
-            {query.data?.stale && (
-              <button
-                type="button"
-                className="meal-warning text-button"
-                onClick={() => setShop("update")}
-              >
-                Review changes
-              </button>
-            )}
-            <Link className="text-button" to="/shopping/generated">
-              Shopping list →
-            </Link>
-          </div>
-        </section>
-      )}
+      {query.isSuccess && <MealListNotice />}
       <div className="meal-week-toolbar">
         <h2>
           {dateLabel(week)} to {dateLabel(addDays(week, 6))}
@@ -166,9 +136,6 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
                     })}
                     <span>{new Date(`${day}T12:00:00`).getDate()}</span>
                   </h3>
-                  {trip && day >= trip.start && day <= trip.end && (
-                    <small>In this shop</small>
-                  )}
                 </div>
                 <div className="meal-day-entries">
                   {meals
@@ -262,6 +229,12 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
                               ? `${meal.portions} portions`
                               : "No ingredients needed"}
                         </p>
+                        {listedMeals.has(meal.id) && (
+                          <span className="meal-on-list">
+                            <Check size={13} />
+                            On list
+                          </span>
+                        )}
                         {meal.kind === "recipe" && meal.cook > meal.eat && (
                           <small>Save {meal.cook - meal.eat} portions</small>
                         )}
@@ -290,13 +263,7 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
         )}
       </LoadingState>
       {editor && <MealEditor {...editor} onClose={() => setEditor(null)} />}
-      {shop && (
-        <PlanShop
-          replace={shop === "new"}
-          initial={shop === "update" && trip ? trip : undefined}
-          onClose={() => setShop(null)}
-        />
-      )}
+      {shop && <PlanShop initial={shop} onClose={() => setShop(null)} />}
       {removing && (
         <OrganiseDialog
           title="Remove meal?"

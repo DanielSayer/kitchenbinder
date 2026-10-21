@@ -19,7 +19,7 @@ import { useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import { useTRPC } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
-import { TripSummary } from "../planner/plan-shop";
+import { MealListNotice } from "../planner/plan-shop";
 import { OrganiseDialog } from "../recipes/organise-dialog";
 import { RecipePicker } from "./add-recipes";
 import { ShoppingListAction } from "./generated-list";
@@ -296,7 +296,7 @@ function PersonalList({ userId }: { userId: string }) {
           Add recipes
         </button>
       </div>
-      <TripSummary />
+      <MealListNotice />
       {list.isSuccess && (
         <div className="shopping-trip-bar">
           <strong role="status">

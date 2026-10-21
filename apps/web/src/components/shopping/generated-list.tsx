@@ -8,7 +8,7 @@ import { Pencil, RefreshCw, ShoppingBasket } from "lucide-react";
 import { useState } from "react";
 import { useTRPC } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
-import { PlanShop, TripSummary } from "../planner/plan-shop";
+import { PlanShop } from "../planner/plan-shop";
 
 function GenerateListButton({
   disabled = false,
@@ -35,7 +35,6 @@ function GenerateListButton({
       {review && planner.data?.trip && (
         <PlanShop
           initial={planner.data.trip}
-          replace={false}
           onClose={() => setReview(false)}
         />
       )}
@@ -66,7 +65,7 @@ function GenerateListButton({
           <ShoppingBasket size={18} />
         )}
         {planner.data?.stale
-          ? "Review meal changes"
+          ? "Review list"
           : generate.isPending
             ? mode === "update"
               ? "Updating..."
@@ -202,7 +201,6 @@ export function GeneratedShoppingList() {
           </Link>
         )}
       </div>
-      <TripSummary />
       <LoadingState
         pending={query.isPending}
         label="Loading your shopping trip..."

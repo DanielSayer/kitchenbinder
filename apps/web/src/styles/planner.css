@@ -2,48 +2,52 @@
   max-width: 1440px;
   padding-bottom: 64px;
 }
-/* Secondary navigation stays small so meals and groceries lead the page. */
-.meal-trip-summary {
+/* Only interrupt planning when the saved shopping list needs attention. */
+.meal-list-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding: 10px 14px;
+  border: 1px solid #d9c4a6;
+  border-radius: 10px;
+  background: #fcf3e5;
+  font-size: 14px;
+}
+.meal-list-notice .button {
+  flex-shrink: 0;
+}
+.meal-list-dates {
   display: flex;
   align-items: start;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 8px 16px;
-  margin-bottom: 16px;
-  padding-block: 4px;
-  border-block: 1px solid var(--line);
-  font-size: 14px;
 }
-.meal-trip-details {
-  flex: 1;
-  min-width: 0;
-}
-.meal-trip-details summary {
-  cursor: pointer;
-  min-height: 44px;
-  align-content: center;
+.meal-list-dates h3 {
+  font-size: 15px;
   font-weight: 800;
-}
-.meal-trip-details p {
-  font-size: 13px;
   margin-bottom: 8px;
 }
-.meal-trip-details > .text-button {
-  min-height: 44px;
+.meal-list-dates p {
+  font-size: 14px;
 }
-.meal-trip-actions {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0 16px;
-}
-.meal-trip-actions .text-button {
+.meal-list-dates .text-button {
   min-height: 44px;
+  font-size: 14px;
+}
+.meal-shop-dialog .meal-form-grid[hidden] {
+  display: none;
+}
+.meal-on-list {
   display: inline-flex;
   align-items: center;
-}
-.meal-trip-stale {
-  border-color: #c78a3b;
+  gap: 4px;
+  margin-top: 8px;
+  color: var(--green-dark);
+  font-size: 11px;
+  font-weight: 800;
 }
 .meal-week-toolbar {
   display: flex;
@@ -98,12 +102,6 @@
 }
 .meal-day-heading :where(h3) span {
   font-size: 21px;
-}
-.meal-day-heading small {
-  display: block;
-  color: var(--green-dark);
-  margin-top: 4px;
-  font-size: 11px;
 }
 .meal-day-entries {
   padding: 8px;
@@ -312,18 +310,6 @@ a.meal-card-title:hover {
 .meal-change-change {
   background: #fff0d1;
 }
-.meal-replace-confirm {
-  display: flex;
-  gap: 12px;
-  align-items: start;
-  font-size: 14px;
-}
-.meal-replace-confirm input {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-  accent-color: var(--green-dark);
-}
 .meal-form .organise-dialog-footer {
   margin: 0;
   padding: 14px 0 0;
@@ -392,16 +378,6 @@ a.meal-card-title:hover {
   .meal-week-toolbar .icon-button {
     border: 1px solid var(--line);
     background: #fffef9;
-  }
-  .meal-trip-summary {
-    gap: 0 12px;
-  }
-  .meal-trip-actions {
-    margin-left: auto;
-    justify-content: flex-end;
-  }
-  .meal-trip-stale {
-    flex-wrap: wrap;
   }
 }
 @media (max-width: 600px) {
@@ -478,7 +454,23 @@ a.meal-card-title:hover {
   .meal-editor-dialog .organise-dialog-footer {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .meal-trip-summary {
+}
+
+@media (max-width: 850px) {
+  .planner-page > .page-heading {
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .planner-page > .page-heading > .button {
+    max-width: none;
+    flex-shrink: 0;
+    padding-inline: 12px;
     font-size: 13px;
+  }
+}
+@media (max-width: 380px) {
+  .meal-list-notice {
+    flex-wrap: wrap;
   }
 }
