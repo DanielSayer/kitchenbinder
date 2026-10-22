@@ -1,5 +1,7 @@
 # Recipe collection pages
 
+Collection membership is separate from [household membership](households.md). Scheduling a recipe shares its saved meal details with the selected household, without granting access to the source collection. Recipe pickers continue to show only collections the current account can access.
+
 Collection, shopping, meal and tag pickers request 24 recipes at a time. The API accepts page sizes from 1 to 48 and returns `{ items, total }`. Page numbers start at zero. Filtering and sorting happen in PostgreSQL before the page is selected. Count and page queries share a read-only repeatable-read snapshot.
 
 Collection summaries contain ID, title, description, ingredient count, durations, creation date and recipe tags and the current user's favourites, rating and cooking summary. They omit ingredients, steps and notes. Detail/edit requests retain full content. Ingredient search examines each ingredient line on the server; names and ingredients use literal case-insensitive substring matching. Notes and method are not searched. All selected tags must match. Undated cooks count as cooked, but do not satisfy a last-cooked date filter. Date boundaries are strict.

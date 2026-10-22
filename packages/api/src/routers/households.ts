@@ -208,14 +208,12 @@ export const householdsRouter = router({
         });
       const token = randomBytes(32).toString("hex");
       const expiresAt = new Date(Date.now() + 7 * 86400000);
-      await tx
-        .insert(householdInvite)
-        .values({
-          id: randomUUID(),
-          householdId: input.householdId,
-          tokenHash: hash(token),
-          expiresAt,
-        });
+      await tx.insert(householdInvite).values({
+        id: randomUUID(),
+        householdId: input.householdId,
+        tokenHash: hash(token),
+        expiresAt,
+      });
       return { token, expiresAt };
     }),
   ),
@@ -282,12 +280,10 @@ export const householdsRouter = router({
             code: "BAD_REQUEST",
             message: "This household has reached its 20-member limit.",
           });
-        await tx
-          .insert(householdMember)
-          .values({
-            userId: ctx.session.user.id,
-            householdId: invite.householdId,
-          });
+        await tx.insert(householdMember).values({
+          userId: ctx.session.user.id,
+          householdId: invite.householdId,
+        });
         await tx
           .update(householdInvite)
           .set({ acceptedAt: new Date() })

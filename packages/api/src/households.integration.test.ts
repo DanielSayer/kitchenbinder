@@ -14,6 +14,7 @@ import { recipe } from "@prep-sheet/db/schema/recipe";
 import { shoppingItem, shoppingPlan } from "@prep-sheet/db/schema/shopping";
 import { eq, inArray } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { completeAccountDeletion } from "./account-deletion";
 import type { Context } from "./context";
 import { sampleRecipe } from "./recipes/fixtures";
 import { appRouter } from "./routers";
@@ -84,33 +85,29 @@ async function join(scope: Awaited<ReturnType<typeof create>>) {
 
 describe("households with PostgreSQL", () => {
   beforeAll(async () => {
-    await db
-      .insert(user)
-      .values(
-        ids.map((id) => ({
-          id,
-          name: "Household test",
-          email: `${id}@example.test`,
-        })),
-      );
+    await db.insert(user).values(
+      ids.map((id) => ({
+        id,
+        name: "Household test",
+        email: `${id}@example.test`,
+      })),
+    );
     await db
       .insert(group)
       .values({ id: groupId, name: "Unrelated collection", ownerId });
     await db.insert(groupMember).values({ groupId, userId: ownerId });
-    await db
-      .insert(recipe)
-      .values({
-        id: recipeId,
-        userId: ownerId,
-        groupId,
-        title: "Curry",
-        origin: "manual",
-        content: {
-          ...sampleRecipe,
-          ingredients: ["200 g rice", "1 onion"],
-          notes: "Private recipe notes",
-        },
-      });
+    await db.insert(recipe).values({
+      id: recipeId,
+      userId: ownerId,
+      groupId,
+      title: "Curry",
+      origin: "manual",
+      content: {
+        ...sampleRecipe,
+        ingredients: ["200 g rice", "1 onion"],
+        notes: "Private recipe notes",
+      },
+    });
   });
   beforeEach(async () => {
     await db.delete(household).where(inArray(household.ownerId, ids));
@@ -118,15 +115,13 @@ describe("households with PostgreSQL", () => {
     await db.delete(shoppingItem).where(inArray(shoppingItem.userId, ids));
     await db.delete(shoppingPlan).where(inArray(shoppingPlan.userId, ids));
     await db.delete(billingAccount).where(inArray(billingAccount.userId, ids));
-    await db
-      .insert(billingAccount)
-      .values(
-        [ownerId, partnerId, secondOwnerId].map((userId) => ({
-          userId,
-          status: "active",
-          validUntil: new Date(Date.now() + 86400000),
-        })),
-      );
+    await db.insert(billingAccount).values(
+      [ownerId, partnerId, secondOwnerId].map((userId) => ({
+        userId,
+        status: "active",
+        validUntil: new Date(Date.now() + 86400000),
+      })),
+    );
   });
   afterAll(async () => {
     await db.delete(household).where(inArray(household.ownerId, ids));
@@ -581,5 +576,56 @@ describe("households with PostgreSQL", () => {
         .from(shoppingItem)
         .where(eq(shoppingItem.householdId, scope.householdId)),
     ).toEqual([]);
+  });
+  it("blocks account deletion for household owners and keeps shared meals after a former owner's account is deleted", async () => {
+    const id = randomUUID();
+    const householdId = randomUUID();
+    await db.insert(user).values({
+      id,
+      name: "Deletion household fixture",
+      email: `${id}@example.test`,
+    });
+    try {
+      await db
+        .insert(household)
+        .values({ id: householdId, name: "Deletion fixture", ownerId: id });
+      await db.insert(householdMember).values([
+        { userId: id, householdId },
+        { userId: partnerId, householdId },
+      ]);
+      const actor = caller(id);
+      await actor.planner.save({
+        scope: { kind: "household", householdId },
+        revision: 0,
+        meal: {
+          id: randomUUID(),
+          date: coverage.start,
+          slot: "Dinner",
+          kind: "out",
+          description: "Shared dinner",
+        },
+      });
+      await actor.support.requestDeletion({ confirmation: "DELETE" });
+      const deletion = await actor.support.deletion();
+      expect(deletion.ownedHouseholds).toEqual([
+        { id: householdId, name: "Deletion fixture" },
+      ]);
+      if (!deletion.request) throw new Error("Missing deletion request");
+      await expect(
+        completeAccountDeletion(deletion.request.id),
+      ).rejects.toThrow("still owns a household");
+      await actor.households.transferOwnership({
+        householdId,
+        userId: partnerId,
+      });
+      await completeAccountDeletion(deletion.request.id);
+      expect(
+        (await partner.planner.get({ kind: "household", householdId })).meals,
+      ).toHaveLength(1);
+      expect((await partner.households.current())?.members).toHaveLength(1);
+    } finally {
+      await db.delete(household).where(eq(household.id, householdId));
+      await db.delete(user).where(eq(user.id, id));
+    }
   });
 });

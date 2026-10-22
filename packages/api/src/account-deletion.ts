@@ -2,6 +2,7 @@ import { db } from "@prep-sheet/db";
 import { user } from "@prep-sheet/db/schema/auth";
 import { billingAccount } from "@prep-sheet/db/schema/billing";
 import { group } from "@prep-sheet/db/schema/group";
+import { household } from "@prep-sheet/db/schema/household";
 import { recipe } from "@prep-sheet/db/schema/recipe";
 import { accountDeletionRequest } from "@prep-sheet/db/schema/support";
 import { and, eq, isNull } from "drizzle-orm";
@@ -33,6 +34,14 @@ export async function completeAccountDeletion(requestId: string) {
     if (owned.length)
       throw new Error(
         "The account still owns groups. Ask the owner to transfer or explicitly delete them first.",
+      );
+    const ownedHousehold = await tx
+      .select({ id: household.id })
+      .from(household)
+      .where(eq(household.ownerId, request.userId));
+    if (ownedHousehold.length)
+      throw new Error(
+        "The account still owns a household. Ask the owner to transfer or explicitly delete it first.",
       );
     const [billing] = await tx
       .select()
