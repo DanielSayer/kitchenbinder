@@ -185,15 +185,6 @@ select:focus-visible {
 .group-settings .group-confirm {
   margin-top: 18px;
 }
-.group-settings select {
-  font: inherit;
-  color: var(--ink);
-  background: #fffdf7;
-  border: 1px solid var(--control-line);
-  border-radius: 9px;
-  padding: 10px 12px;
-  width: 100%;
-}
 .group-settings .button {
   justify-self: start;
   white-space: normal;

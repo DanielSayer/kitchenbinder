@@ -14,17 +14,12 @@
   min-width: 0;
   color: var(--green-dark);
 }
-.planning-scope-select select {
-  min-height: 44px;
+.planning-scope-select .native-select-wrapper {
+  width: 220px;
   max-width: min(280px, 55vw);
-  padding: 8px 28px 8px 10px;
-  border: 1px solid var(--control-line);
-  border-radius: 9px;
-  color: var(--ink);
-  background: #fffdf7;
-  font: inherit;
+}
+.planning-scope-select .native-select {
   font-weight: 800;
-  text-overflow: ellipsis;
 }
 .planning-scope-caption {
   font-size: 13px;
@@ -240,7 +235,7 @@
   .planning-scope-select {
     flex: 1;
   }
-  .planning-scope-select select {
+  .planning-scope-select .native-select-wrapper {
     width: 100%;
     max-width: min(220px, 50vw);
   }
