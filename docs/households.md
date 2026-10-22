@@ -25,3 +25,14 @@ Owners must transfer ownership or explicitly delete their household before accou
 ## Delivery and verification
 
 Use versioned database migrations, preserve existing personal records, and test with the repository's disposable PostgreSQL wrapper. Cover access boundaries, invitations and competing acceptance, membership removal, concurrent partner edits, recipe snapshots, copied leftovers, and separate personal and household shopping lists. Inspect the rendered planner, shopping and household flows at desktop and mobile widths before completion.
+
+### Verified locally on 22 October 2026
+
+- `pnpm test`: 63 files passed, one skipped; 475 tests passed and eight skipped. The wrapper removed its disposable PostgreSQL container and volume.
+- `pnpm build:release`, `pnpm check-types`, `pnpm check` and `git diff --check` passed. The Drizzle metadata check reported no schema changes.
+- Migration tests covered clean provisioning, upgrades from older releases, unversioned adoption and repeated verification. The local development database was migrated and verified; no hosted database was changed.
+- Browser checks used a temporary household and a separate fixture partner. Creation, invitation generation and API acceptance, shared recipe method access, duplicating a partner's private recipe, shopping generation, a purchase visible to the partner, personal/shared switching and ownership transfer were exercised.
+- A competing grocery edit retained the user's draft, disabled Save until review and survived reload. Remote removal showed Household unavailable and required an explicit switch to Personal.
+- Layouts were checked at 1280, 390 and 320 pixels. The temporary household, fixture partner, recipe and dependent shared data were removed afterwards; existing personal meals and groceries were preserved.
+
+Invitation return through real Google or Discord sign-in was not exercised. No production deployment, paid AI calls, payments or external invitation delivery formed part of these checks.
