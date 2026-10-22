@@ -71,6 +71,19 @@ vi.mock("../groups/collection-context", () => ({
     groups: { data: [], error: null, refetch: vi.fn() },
   }),
 }));
+vi.mock("../households/planning-context", async (original) => ({
+  ...(await original<typeof import("../households/planning-context")>()),
+  usePlanningScope: () => ({
+    scope: { kind: "personal" },
+    scopeKey: "personal",
+    ready: true,
+    available: true,
+    household: null,
+    error: undefined,
+    retry: () => {},
+    selectScope: () => {},
+  }),
+}));
 
 beforeEach(() => {
   server.requests.length = 0;
@@ -159,7 +172,7 @@ it("keeps shopping selection across pages and search, submits both IDs, and requ
   fireEvent.click(screen.getByRole("button", { name: "Add ingredients" }));
   await waitFor(() =>
     expect(server.add).toHaveBeenCalledWith(
-      { recipeIds: ["r1", "r25"] },
+      { scope: { kind: "personal" }, recipeIds: ["r1", "r25"] },
       expect.anything(),
     ),
   );
