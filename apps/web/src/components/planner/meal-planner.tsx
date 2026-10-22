@@ -6,7 +6,6 @@ import {
   DropdownMenuTrigger,
 } from "@prep-sheet/ui/components/dropdown-menu";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
 import {
   Check,
   ChevronLeft,
@@ -21,10 +20,17 @@ import {
 import { useState } from "react";
 import { useTRPC } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
+import {
+  PlanningWorkspace,
+  planningRefresh,
+  usePlanningScope,
+} from "../households/planning-context";
+import { PlanningScopeBar } from "../households/scope-bar";
 import { OrganiseDialog } from "../recipes/organise-dialog";
 import { addDays, dateLabel, localDate, weekStart } from "./dates";
 import { MealEditor } from "./meal-editor";
 import { MealListNotice, mealTitle, PlanShop } from "./plan-shop";
+import { PlannedRecipe } from "./planned-recipe";
 
 type Editor = {
   date: string;
@@ -32,16 +38,30 @@ type Editor = {
   duplicate?: boolean;
   recipeId?: string;
 };
-export function MealPlanner({ recipeId }: { recipeId?: string }) {
+export function MealPlanner(props: { recipeId?: string }) {
+  return (
+    <PlanningWorkspace>
+      <PlannerContent {...props} />
+    </PlanningWorkspace>
+  );
+}
+function PlannerContent({ recipeId }: { recipeId?: string }) {
+  const { scope } = usePlanningScope();
   const trpc = useTRPC();
   const client = useQueryClient();
-  const query = useQuery(trpc.planner.get.queryOptions());
+  const query = useQuery(
+    trpc.planner.get.queryOptions(scope, planningRefresh(scope)),
+  );
   const today = localDate();
   const [week, setWeek] = useState(weekStart(today));
   const [editor, setEditor] = useState<Editor | null>(
     recipeId ? { date: today, recipeId } : null,
   );
   const [shop, setShop] = useState<Coverage | null>(null);
+  const [cooking, setCooking] = useState<Extract<
+    Meal,
+    { kind: "recipe" }
+  > | null>(null);
   const [removing, setRemoving] = useState<Meal | null>(null);
   const remove = useMutation(
     trpc.planner.remove.mutationOptions({
@@ -67,7 +87,11 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
             <span className="mobile-screen-title">Planner</span>
             <span className="title-dot">.</span>
           </h1>
-          <p>Your private weekly plan.</p>
+          <p>
+            {scope.kind === "household"
+              ? "Your shared weekly plan."
+              : "Your private weekly plan."}
+          </p>
         </div>
         <button
           type="button"
@@ -85,6 +109,7 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
           Make shopping list
         </button>
       </div>
+      <PlanningScopeBar />
       {query.isSuccess && <MealListNotice />}
       <div className="meal-week-toolbar">
         <h2>
@@ -210,13 +235,13 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
                           </DropdownMenu>
                         </div>
                         {meal.kind === "recipe" ? (
-                          <Link
-                            className="meal-card-title"
-                            to="/recipes/$recipeId"
-                            params={{ recipeId: meal.recipeId }}
+                          <button
+                            type="button"
+                            className="meal-card-title meal-recipe-link"
+                            onClick={() => setCooking(meal)}
                           >
                             {meal.title}
-                          </Link>
+                          </button>
                         ) : (
                           <strong className="meal-card-title">
                             {mealTitle(meal, meals)}
@@ -262,6 +287,9 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
           </div>
         )}
       </LoadingState>
+      {cooking && (
+        <PlannedRecipe meal={cooking} onClose={() => setCooking(null)} />
+      )}
       {editor && <MealEditor {...editor} onClose={() => setEditor(null)} />}
       {shop && <PlanShop initial={shop} onClose={() => setShop(null)} />}
       {removing && (
@@ -301,6 +329,7 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
                 onClick={() => {
                   if (query.data)
                     remove.mutate({
+                      scope,
                       id: removing.id,
                       revision: query.data.revision,
                     });

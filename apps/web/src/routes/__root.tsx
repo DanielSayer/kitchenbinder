@@ -11,6 +11,7 @@ import type { TRPCOptionsProxy } from "@trpc/tanstack-react-query";
 import { AccountQueryBoundary } from "../components/account-query-boundary";
 import { CollectionProvider } from "../components/groups/collection-context";
 import Header from "../components/header";
+import { HouseholdProvider } from "../components/households/planning-context";
 import { InstallAppProvider } from "../components/install-app";
 import { getSiteOrigin } from "../functions/get-site-origin";
 
@@ -132,8 +133,10 @@ function RootDocument() {
           <InstallAppProvider>
             <AccountQueryBoundary>
               <CollectionProvider>
-                <Header />
-                <Outlet />
+                <HouseholdProvider>
+                  <Header />
+                  <Outlet />
+                </HouseholdProvider>
               </CollectionProvider>
             </AccountQueryBoundary>
           </InstallAppProvider>

@@ -9,6 +9,10 @@ import { ShoppingBasket } from "lucide-react";
 import { useId, useState } from "react";
 import { useTRPC } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
+import {
+  planningRefresh,
+  usePlanningScope,
+} from "../households/planning-context";
 import { OrganiseDialog } from "../recipes/organise-dialog";
 import { addDays, dateLabel, localDate, weekStart } from "./dates";
 
@@ -20,8 +24,11 @@ export function mealTitle(meal: Meal, meals: Meal[]) {
 }
 
 export function MealListNotice() {
+  const { scope } = usePlanningScope();
   const trpc = useTRPC();
-  const query = useQuery(trpc.planner.get.queryOptions());
+  const query = useQuery(
+    trpc.planner.get.queryOptions(scope, planningRefresh(scope)),
+  );
   const [review, setReview] = useState(false);
   const trip = query.data?.trip;
   if (query.isError)
@@ -56,10 +63,13 @@ export function PlanShop({
   initial?: Coverage;
   onClose: () => void;
 }) {
+  const { scope } = usePlanningScope();
   const trpc = useTRPC();
   const client = useQueryClient();
   const navigate = useNavigate();
-  const planner = useQuery(trpc.planner.get.queryOptions());
+  const planner = useQuery(
+    trpc.planner.get.queryOptions(scope, planningRefresh(scope)),
+  );
   const datesId = useId();
   const [coverage, setCoverage] = useState<Coverage>(
     initial ?? {
@@ -73,7 +83,7 @@ export function PlanShop({
   const [changeDates, setChangeDates] = useState(false);
   const preview = useQuery(
     trpc.planner.preview.queryOptions(
-      { coverage: reviewed ?? coverage, replace: false },
+      { scope, coverage: reviewed ?? coverage, replace: false },
       { enabled: reviewed !== null, staleTime: 0 },
     ),
   );
@@ -306,6 +316,7 @@ export function PlanShop({
                     onClick={() => {
                       if (preview.data)
                         apply.mutate({
+                          scope,
                           coverage: reviewed,
                           replace: false,
                           token: preview.data.token,

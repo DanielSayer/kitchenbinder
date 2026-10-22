@@ -34,6 +34,7 @@ export default function UserMenu() {
       state.location.pathname === "/privacy" ||
       state.location.pathname === "/support" ||
       state.location.pathname === "/groups" ||
+      state.location.pathname === "/household" ||
       state.location.pathname === "/login",
   });
 
@@ -152,6 +153,12 @@ export default function UserMenu() {
             render={<Link to="/settings" />}
           >
             <Settings size={16} /> Settings
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="collection-select-manage"
+            render={<Link to="/household" />}
+          >
+            <Users size={16} /> Household
           </DropdownMenuItem>
           <DropdownMenuItem
             className="collection-select-manage"
