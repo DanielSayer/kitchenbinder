@@ -88,8 +88,9 @@ no automatic retention job and no per-report status or assignment table.
 2. The owner must transfer every owned group to an existing eligible member or
    explicitly delete the group through Groups. Never choose a replacement owner
    or delete a group on their behalf without instructions.
+   They must also transfer or explicitly delete any household they own through Household settings.
 3. Explain that shared recipes and other people's copies remain. Resolve specific
-   requests about personal details in shared recipe text before completion.
+   requests about personal details in shared recipe text or shared meals before completion. Shared household meals and groceries remain for other members.
 4. Ask the user to cancel Pro and wait for paid/trial access to end. Wait for any
    pending checkout to expire too. Restore Polar configuration/connectivity if it
    is unavailable. Never clear billing rows, shorten checkout expiry or mark a
@@ -102,7 +103,7 @@ node --env-file=apps/web/.env --import tsx packages/api/src/support-admin.ts com
 ```
 
 The transaction locks the exact pending request and account. It refuses owned
-groups, unresolved billing and a checkout whose expiry is future or unknown. A
+groups, an owned household, unresolved billing and a checkout whose expiry is future or unknown. A
 billing history or attempted checkout triggers authoritative Polar state and
 subscription checks even if the local customer ID is missing. Configuration or
 provider failure rolls back all deletion work and leaves the request pending for
@@ -119,7 +120,7 @@ Successful completion removes personal recipes, including Recently deleted, and
 the account. Foreign keys remove sessions, provider tokens, extension credentials,
 imports, private tags/activity, shopping/planner data, memberships and support
 requests. Shared contributions retain content with their user link removed.
-Group-owned data and independent copies remain. Keep only the minimal operational
+Group-owned data, household meals and groceries, and independent copies remain. Keep only the minimal operational
 record permitted by the retention policy; the CLI success record contains the
 reference and operator, not a copy of the deleted account's email or content.
 

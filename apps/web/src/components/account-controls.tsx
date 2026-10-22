@@ -46,8 +46,8 @@ export function AccountControls() {
             from the live database.
           </li>
           <li>
-            Your sessions, extension connections and group memberships are
-            removed.
+            Your sessions, extension connections, group and household
+            memberships are removed.
           </li>
           <li>
             Shared recipes and collection tags stay in surviving groups with
@@ -57,6 +57,10 @@ export function AccountControls() {
           <li>
             Transfer groups you own or explicitly delete them before deletion
             can be completed. Deleting a group removes its recipes for everyone.
+          </li>
+          <li>
+            Transfer or delete any household you own before account deletion.
+            Shared meals and groceries stay in surviving households.
           </li>
         </ul>
         <p>
@@ -73,6 +77,23 @@ export function AccountControls() {
         />
         {deletion.data && (
           <>
+            {deletion.data.ownedHouseholds.length > 0 && (
+              <div className="account-group-notice">
+                <strong>Household to resolve before deletion</strong>
+                <ul>
+                  {deletion.data.ownedHouseholds.map((item) => (
+                    <li key={item.id}>{item.name}</li>
+                  ))}
+                </ul>
+                <Link to="/household" className="text-button">
+                  Manage household
+                </Link>
+                <p>
+                  You can request deletion now. Transfer ownership or delete
+                  this household before completion.
+                </p>
+              </div>
+            )}
             {deletion.data.ownedGroups.length > 0 && (
               <div className="account-group-notice">
                 <strong>Groups to resolve before deletion</strong>

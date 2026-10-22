@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { db } from "@prep-sheet/db";
 import { user } from "@prep-sheet/db/schema/auth";
 import { group } from "@prep-sheet/db/schema/group";
+import { household } from "@prep-sheet/db/schema/household";
 import {
   accountDeletionRequest,
   supportRequest,
@@ -66,7 +67,11 @@ export const supportRouter = router({
       .select({ id: group.id, name: group.name })
       .from(group)
       .where(eq(group.ownerId, ctx.session.user.id));
-    return { request: request ?? null, ownedGroups };
+    const ownedHouseholds = await db
+      .select({ id: household.id, name: household.name })
+      .from(household)
+      .where(eq(household.ownerId, ctx.session.user.id));
+    return { request: request ?? null, ownedGroups, ownedHouseholds };
   }),
   requestDeletion: protectedProcedure
     .input(z.object({ confirmation: z.literal("DELETE") }))
