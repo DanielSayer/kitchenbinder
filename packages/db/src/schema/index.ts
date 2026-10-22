@@ -3,6 +3,7 @@ export * from "./auth-rate-limit";
 export * from "./billing";
 export * from "./extension";
 export * from "./group";
+export * from "./household";
 export * from "./import";
 export * from "./meal-planner";
 export * from "./recipe";

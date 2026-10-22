@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import { db } from "@prep-sheet/db";
 import {
   type Allocation,
   coverageInput,
@@ -13,7 +12,7 @@ import {
   shoppingDemands,
   tripIsStale,
 } from "@prep-sheet/db/meal-planner";
-import { user } from "@prep-sheet/db/schema/auth";
+import { scopeInput } from "@prep-sheet/db/planning-scope";
 import { mealPlanner } from "@prep-sheet/db/schema/meal-planner";
 import { recipe } from "@prep-sheet/db/schema/recipe";
 import { shoppingItem, shoppingPlan } from "@prep-sheet/db/schema/shopping";
@@ -22,22 +21,37 @@ import { TRPCError } from "@trpc/server";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { accessibleRecipe, type Database } from "../groups/access";
+import {
+  ownerColumns,
+  type PlanningOwner,
+  scopeFilter,
+  scopeTarget,
+  withPlanningScope,
+} from "../households/access";
 import { protectedProcedure, router } from "../index";
 
-const tripInput = z.object({ coverage: coverageInput, replace: z.boolean() });
-async function lock(tx: Database, userId: string) {
-  await tx
-    .select({ id: user.id })
-    .from(user)
-    .where(eq(user.id, userId))
-    .for("update");
-}
-async function state(tx: Database, userId: string) {
+const tripInput = z.object({
+  scope: scopeInput,
+  coverage: coverageInput,
+  replace: z.boolean(),
+});
+export async function plannerState(tx: Database, owner: PlanningOwner) {
   const [saved] = await tx
     .select()
     .from(mealPlanner)
-    .where(eq(mealPlanner.userId, userId));
-  return saved ?? { userId, meals: [], revision: 0, trip: null };
+    .where(scopeFilter(mealPlanner, owner));
+  return (
+    saved ?? {
+      id:
+        owner.kind === "personal"
+          ? `personal:${owner.userId}`
+          : `household:${owner.householdId}`,
+      ...ownerColumns(owner),
+      meals: [],
+      revision: 0,
+      trip: null,
+    }
+  );
 }
 function conflict() {
   return new TRPCError({
@@ -46,14 +60,17 @@ function conflict() {
       "Your plan or shopping list changed. Refresh and review it again before saving.",
   });
 }
-async function saveState(
+export async function savePlannerState(
   tx: Database,
-  saved: Awaited<ReturnType<typeof state>>,
+  saved: Awaited<ReturnType<typeof plannerState>>,
 ) {
   await tx
     .insert(mealPlanner)
     .values(saved)
-    .onConflictDoUpdate({ target: mealPlanner.userId, set: saved });
+    .onConflictDoUpdate({
+      target: scopeTarget(mealPlanner, saved),
+      set: saved,
+    });
 }
 type Item = typeof shoppingItem.$inferSelect;
 type ItemWrite = typeof shoppingItem.$inferInsert;
@@ -69,7 +86,7 @@ function reconcile(
   demands: Demand[],
   trip: MealTrip | null,
   replace: boolean,
-  userId: string,
+  owner: PlanningOwner,
 ) {
   const removed: string[] = [];
   const additions: ItemWrite[] = [];
@@ -158,7 +175,7 @@ function reconcile(
       const id = randomUUID();
       additions.push({
         id,
-        userId,
+        ...ownerColumns(owner),
         text: scaled.text,
         recipeId: demand.recipeId,
         recipeTitle: demand.title,
@@ -209,14 +226,14 @@ function reconcile(
 
 async function preview(
   tx: Database,
-  userId: string,
+  owner: PlanningOwner,
   input: z.infer<typeof tripInput>,
 ) {
-  const saved = await state(tx, userId);
+  const saved = await plannerState(tx, owner);
   const items = await tx
     .select()
     .from(shoppingItem)
-    .where(eq(shoppingItem.userId, userId))
+    .where(scopeFilter(shoppingItem, owner))
     .orderBy(shoppingItem.id);
   const demands = shoppingDemands(saved.meals, input.coverage);
   const coveredMeals = saved.meals.filter(
@@ -226,7 +243,7 @@ async function preview(
   const issues = mealIssues(saved.meals).filter((issue) =>
     coveredMeals.some((meal) => meal.id === issue.id),
   );
-  const result = reconcile(items, demands, saved.trip, input.replace, userId);
+  const result = reconcile(items, demands, saved.trip, input.replace, owner);
   const token = createHash("sha256")
     .update(JSON.stringify({ saved, items, input }))
     .digest("hex");
@@ -234,23 +251,35 @@ async function preview(
 }
 
 export const plannerRouter = router({
-  get: protectedProcedure.query(async ({ ctx }) => {
-    const saved = await state(db, ctx.session.user.id);
-    return {
-      ...saved,
-      issues: mealIssues(saved.meals),
-      stale: saved.trip ? tripIsStale(saved.meals, saved.trip) : false,
-    };
-  }),
+  get: protectedProcedure.input(scopeInput).query(({ ctx, input }) =>
+    withPlanningScope(ctx.session.user.id, input, async (tx, owner) => {
+      const saved = await plannerState(tx, owner);
+      return {
+        ...saved,
+        issues: mealIssues(saved.meals),
+        stale: saved.trip ? tripIsStale(saved.meals, saved.trip) : false,
+      };
+    }),
+  ),
   save: protectedProcedure
-    .input(z.object({ revision: z.number().int().min(0), meal: mealInput }))
+    .input(
+      z.object({
+        scope: scopeInput,
+        revision: z.number().int().min(0),
+        meal: mealInput,
+        copyFrom: z.uuid().optional(),
+      }),
+    )
     .mutation(({ ctx, input }) =>
-      db.transaction(async (tx) => {
+      withPlanningScope(ctx.session.user.id, input.scope, async (tx, owner) => {
         const userId = ctx.session.user.id;
-        await lock(tx, userId);
-        const saved = await state(tx, userId);
+        const saved = await plannerState(tx, owner);
         if (saved.revision !== input.revision) throw conflict();
-        const old = saved.meals.find((meal) => meal.id === input.meal.id);
+        const old =
+          saved.meals.find((meal) => meal.id === input.meal.id) ??
+          (input.copyFrom
+            ? saved.meals.find((meal) => meal.id === input.copyFrom)
+            : undefined);
         let meal: Meal;
         if (input.meal.kind === "recipe") {
           if (old?.kind === "recipe" && old.recipeId === input.meal.recipeId)
@@ -258,6 +287,7 @@ export const plannerRouter = router({
               ...input.meal,
               title: old.title,
               ingredients: old.ingredients,
+              recipe: old.recipe,
             };
           else {
             const [source] = await tx
@@ -279,6 +309,14 @@ export const plannerRouter = router({
               ...input.meal,
               title: source.title,
               ingredients: source.content.ingredients,
+              recipe: {
+                description: source.content.description,
+                servings: source.content.servings,
+                prepMinutes: source.content.prepMinutes,
+                cookMinutes: source.content.cookMinutes,
+                totalMinutes: source.content.totalMinutes,
+                steps: source.content.steps,
+              },
             };
           }
         } else {
@@ -308,40 +346,50 @@ export const plannerRouter = router({
             message:
               "Your planner is full. Remove older meals before adding more.",
           });
-        await saveState(tx, { ...saved, meals, revision: saved.revision + 1 });
+        await savePlannerState(tx, {
+          ...saved,
+          meals,
+          revision: saved.revision + 1,
+        });
       }),
     ),
   remove: protectedProcedure
-    .input(z.object({ id: z.uuid(), revision: z.number().int().min(0) }))
+    .input(
+      z.object({
+        scope: scopeInput,
+        id: z.uuid(),
+        revision: z.number().int().min(0),
+      }),
+    )
     .mutation(({ ctx, input }) =>
-      db.transaction(async (tx) => {
-        await lock(tx, ctx.session.user.id);
-        const saved = await state(tx, ctx.session.user.id);
+      withPlanningScope(ctx.session.user.id, input.scope, async (tx, owner) => {
+        const saved = await plannerState(tx, owner);
         if (saved.revision !== input.revision) throw conflict();
-        await saveState(tx, {
+        await savePlannerState(tx, {
           ...saved,
           revision: saved.revision + 1,
           meals: saved.meals.filter((meal) => meal.id !== input.id),
         });
       }),
     ),
-  preview: protectedProcedure.input(tripInput).query(async ({ ctx, input }) => {
-    const result = await preview(db, ctx.session.user.id, input);
-    return {
-      token: result.token,
-      issues: result.issues,
-      meals: result.meals,
-      changes: result.result.changes,
-      warnings: result.result.warnings,
-    };
-  }),
+  preview: protectedProcedure.input(tripInput).query(({ ctx, input }) =>
+    withPlanningScope(ctx.session.user.id, input.scope, async (tx, owner) => {
+      const result = await preview(tx, owner, input);
+      return {
+        token: result.token,
+        issues: result.issues,
+        meals: result.meals,
+        changes: result.result.changes,
+        warnings: result.result.warnings,
+      };
+    }),
+  ),
   applyTrip: protectedProcedure
     .input(tripInput.extend({ token: z.string().length(64) }))
     .mutation(({ ctx, input }) =>
-      db.transaction(async (tx) => {
-        const userId = ctx.session.user.id;
-        await lock(tx, userId);
-        const reviewed = await preview(tx, userId, {
+      withPlanningScope(ctx.session.user.id, input.scope, async (tx, owner) => {
+        const reviewed = await preview(tx, owner, {
+          scope: input.scope,
           coverage: input.coverage,
           replace: input.replace,
         });
@@ -358,7 +406,7 @@ export const plannerRouter = router({
             .delete(shoppingItem)
             .where(
               and(
-                eq(shoppingItem.userId, userId),
+                scopeFilter(shoppingItem, owner),
                 inArray(shoppingItem.id, removed),
               ),
             );
@@ -368,7 +416,7 @@ export const plannerRouter = router({
           demands: reviewed.demands,
           allocations,
         };
-        await saveState(tx, {
+        await savePlannerState(tx, {
           ...reviewed.saved,
           trip,
           revision: reviewed.saved.revision + 1,
@@ -377,7 +425,7 @@ export const plannerRouter = router({
           (item) => item.status !== "owned",
         );
         const plan = {
-          userId,
+          ...ownerColumns(owner),
           id: randomUUID(),
           content: generateShoppingPlan(items),
           sources: items.map(({ id, text }) => ({ id, text })),
@@ -386,7 +434,10 @@ export const plannerRouter = router({
         await tx
           .insert(shoppingPlan)
           .values(plan)
-          .onConflictDoUpdate({ target: shoppingPlan.userId, set: plan });
+          .onConflictDoUpdate({
+            target: scopeTarget(shoppingPlan, owner),
+            set: plan,
+          });
       }),
     ),
 });
