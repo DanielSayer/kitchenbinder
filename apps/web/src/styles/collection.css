@@ -126,29 +126,12 @@
   font-size: 13px;
   font-weight: 800;
 }
+.sort-control .styled-select {
+  width: auto;
+}
 .sort-trigger {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
   min-height: 42px;
-  border: 1.5px solid var(--control-line);
-  border-radius: 10px;
-  padding: 0 12px;
-  background: #fffef9;
-  color: var(--ink);
-  font: inherit;
-  font-weight: 800;
-  cursor: pointer;
-}
-.sort-trigger:hover,
-.sort-trigger[data-popup-open] {
-  border-color: #758466;
-  background: #f1f3e8;
-}
-.sort-trigger:focus-visible {
-  outline: 2px solid var(--ink);
-  outline-offset: 3px;
+  padding-block: 8px;
 }
 .sort-menu {
   width: 170px;

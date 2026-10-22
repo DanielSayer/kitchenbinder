@@ -1,5 +1,5 @@
 import type { AppRouter } from "@prep-sheet/api/routers/index";
-import { NativeSelect } from "@prep-sheet/ui/components/native-select";
+import { StyledSelect } from "@prep-sheet/ui/components/styled-select";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { inferRouterOutputs } from "@trpc/server";
@@ -501,24 +501,27 @@ function HouseholdSettings({ household }: { household: Household }) {
               Transfer ownership before leaving. The new owner needs Pro to
               manage invitations.
             </p>
-            <label className="shopping-field" htmlFor={ownerSelectId}>
-              New owner
-              <NativeSelect
+            <div className="shopping-field">
+              <label htmlFor={ownerSelectId}>New owner</label>
+              <StyledSelect
                 id={ownerSelectId}
+                label="New owner"
                 value={newOwner}
                 disabled={pending}
-                onChange={(event) => setNewOwner(event.target.value)}
-              >
-                <option value="">Choose a member</option>
-                {household.members
-                  .filter((member) => member.id !== household.ownerId)
-                  .map((member) => (
-                    <option value={member.id} key={member.id}>
-                      {member.name}
-                    </option>
-                  ))}
-              </NativeSelect>
-            </label>
+                onValueChange={(value) => {
+                  setNewOwner(value);
+                }}
+                options={[
+                  { label: "Choose a member", value: "" },
+                  ...household.members
+                    .filter((member) => member.id !== household.ownerId)
+                    .map((member) => ({
+                      label: member.name,
+                      value: member.id,
+                    })),
+                ]}
+              />
+            </div>
             <button
               type="button"
               className="button button-small button-outline"

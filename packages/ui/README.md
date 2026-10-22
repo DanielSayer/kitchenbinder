@@ -1,21 +1,25 @@
 # Shared controls
 
-Use `NativeSelect` for native dropdowns. It keeps the browser's keyboard and mobile picker behaviour while giving every dropdown the same text clearance, caret position, focus outline and disabled state.
+Use `StyledSelect` for selection dropdowns. It uses the collection dropdown's styled trigger, popup, selected-row highlight and checkmark. Native selects are not allowed, including on mobile.
 
 ```tsx
-import { NativeSelect } from "@prep-sheet/ui/components/native-select";
+import { StyledSelect } from "@prep-sheet/ui/components/styled-select";
 import { useId } from "react";
 
 const selectId = useId();
 
-<label htmlFor={selectId}>
-  Collection
-  <NativeSelect id={selectId} value={value} onChange={onChange}>
-    <option value="personal">Personal</option>
-  </NativeSelect>
-</label>;
+<div>
+  <label htmlFor={selectId}>Collection</label>
+  <StyledSelect
+    id={selectId}
+    label="Collection"
+    value={value}
+    onValueChange={setValue}
+    options={[{ label: "Personal", value: "personal" }]}
+  />
+</div>;
 ```
 
-Caret spacing lives in `src/styles/native-select.css`: 12 px from the edge, with 40 px reserved after the text. Screen styles can size `.native-select-wrapper`; keep padding and caret positioning in the shared stylesheet.
+Trigger padding, caret spacing and popup styling live in `src/styles/styled-select.css`. Screens can size `.styled-select`. Use `footer` for additional menu actions, as the collection dropdown does for Recently deleted and Manage groups.
 
-The workspace lint rule rejects raw `<select>` elements outside this component. Custom dropdown menus retain their existing menu components.
+The workspace lint rule rejects every raw `<select>` element. There is no component exemption. Action menus use the existing dropdown-menu primitives.

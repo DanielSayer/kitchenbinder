@@ -14,12 +14,9 @@
   min-width: 0;
   color: var(--green-dark);
 }
-.planning-scope-select .native-select-wrapper {
+.planning-scope-select .styled-select {
   width: 220px;
   max-width: min(280px, 55vw);
-}
-.planning-scope-select .native-select {
-  font-weight: 800;
 }
 .planning-scope-caption {
   font-size: 13px;
@@ -234,8 +231,9 @@
   }
   .planning-scope-select {
     flex: 1;
+    min-width: 180px;
   }
-  .planning-scope-select .native-select-wrapper {
+  .planning-scope-select .styled-select {
     width: 100%;
     max-width: min(220px, 50vw);
   }
