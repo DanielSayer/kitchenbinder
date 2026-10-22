@@ -1,18 +1,21 @@
 import { Link } from "@tanstack/react-router";
 import { Users } from "lucide-react";
+import { useId } from "react";
 import { ErrorNotice } from "../feedback";
 import { usePlanningScope } from "./planning-context";
 
 export function PlanningScopeBar() {
+  const selectId = useId();
   const { scope, household, selectScope, available, error, retry, ready } =
     usePlanningScope();
   return (
     <>
       <div className="planning-scope-bar">
-        <label className="planning-scope-select">
+        <label className="planning-scope-select" htmlFor={selectId}>
           <Users size={17} aria-hidden="true" />
           <span className="sr-only">Planner and shopping list</span>
-          <select
+          <NativeSelect
+            id={selectId}
             aria-label="Planner and shopping list"
             value={scope.kind === "household" ? scope.householdId : "personal"}
             disabled={!ready}
@@ -31,7 +34,7 @@ export function PlanningScopeBar() {
             {!available && scope.kind === "household" && (
               <option value={scope.householdId}>Unavailable household</option>
             )}
-          </select>
+          </NativeSelect>
         </label>
         <span className="planning-scope-caption">
           {scope.kind === "household" && household
@@ -51,3 +54,5 @@ export function PlanningScopeBar() {
     </>
   );
 }
+
+import { NativeSelect } from "@prep-sheet/ui/components/native-select";

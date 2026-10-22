@@ -43,7 +43,15 @@
     "rules": {
       "preset": "recommended",
       "correctness": {
-        "useExhaustiveDependencies": "info"
+        "useExhaustiveDependencies": "info",
+        "noRestrictedElements": {
+          "level": "error",
+          "options": {
+            "elements": {
+              "select": "Use NativeSelect from @prep-sheet/ui/components/native-select so caret spacing stays consistent."
+            }
+          }
+        }
       },
       "nursery": {
         "useSortedClasses": {
@@ -68,6 +76,14 @@
       }
     }
   },
+  "overrides": [
+    {
+      "includes": ["packages/ui/src/components/native-select.tsx"],
+      "linter": {
+        "rules": { "correctness": { "noRestrictedElements": "off" } }
+      }
+    }
+  ],
   "javascript": {
     "formatter": {
       "quoteStyle": "double"

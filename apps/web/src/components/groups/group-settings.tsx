@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { ErrorNotice } from "@/components/feedback";
 import { useTRPC } from "@/utils/trpc";
 
@@ -18,6 +18,7 @@ export function GroupSettings({
   onDeleted: () => void;
 }) {
   const trpc = useTRPC();
+  const ownerSelectId = useId();
   const [memberId, setMemberId] = useState("");
   const [confirmTransfer, setConfirmTransfer] = useState(false);
   const [deleteName, setDeleteName] = useState("");
@@ -39,9 +40,10 @@ export function GroupSettings({
       <div className="group-confirm">
         <h3>Transfer ownership</h3>
         <p>Choose a new owner. You'll stay a member until you leave.</p>
-        <label>
+        <label htmlFor={ownerSelectId}>
           New owner
-          <select
+          <NativeSelect
+            id={ownerSelectId}
             value={memberId}
             disabled={pending}
             onChange={(event) => {
@@ -57,7 +59,7 @@ export function GroupSettings({
                   {member.name}
                 </option>
               ))}
-          </select>
+          </NativeSelect>
         </label>
         {!confirmTransfer ? (
           <button
@@ -133,3 +135,5 @@ export function GroupSettings({
     </details>
   );
 }
+
+import { NativeSelect } from "@prep-sheet/ui/components/native-select";

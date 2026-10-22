@@ -1,0 +1,49 @@
+/* Keep caret positioning and text clearance here. Screens may size the wrapper. */
+.native-select-wrapper {
+  position: relative;
+  display: inline-flex;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  vertical-align: middle;
+  color: var(--ink, var(--foreground));
+}
+.native-select {
+  appearance: none;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding-block: 10px;
+  padding-inline: 12px 40px;
+  border: 1px solid var(--control-line, var(--input));
+  border-radius: 9px;
+  background: #fffdf7;
+  color: inherit;
+  font: inherit;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.native-select-icon {
+  position: absolute;
+  inset-inline-end: 12px;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.native-select:focus-visible {
+  outline: var(--focus-outline, 3px solid currentColor);
+  outline-offset: var(--focus-offset, 3px);
+}
+.native-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.native-select:disabled + .native-select-icon {
+  opacity: 0.6;
+}
+.native-select[aria-invalid="true"] {
+  border-color: var(--error-ink, var(--destructive));
+}

@@ -1,9 +1,10 @@
 import type { AppRouter } from "@prep-sheet/api/routers/index";
+import { NativeSelect } from "@prep-sheet/ui/components/native-select";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { inferRouterOutputs } from "@trpc/server";
 import { ArrowLeft, Copy, Users } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client";
 import { useTRPC } from "@/utils/trpc";
@@ -177,6 +178,7 @@ type Confirmation =
   | { kind: "delete" };
 
 function HouseholdSettings({ household }: { household: Household }) {
+  const ownerSelectId = useId();
   const trpc = useTRPC();
   const client = useQueryClient();
   const { data: session } = authClient.useSession();
@@ -499,9 +501,10 @@ function HouseholdSettings({ household }: { household: Household }) {
               Transfer ownership before leaving. The new owner needs Pro to
               manage invitations.
             </p>
-            <label className="shopping-field">
+            <label className="shopping-field" htmlFor={ownerSelectId}>
               New owner
-              <select
+              <NativeSelect
+                id={ownerSelectId}
                 value={newOwner}
                 disabled={pending}
                 onChange={(event) => setNewOwner(event.target.value)}
@@ -514,7 +517,7 @@ function HouseholdSettings({ household }: { household: Household }) {
                       {member.name}
                     </option>
                   ))}
-              </select>
+              </NativeSelect>
             </label>
             <button
               type="button"
