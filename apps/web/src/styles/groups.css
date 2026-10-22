@@ -20,46 +20,6 @@
   padding: 10px 12px;
   max-width: 100%;
 }
-.collection-select-trigger {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  width: 100%;
-  min-height: 48px;
-  padding: 11px 16px;
-  border: 1px solid var(--control-line);
-  border-radius: 10px;
-  background: #fffdf7;
-  color: var(--ink);
-  font: inherit;
-  font-weight: 800;
-  text-align: left;
-  cursor: pointer;
-}
-.collection-select-trigger > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.collection-select-trigger > svg {
-  flex-shrink: 0;
-}
-.collection-select-trigger:hover,
-.collection-select-trigger[data-popup-open] {
-  border-color: #758466;
-  background: #f1f3e8;
-}
-.collection-select-trigger:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-.collection-select-trigger:focus-visible,
-select:focus-visible {
-  outline: 3px solid var(--ink);
-  outline-offset: 3px;
-}
 .collection-select-menu {
   padding: 6px;
   max-width: calc(100vw - 32px);
@@ -69,7 +29,6 @@ select:focus-visible {
   color: var(--ink);
   box-shadow: 0 8px 24px #263e2f18;
 }
-.collection-select-option,
 .collection-select-manage {
   min-height: 42px;
   border-radius: 7px;
@@ -79,10 +38,6 @@ select:focus-visible {
   overflow-wrap: anywhere;
   cursor: pointer;
 }
-.collection-select-option[data-checked] {
-  background: #eef0e4;
-}
-.collection-select-option[data-highlighted],
 .collection-select-manage[data-highlighted] {
   background: #e0e8d1;
   color: var(--ink);

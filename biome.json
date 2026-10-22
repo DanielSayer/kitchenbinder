@@ -48,7 +48,7 @@
           "level": "error",
           "options": {
             "elements": {
-              "select": "Use NativeSelect from @prep-sheet/ui/components/native-select so caret spacing stays consistent."
+              "select": "Native selects are not allowed. Use StyledSelect from @prep-sheet/ui/components/styled-select."
             }
           }
         }
@@ -76,14 +76,6 @@
       }
     }
   },
-  "overrides": [
-    {
-      "includes": ["packages/ui/src/components/native-select.tsx"],
-      "linter": {
-        "rules": { "correctness": { "noRestrictedElements": "off" } }
-      }
-    }
-  ],
   "javascript": {
     "formatter": {
       "quoteStyle": "double"

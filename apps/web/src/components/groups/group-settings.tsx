@@ -1,3 +1,4 @@
+import { StyledSelect } from "@prep-sheet/ui/components/styled-select";
 import { useMutation } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import { ErrorNotice } from "@/components/feedback";
@@ -40,27 +41,25 @@ export function GroupSettings({
       <div className="group-confirm">
         <h3>Transfer ownership</h3>
         <p>Choose a new owner. You'll stay a member until you leave.</p>
-        <label htmlFor={ownerSelectId}>
-          New owner
-          <NativeSelect
+        <div className="shopping-field">
+          <label htmlFor={ownerSelectId}>New owner</label>
+          <StyledSelect
             id={ownerSelectId}
+            label="New owner"
             value={memberId}
             disabled={pending}
-            onChange={(event) => {
-              setMemberId(event.target.value);
+            onValueChange={(value) => {
+              setMemberId(value);
               setConfirmTransfer(false);
             }}
-          >
-            <option value="">Choose a member</option>
-            {group.members
-              .filter((member) => member.id !== group.ownerId)
-              .map((member) => (
-                <option key={member.id} value={member.id}>
-                  {member.name}
-                </option>
-              ))}
-          </NativeSelect>
-        </label>
+            options={[
+              { label: "Choose a member", value: "" },
+              ...group.members
+                .filter((member) => member.id !== group.ownerId)
+                .map((member) => ({ label: member.name, value: member.id })),
+            ]}
+          />
+        </div>
         {!confirmTransfer ? (
           <button
             type="button"
@@ -135,5 +134,3 @@ export function GroupSettings({
     </details>
   );
 }
-
-import { NativeSelect } from "@prep-sheet/ui/components/native-select";

@@ -1,15 +1,11 @@
 import {
-  DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
-  DropdownMenuTrigger,
 } from "@prep-sheet/ui/components/dropdown-menu";
+import { StyledSelect } from "@prep-sheet/ui/components/styled-select";
 import { Link } from "@tanstack/react-router";
-import { ChevronDown, Trash2, Users } from "lucide-react";
-import { useId, useRef } from "react";
+import { Trash2, Users } from "lucide-react";
+import { useId } from "react";
 
 type CollectionOption = {
   label: string;
@@ -34,41 +30,23 @@ export function CollectionDropdown({
   value: string;
 }) {
   const labelId = useId();
-  const container = useRef<HTMLDivElement>(null);
-  const valueId = useId();
-  const selected = options.find((option) => option.value === value);
 
   return (
-    <div className="collection-select" ref={container}>
+    <div className="collection-select">
       <span id={labelId} className="collection-select-label">
         {label}
       </span>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          className="collection-select-trigger"
-          disabled={disabled}
-          aria-labelledby={`${labelId} ${valueId}`}
-        >
-          <span id={valueId}>{selected?.label ?? placeholder}</span>
-          <ChevronDown size={18} aria-hidden="true" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          container={container}
-          className="collection-select-menu"
-          sideOffset={8}
-        >
-          <DropdownMenuRadioGroup value={value} onValueChange={onValueChange}>
-            {options.map((option) => (
-              <DropdownMenuRadioItem
-                className="collection-select-option"
-                key={option.value}
-                value={option.value}
-              >
-                {option.label}
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
-          {manageGroups && (
+      <StyledSelect
+        label={label}
+        labelId={labelId}
+        disabled={disabled}
+        value={value}
+        onValueChange={onValueChange}
+        options={options}
+        placeholder={placeholder}
+        triggerClassName="collection-select-trigger"
+        footer={
+          manageGroups ? (
             <>
               <DropdownMenuSeparator className="collection-select-divider" />
               <DropdownMenuItem
@@ -86,9 +64,9 @@ export function CollectionDropdown({
                 Manage groups
               </DropdownMenuItem>
             </>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
+          ) : null
+        }
+      />
     </div>
   );
 }
