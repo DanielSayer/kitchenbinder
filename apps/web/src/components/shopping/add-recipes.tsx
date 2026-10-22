@@ -7,6 +7,10 @@ import { useTRPC } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
 import { useCollection } from "../groups/collection-context";
 import { CollectionDropdown } from "../groups/collection-dropdown";
+import {
+  planningRefresh,
+  usePlanningScope,
+} from "../households/planning-context";
 import { OrganiseDialog } from "../recipes/organise-dialog";
 import {
   RecipePagination,
@@ -23,9 +27,15 @@ export function AddRecipesButton({
   onAdded?: () => void;
   compact?: boolean;
 }) {
+  const { scope, ready, available, household } = usePlanningScope();
   const trpc = useTRPC();
   const client = useQueryClient();
-  const list = useQuery(trpc.shopping.list.queryOptions());
+  const list = useQuery(
+    trpc.shopping.list.queryOptions(scope, {
+      ...planningRefresh(scope),
+      enabled: ready && available,
+    }),
+  );
   const existing = new Set(list.data?.map((item) => item.recipeId));
   const remaining = recipeIds.filter((id) => !existing.has(id));
   const add = useMutation(
@@ -45,17 +55,22 @@ export function AddRecipesButton({
   );
   return (
     <div className="shopping-add-action">
+      {scope.kind === "household" && household && (
+        <small className="muted">{household.name} shopping list</small>
+      )}
       <button
         type="button"
         className="button button-small button-outline"
         disabled={
+          !ready ||
+          !available ||
           list.isPending ||
           list.isError ||
           add.isPending ||
           remaining.length === 0 ||
           remaining.length > 100
         }
-        onClick={() => add.mutate({ recipeIds: remaining })}
+        onClick={() => add.mutate({ scope, recipeIds: remaining })}
       >
         <ShoppingBasket size={17} />
         {add.isPending
@@ -84,10 +99,16 @@ export function AddRecipesButton({
 }
 
 export function RecipePicker({ onClose }: { onClose: () => void }) {
+  const { scope, ready, available, household } = usePlanningScope();
   const trpc = useTRPC();
   const client = useQueryClient();
   const { groups } = useCollection();
-  const list = useQuery(trpc.shopping.list.queryOptions());
+  const list = useQuery(
+    trpc.shopping.list.queryOptions(scope, {
+      ...planningRefresh(scope),
+      enabled: ready && available,
+    }),
+  );
   const [search, setSearch] = useState("");
   const [collection, setCollection] = useState("all");
   const { page, setPage } = useRecipePage(JSON.stringify([search, collection]));
@@ -121,6 +142,11 @@ export function RecipePicker({ onClose }: { onClose: () => void }) {
         if (!add.isPending) onClose();
       }}
     >
+      {scope.kind === "household" && household && (
+        <p className="shopping-picker-target">
+          Add ingredients to {household.name}'s shopping list.
+        </p>
+      )}
       <div className="shopping-picker-filters">
         <label className="shopping-field">
           Search recipes
@@ -239,7 +265,7 @@ export function RecipePicker({ onClose }: { onClose: () => void }) {
             !validSelection.length ||
             validSelection.length > 100
           }
-          onClick={() => add.mutate({ recipeIds: validSelection })}
+          onClick={() => add.mutate({ scope, recipeIds: validSelection })}
         >
           {add.isPending ? "Adding..." : "Add ingredients"}
         </button>

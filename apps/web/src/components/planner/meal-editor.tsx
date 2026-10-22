@@ -7,6 +7,10 @@ import { useTRPC } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
 import { useCollection } from "../groups/collection-context";
 import { CollectionDropdown } from "../groups/collection-dropdown";
+import {
+  planningRefresh,
+  usePlanningScope,
+} from "../households/planning-context";
 import { OrganiseDialog } from "../recipes/organise-dialog";
 import {
   RecipePagination,
@@ -51,11 +55,14 @@ export function MealEditor({
   duplicate?: boolean;
   onClose: () => void;
 }) {
+  const { scope, scopeKey } = usePlanningScope();
   const trpc = useTRPC();
   const client = useQueryClient();
   const { data: session } = authClient.useSession();
-  const key = `meal-draft:${session?.user.id ?? "guest"}:${duplicate ? "copy" : "edit"}:${meal?.id ?? date}`;
-  const planner = useQuery(trpc.planner.get.queryOptions());
+  const key = `meal-draft:${session?.user.id ?? "guest"}:${scope.kind === "household" ? `${scopeKey}:` : ""}${duplicate ? "copy" : "edit"}:${meal?.id ?? date}`;
+  const planner = useQuery(
+    trpc.planner.get.queryOptions(scope, planningRefresh(scope)),
+  );
   const { groups } = useCollection();
   const [stored, setStored] = useState<StoredMealDraft>(() => {
     const restored = readMealDraft(key);
@@ -127,7 +134,12 @@ export function MealEditor({
   const selected = useQuery(
     trpc.shopping.recipe.queryOptions(
       { id: draft.recipeId },
-      { enabled: draft.kind === "recipe" && !!draft.recipeId },
+      {
+        enabled:
+          draft.kind === "recipe" &&
+          !!draft.recipeId &&
+          !(meal?.kind === "recipe" && meal.recipeId === draft.recipeId),
+      },
     ),
   );
   const [error, setError] = useState("");
@@ -150,7 +162,14 @@ export function MealEditor({
   }, [storageFailed]);
   const set = (values: Partial<MealDraft>) =>
     setDraft((current) => ({ ...current, ...values }));
-  const selectedRecipe = selected.data;
+  const selectedRecipe =
+    selected.data ??
+    (meal?.kind === "recipe" && meal.recipeId === draft.recipeId
+      ? {
+          title: meal.title,
+          servings: meal.recipe?.servings ?? String(meal.baseServings),
+        }
+      : null);
   useEffect(() => {
     if (selectedRecipe) {
       const match = selectedRecipe.servings
@@ -264,6 +283,14 @@ export function MealEditor({
       setStored({ ...stored, fields: merged.merged, base: freshBase });
       setReview(null);
       await save.mutateAsync({
+        scope,
+        copyFrom:
+          duplicate &&
+          meal?.kind === "recipe" &&
+          result.data.kind === "recipe" &&
+          meal.recipeId === result.data.recipeId
+            ? meal.id
+            : undefined,
         revision: fresh.data.revision,
         meal: result.data,
       });
@@ -316,6 +343,12 @@ export function MealEditor({
         }}
       >
         <fieldset disabled={save.isPending || busy} className="meal-form">
+          {scope.kind === "household" && draft.kind === "recipe" && (
+            <p className="meal-sharing-note">
+              Household members can view this recipe in the planned meal. Recipe
+              notes stay in the source collection.
+            </p>
+          )}
           {review ? (
             <section
               className="recipe-review"

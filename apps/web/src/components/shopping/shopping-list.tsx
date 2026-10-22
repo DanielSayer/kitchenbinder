@@ -20,10 +20,21 @@ import { useEffect, useRef, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import { useTRPC } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
+import {
+  PlanningWorkspace,
+  planningRefresh,
+  usePlanningScope,
+} from "../households/planning-context";
+import { PlanningScopeBar } from "../households/scope-bar";
 import { MealListNotice } from "../planner/plan-shop";
 import { OrganiseDialog } from "../recipes/organise-dialog";
 import { RecipePicker } from "./add-recipes";
 import { ShoppingListAction } from "./generated-list";
+import {
+  groceryNeedsReview,
+  readShoppingDraft,
+  type ShoppingDraft,
+} from "./shopping-draft";
 
 type Item = inferRouterOutputs<AppRouter>["shopping"]["list"][number];
 
@@ -48,12 +59,46 @@ function useDraft(key: string, initial: string) {
 }
 
 function ShoppingRow({ item, userId }: { item: Item; userId: string }) {
+  const { scope } = usePlanningScope();
   const trpc = useTRPC();
   const client = useQueryClient();
-  const [draft, setDraft] = useDraft(
-    `shopping:${userId}:${item.id}`,
-    item.text,
+  const draftKey = `shopping:${userId}:${item.id}`;
+  const [legacySource] = useState(() => {
+    try {
+      return localStorage.getItem(draftKey);
+    } catch {
+      return null;
+    }
+  });
+  const [stored, setStored] = useState<ShoppingDraft>(() =>
+    readShoppingDraft(draftKey, item.text),
   );
+  const draft = stored.text;
+  const needsReview = groceryNeedsReview(stored, item.text);
+  const [storageError, setStorageError] = useState(false);
+  const setDraft = (text: string, baseText = stored.baseText) => {
+    const next = { text, baseText };
+    setStored(next);
+    try {
+      sessionStorage.setItem(draftKey, JSON.stringify(next));
+      setStorageError(false);
+    } catch {
+      setStorageError(true);
+    }
+  };
+  const clearDraft = () => {
+    setStored({ text: item.text, baseText: item.text });
+    try {
+      sessionStorage.removeItem(draftKey);
+      if (
+        legacySource !== null &&
+        localStorage.getItem(draftKey) === legacySource
+      )
+        localStorage.removeItem(draftKey);
+    } catch {
+      /* Optional draft storage. */
+    }
+  };
   const [editing, setEditing] = useState(draft !== item.text);
   const editInput = useRef<HTMLInputElement>(null);
   const actionTrigger = useRef<HTMLButtonElement>(null);
@@ -70,7 +115,13 @@ function ShoppingRow({ item, userId }: { item: Item; userId: string }) {
       onSuccess: async (_, input) => {
         if (input.kind === "text") {
           try {
-            localStorage.removeItem(`shopping:${userId}:${item.id}`);
+            sessionStorage.removeItem(draftKey);
+            // Remove a legacy draft only if it is still the one we restored.
+            if (
+              legacySource !== null &&
+              localStorage.getItem(draftKey) === legacySource
+            )
+              localStorage.removeItem(draftKey);
           } catch {
             /* Optional draft storage. */
           }
@@ -91,7 +142,14 @@ function ShoppingRow({ item, userId }: { item: Item; userId: string }) {
           className="shopping-edit"
           onSubmit={(e) => {
             e.preventDefault();
-            update.mutate({ kind: "text", id: item.id, text: draft });
+            if (needsReview) return;
+            update.mutate({
+              scope,
+              kind: "text",
+              id: item.id,
+              text: draft,
+              expectedText: stored.baseText ?? item.text,
+            });
           }}
         >
           <label className="shopping-field">
@@ -104,11 +162,36 @@ function ShoppingRow({ item, userId }: { item: Item; userId: string }) {
               disabled={pending}
             />
           </label>
+          {needsReview && (
+            <div className="shopping-edit-review" role="alert">
+              <p>
+                This grocery changed. Saved item: <strong>{item.text}</strong>
+              </p>
+              <p>Your edit is still in the field above.</p>
+              <button
+                type="button"
+                className="text-button"
+                disabled={pending}
+                onClick={() => {
+                  setDraft(draft, item.text);
+                  update.reset();
+                }}
+              >
+                Keep my edit, then save
+              </button>
+            </div>
+          )}
+          {storageError && (
+            <p role="alert">
+              This draft could not be stored. Keep this page open until you
+              save.
+            </p>
+          )}
           <div className="shopping-row-actions">
             <button
               type="submit"
               className="button button-small button-outline"
-              disabled={pending || !draft.trim()}
+              disabled={pending || needsReview || !draft.trim()}
             >
               {update.isPending ? "Saving..." : "Save"}
             </button>
@@ -117,7 +200,8 @@ function ShoppingRow({ item, userId }: { item: Item; userId: string }) {
               className="text-button"
               disabled={pending}
               onClick={() => {
-                setDraft(item.text);
+                clearDraft();
+                update.reset();
                 setEditing(false);
               }}
             >
@@ -135,6 +219,7 @@ function ShoppingRow({ item, userId }: { item: Item; userId: string }) {
               aria-label={`${item.status === "bought" ? "Mark needed" : "Mark bought"}: ${item.text}`}
               onChange={() =>
                 update.mutate({
+                  scope,
                   kind: "status",
                   id: item.id,
                   status: item.status === "bought" ? "needed" : "bought",
@@ -176,7 +261,8 @@ function ShoppingRow({ item, userId }: { item: Item; userId: string }) {
               <DropdownMenuItem
                 className="collection-select-manage shopping-item-action"
                 onClick={() => {
-                  setDraft(item.text);
+                  setDraft(item.text, item.text);
+                  update.reset();
                   setEditing(true);
                 }}
               >
@@ -186,7 +272,7 @@ function ShoppingRow({ item, userId }: { item: Item; userId: string }) {
               <DropdownMenuItem
                 className="collection-select-manage shopping-item-action"
                 variant="destructive"
-                onClick={() => remove.mutate({ id: item.id })}
+                onClick={() => remove.mutate({ scope, id: item.id })}
               >
                 <Trash2 size={16} /> Remove item
               </DropdownMenuItem>
@@ -197,9 +283,9 @@ function ShoppingRow({ item, userId }: { item: Item; userId: string }) {
       <ErrorNotice
         message={update.error?.message || remove.error?.message}
         retry={() => {
-          if (update.isError && update.variables)
-            update.mutate(update.variables);
-          else if (remove.variables) remove.mutate(remove.variables);
+          if (update.isError && update.variables) {
+            void refresh();
+          } else if (remove.variables) remove.mutate(remove.variables);
         }}
       />
     </li>
@@ -207,6 +293,7 @@ function ShoppingRow({ item, userId }: { item: Item; userId: string }) {
 }
 
 function ItemGroups({ items, userId }: { items: Item[]; userId: string }) {
+  const { scope } = usePlanningScope();
   const groups = new Map<string, Item[]>();
   for (const item of items) {
     const key = item.plannedMealId ?? item.recipeId ?? "other";
@@ -223,7 +310,7 @@ function ItemGroups({ items, userId }: { items: Item[]; userId: string }) {
           <section className="shopping-group" key={key}>
             <div className="shopping-group-heading">
               <h2>
-                {first.recipeId ? (
+                {first.recipeId && scope.kind === "personal" ? (
                   <Link
                     to="/recipes/$recipeId"
                     params={{ recipeId: first.recipeId }}
@@ -231,7 +318,7 @@ function ItemGroups({ items, userId }: { items: Item[]; userId: string }) {
                     {first.recipeTitle}
                   </Link>
                 ) : (
-                  "Other groceries"
+                  (first.recipeTitle ?? "Other groceries")
                 )}
               </h2>
             </div>
@@ -248,16 +335,34 @@ function ItemGroups({ items, userId }: { items: Item[]; userId: string }) {
 }
 
 export function ShoppingList() {
+  return (
+    <PlanningWorkspace>
+      <AccountList />
+    </PlanningWorkspace>
+  );
+}
+function AccountList() {
+  const { scope, scopeKey } = usePlanningScope();
   const { data: session } = authClient.useSession();
   return session ? (
-    <PersonalList key={session.user.id} userId={session.user.id} />
+    <ScopedList
+      key={`${session.user.id}:${scopeKey}`}
+      userId={
+        scope.kind === "household"
+          ? `${session.user.id}:${scopeKey}`
+          : session.user.id
+      }
+    />
   ) : null;
 }
 
-function PersonalList({ userId }: { userId: string }) {
+function ScopedList({ userId }: { userId: string }) {
+  const { scope } = usePlanningScope();
   const trpc = useTRPC();
   const client = useQueryClient();
-  const list = useQuery(trpc.shopping.list.queryOptions());
+  const list = useQuery(
+    trpc.shopping.list.queryOptions(scope, planningRefresh(scope)),
+  );
   const [picker, setPicker] = useState(false);
   const [reset, setReset] = useState(false);
   const [text, setText] = useDraft(`shopping:${userId}:new`, "");
@@ -297,7 +402,11 @@ function PersonalList({ userId }: { userId: string }) {
             <span className="mobile-screen-title">Shopping</span>
             <span className="title-dot">.</span>
           </h1>
-          <p>Your personal list, saved as you go.</p>
+          <p>
+            {scope.kind === "household"
+              ? "Your household list, saved as you go."
+              : "Your personal list, saved as you go."}
+          </p>
         </div>
         <button
           type="button"
@@ -308,6 +417,7 @@ function PersonalList({ userId }: { userId: string }) {
           Add recipes
         </button>
       </div>
+      <PlanningScopeBar />
       <MealListNotice />
       {list.isSuccess && (
         <div className="shopping-trip-bar">
@@ -324,7 +434,7 @@ function PersonalList({ userId }: { userId: string }) {
         className="shopping-add-form"
         onSubmit={(e) => {
           e.preventDefault();
-          add.mutate({ id: newId, text });
+          add.mutate({ scope, id: newId, text });
         }}
       >
         <label className="shopping-field">
@@ -403,7 +513,9 @@ function PersonalList({ userId }: { userId: string }) {
                   type="button"
                   className="text-button"
                   disabled={clear.isPending}
-                  onClick={() => clear.mutate({ scope: "bought" })}
+                  onClick={() =>
+                    clear.mutate({ planningScope: scope, scope: "bought" })
+                  }
                 >
                   Clear bought items
                 </button>
@@ -439,7 +551,9 @@ function PersonalList({ userId }: { userId: string }) {
               type="button"
               className="button button-primary"
               disabled={clear.isPending}
-              onClick={() => clear.mutate({ scope: "all" })}
+              onClick={() =>
+                clear.mutate({ planningScope: scope, scope: "all" })
+              }
             >
               {clear.isPending ? "Resetting..." : "Reset list"}
             </button>

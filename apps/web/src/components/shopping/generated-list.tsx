@@ -8,6 +8,12 @@ import { Pencil, RefreshCw, ShoppingBasket } from "lucide-react";
 import { useState } from "react";
 import { useTRPC } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
+import {
+  PlanningWorkspace,
+  planningRefresh,
+  usePlanningScope,
+} from "../households/planning-context";
+import { PlanningScopeBar } from "../households/scope-bar";
 import { PlanShop } from "../planner/plan-shop";
 
 function GenerateListButton({
@@ -17,10 +23,13 @@ function GenerateListButton({
   disabled?: boolean;
   mode?: "generate" | "update" | "open";
 }) {
+  const { scope } = usePlanningScope();
   const trpc = useTRPC();
   const client = useQueryClient();
   const navigate = useNavigate();
-  const planner = useQuery(trpc.planner.get.queryOptions());
+  const planner = useQuery(
+    trpc.planner.get.queryOptions(scope, planningRefresh(scope)),
+  );
   const [review, setReview] = useState(false);
   const generate = useMutation(
     trpc.shopping.generate.mutationOptions({
@@ -56,7 +65,7 @@ function GenerateListButton({
             ? setReview(true)
             : mode === "open"
               ? void navigate({ to: "/shopping/generated" })
-              : generate.mutate()
+              : generate.mutate(scope)
         }
       >
         {mode === "update" ? (
@@ -78,7 +87,7 @@ function GenerateListButton({
       </button>
       <ErrorNotice
         message={generate.error?.message}
-        retry={() => generate.mutate()}
+        retry={() => generate.mutate(scope)}
       />
       <ErrorNotice
         message={planner.error?.message}
@@ -95,8 +104,11 @@ export function ShoppingListAction({
   hasNeeded: boolean;
   disabled: boolean;
 }) {
+  const { scope } = usePlanningScope();
   const trpc = useTRPC();
-  const plan = useQuery(trpc.shopping.generated.queryOptions());
+  const plan = useQuery(
+    trpc.shopping.generated.queryOptions(scope, planningRefresh(scope)),
+  );
   if (plan.isPending || plan.isError)
     return (
       <div className="shopping-generate-action">
@@ -121,10 +133,22 @@ export function ShoppingListAction({
 }
 
 export function GeneratedShoppingList() {
+  return (
+    <PlanningWorkspace>
+      <GeneratedListContent />
+    </PlanningWorkspace>
+  );
+}
+function GeneratedListContent() {
+  const { scope } = usePlanningScope();
   const trpc = useTRPC();
   const client = useQueryClient();
-  const query = useQuery(trpc.shopping.generated.queryOptions());
-  const planner = useQuery(trpc.planner.get.queryOptions());
+  const query = useQuery(
+    trpc.shopping.generated.queryOptions(scope, planningRefresh(scope)),
+  );
+  const planner = useQuery(
+    trpc.planner.get.queryOptions(scope, planningRefresh(scope)),
+  );
   const check = useMutation(
     trpc.shopping.checkGroup.mutationOptions({
       onSuccess: () =>
@@ -165,6 +189,7 @@ export function GeneratedShoppingList() {
           onChange={() => {
             if (plan)
               check.mutate({
+                scope,
                 planId: plan.id,
                 groupIndex: row.index,
                 bought: !row.bought,
@@ -201,6 +226,7 @@ export function GeneratedShoppingList() {
           </Link>
         )}
       </div>
+      <PlanningScopeBar />
       <LoadingState
         pending={query.isPending}
         label="Loading your shopping trip..."

@@ -31,6 +31,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { HouseholdProvider } from "../households/planning-context";
 import { initialMealDraft, readMealDraft } from "./meal-draft";
 import { MealEditor } from "./meal-editor";
 
@@ -52,6 +53,14 @@ vi.mock("../groups/collection-context", () => ({
 }));
 vi.mock("@/utils/trpc", () => ({
   useTRPC: () => ({
+    households: {
+      current: {
+        queryOptions: () => ({
+          queryKey: ["households", "current"],
+          queryFn: async () => null,
+        }),
+      },
+    },
     planner: {
       get: {
         queryOptions: () => ({
@@ -181,11 +190,15 @@ async function mount(options: { cached?: boolean; meal?: Meal } = {}) {
       createElement(
         QueryClientProvider,
         { client },
-        createElement(MealEditor, {
-          date: currentMeal.date,
-          meal: currentMeal,
-          onClose: close,
-        }),
+        createElement(
+          HouseholdProvider,
+          null,
+          createElement(MealEditor, {
+            date: currentMeal.date,
+            meal: currentMeal,
+            onClose: close,
+          }),
+        ),
       ),
   });
   render(
