@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { RecipeContent } from "./recipe-content";
 
 export const calendarDate = z.iso
   .date()
@@ -44,6 +45,8 @@ export type Meal =
   | (Extract<MealInput, { kind: "recipe" }> & {
       title: string;
       ingredients: string[];
+      // Older planned meals have ingredients only. Notes are never shared by scheduling.
+      recipe?: Omit<RecipeContent, "title" | "ingredients" | "notes">;
     });
 export const coverageInput = z
   .object({

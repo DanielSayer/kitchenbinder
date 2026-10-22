@@ -238,6 +238,11 @@ export async function migrate(
             (migration) => migration.name === "0005_collection_recipe_tags.sql",
           ).sql,
         );
+        await client.query(
+          migrations.find(
+            (migration) => migration.name === "0006_households.sql",
+          ).sql,
+        );
       } else {
         for (const migration of migrations) await client.query(migration.sql);
       }

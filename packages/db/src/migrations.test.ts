@@ -91,8 +91,11 @@ async function contents(client: pg.Client) {
   const result = [];
   for (const table of tables) {
     result.push(
-      (await client.query(`SELECT row_to_json(t) AS data FROM "${table}" t`))
-        .rows,
+      (
+        await client.query(
+          `SELECT to_jsonb(t) ${table === "meal_planner" ? "- 'id' - 'household_id'" : table === "shopping_item" ? "- 'household_id'" : ""} AS data FROM "${table}" t`,
+        )
+      ).rows,
     );
   }
   return result;
@@ -112,7 +115,7 @@ it("provisions a clean database with ICU and preserves all data on repeated migr
           "SELECT count(*)::int AS total FROM prep_sheet_migration",
         )
       ).rows[0].total,
-    ).toBe(6);
+    ).toBe(7);
     expect(
       (
         await client.query(
