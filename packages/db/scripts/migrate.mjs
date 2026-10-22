@@ -233,16 +233,12 @@ export async function migrate(
           ).replace(/^BEGIN;|^COMMIT;/gm, "");
           await client.query(sql);
         }
-        await client.query(
-          migrations.find(
-            (migration) => migration.name === "0005_collection_recipe_tags.sql",
-          ).sql,
-        );
-        await client.query(
-          migrations.find(
-            (migration) => migration.name === "0006_households.sql",
-          ).sql,
-        );
+        // Historical feature upgrades reach migration 0004. Apply each later
+        // release migration before verifying and recording the adopted schema.
+        for (const migration of migrations.filter(
+          (migration) => migration.name >= "0005_",
+        ))
+          await client.query(migration.sql);
       } else {
         for (const migration of migrations) await client.query(migration.sql);
       }
