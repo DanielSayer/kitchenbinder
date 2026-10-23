@@ -44,6 +44,12 @@
   display: flex;
   align-items: flex-end;
   justify-content: center;
+  overscroll-behavior: none;
+}
+/* No rubber-band / pull-to-refresh on the page behind an open sheet. */
+html:has(.pantry-sheet-root),
+body:has(.pantry-sheet-root) {
+  overscroll-behavior: none;
 }
 .pantry-sheet-scrim {
   position: absolute;
@@ -143,6 +149,7 @@
 .pantry-sheet-body {
   flex: 1;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
   margin: 0 -16px;
