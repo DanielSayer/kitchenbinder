@@ -13,11 +13,9 @@ import {
   Route as RouteIcon,
 } from "lucide-react";
 import { useState } from "react";
-import {
-  useHousehold,
-  useHouseholdScope,
-} from "@/components/households/household-context";
-import { EmptyState, LargeTitle, toneColor } from "@/components/pantry";
+import { useHouseholdScope } from "@/components/households/household-context";
+import { EmptyState, LargeTitle } from "@/components/pantry";
+import { PageBar } from "@/components/shell/page-bar";
 import { useTRPC } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
 import { PlanShop } from "../planner/plan-shop";
@@ -183,7 +181,6 @@ export function ShoppingListAction({
 export function GeneratedShoppingList() {
   const trpc = useTRPC();
   const householdId = useHouseholdScope();
-  const household = useHousehold();
   const client = useQueryClient();
   const query = useQuery(trpc.shopping.generated.queryOptions({ householdId }));
   const planner = useQuery(trpc.planner.get.queryOptions({ householdId }));
@@ -264,121 +261,113 @@ export function GeneratedShoppingList() {
     </li>
   );
   return (
-    <main id="main-content" className="shop-page page-width">
-      <LargeTitle
-        accent="trip"
-        eyebrow={
-          householdId ? (
-            <span className="plan-household">
-              <i
-                style={{ background: toneColor(household.color) }}
-                aria-hidden="true"
-              />
-              {household.name}
-            </span>
-          ) : undefined
-        }
-        sub="Grouped by aisle, matching quantities combined"
-        actions={
-          plan ? (
-            <Link
-              to="/shopping"
-              className="button button-small button-outline"
-              aria-label="Edit shopping list"
+    <>
+      <PageBar />
+      <main id="main-content" className="shop-page page-width">
+        <LargeTitle
+          accent="trip"
+          sub="Grouped by aisle, matching quantities combined"
+          actions={
+            plan ? (
+              <Link
+                to="/shopping"
+                className="button button-small button-outline"
+                aria-label="Edit shopping list"
+              >
+                <Pencil size={16} aria-hidden="true" />
+                Edit list
+              </Link>
+            ) : undefined
+          }
+        >
+          Shopping
+        </LargeTitle>
+        <LoadingState
+          pending={query.isPending}
+          label="Loading your shopping trip..."
+        >
+          <ErrorNotice
+            message={query.error?.message}
+            retry={() => void query.refetch()}
+          />
+          {query.isSuccess && !plan && (
+            <EmptyState
+              title="No combined trip yet"
+              description="Choose recipes and groceries, then prepare a combined trip from the list."
+              covers={["Basket", "Market"]}
             >
-              <Pencil size={16} aria-hidden="true" />
-              Edit list
-            </Link>
-          ) : undefined
-        }
-      >
-        Shopping
-      </LargeTitle>
-      <LoadingState
-        pending={query.isPending}
-        label="Loading your shopping trip..."
-      >
-        <ErrorNotice
-          message={query.error?.message}
-          retry={() => void query.refetch()}
-        />
-        {query.isSuccess && !plan && (
-          <EmptyState
-            title="No combined trip yet"
-            description="Choose recipes and groceries, then prepare a combined trip from the list."
-            covers={["Basket", "Market"]}
-          >
-            <Link className="button button-primary" to="/shopping">
-              Go to the list
-            </Link>
-          </EmptyState>
-        )}
-        {plan && (
-          <>
-            <ShopProgress left={remaining} total={rows.length} />
-            {(plan.stale || planner.data?.stale) && (
-              <div className="list-notice" role="status">
-                <RefreshCw size={18} aria-hidden="true" />
-                <p>
-                  {planner.data?.stale
-                    ? "Your meal plan changed."
-                    : "Your ingredients changed."}{" "}
-                  Update before ticking items off.
-                </p>
-                <GenerateListButton
-                  mode="update"
-                  disabled={
-                    !plan.items.some((item) => item.status === "needed")
-                  }
-                />
-              </div>
-            )}
-            <ErrorNotice
-              message={check.error?.message}
-              retry={() => {
-                if (check.variables) check.mutate(check.variables);
-              }}
-            />
-            {shoppingCategories.map((category) => {
-              const categoryRows = rows.filter(
-                (row) => row.category === category && !row.bought,
-              );
-              return categoryRows.length ? (
-                <section
-                  className="shop-group"
-                  key={category}
-                  aria-labelledby={`trip-${category}`}
-                >
-                  <AisleHeading
-                    id={`trip-${category}`}
-                    title={category}
-                    category={category}
-                    count={categoryRows.length}
+              <Link className="button button-primary" to="/shopping">
+                Go to the list
+              </Link>
+            </EmptyState>
+          )}
+          {plan && (
+            <>
+              <ShopProgress left={remaining} total={rows.length} />
+              {(plan.stale || planner.data?.stale) && (
+                <div className="list-notice" role="status">
+                  <RefreshCw size={18} aria-hidden="true" />
+                  <p>
+                    {planner.data?.stale
+                      ? "Your meal plan changed."
+                      : "Your ingredients changed."}{" "}
+                    Update before ticking items off.
+                  </p>
+                  <GenerateListButton
+                    mode="update"
+                    disabled={
+                      !plan.items.some((item) => item.status === "needed")
+                    }
                   />
-                  <ul className="shop-list">{categoryRows.map(renderRow)}</ul>
-                </section>
-              ) : null;
-            })}
-            {!remaining && !plan.stale && (
-              <EmptyState
-                title="All done"
-                description="Nice shop. Everything on this trip is bought."
-                covers={["Done", "Home"]}
-                headingLevel={2}
+                </div>
+              )}
+              <ErrorNotice
+                message={check.error?.message}
+                retry={() => {
+                  if (check.variables) check.mutate(check.variables);
+                }}
               />
-            )}
-            {boughtRows.length > 0 && (
-              <details className="shop-done">
-                <summary>
-                  <ChevronDown size={18} aria-hidden="true" />
-                  Bought ({boughtRows.length})
-                </summary>
-                <ul className="shop-list">{boughtRows.map(renderRow)}</ul>
-              </details>
-            )}
-          </>
-        )}
-      </LoadingState>
-    </main>
+              {shoppingCategories.map((category) => {
+                const categoryRows = rows.filter(
+                  (row) => row.category === category && !row.bought,
+                );
+                return categoryRows.length ? (
+                  <section
+                    className="shop-group"
+                    key={category}
+                    aria-labelledby={`trip-${category}`}
+                  >
+                    <AisleHeading
+                      id={`trip-${category}`}
+                      title={category}
+                      category={category}
+                      count={categoryRows.length}
+                    />
+                    <ul className="shop-list">{categoryRows.map(renderRow)}</ul>
+                  </section>
+                ) : null;
+              })}
+              {!remaining && !plan.stale && (
+                <EmptyState
+                  title="All done"
+                  description="Nice shop. Everything on this trip is bought."
+                  covers={["Done", "Home"]}
+                  headingLevel={2}
+                />
+              )}
+              {boughtRows.length > 0 && (
+                <details className="shop-done">
+                  <summary>
+                    <ChevronDown size={18} aria-hidden="true" />
+                    Bought ({boughtRows.length})
+                  </summary>
+                  <ul className="shop-list">{boughtRows.map(renderRow)}</ul>
+                </details>
+              )}
+            </>
+          )}
+        </LoadingState>
+      </main>
+    </>
   );
 }

@@ -32,9 +32,9 @@ import {
   LargeTitle,
   Segmented,
   Sheet,
-  toneColor,
   undoToast,
 } from "@/components/pantry";
+import { PageBar } from "@/components/shell/page-bar";
 import { authClient } from "@/lib/auth-client";
 import { useTRPC, useTRPCClient } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
@@ -561,276 +561,268 @@ function ListScreen({ userId }: { userId: string }) {
         .join(" · ")
     : undefined;
   return (
-    <main id="main-content" className="shop-page page-width">
-      <LargeTitle
-        eyebrow={
-          householdId ? (
-            <span className="plan-household">
-              <i
-                style={{ background: toneColor(household.color) }}
+    <>
+      <PageBar />
+      <main id="main-content" className="shop-page page-width">
+        <LargeTitle
+          sub={sub}
+          actions={
+            <>
+              <button
+                type="button"
+                className="button button-small button-outline"
+                onClick={openPicker}
+              >
+                <Plus size={16} aria-hidden="true" />
+                <span>Recipes</span>
+                <span className="pantry-visually-hidden"> to the list</span>
+              </button>
+              <button
+                type="button"
+                className="icon-button shop-options"
+                aria-label="List options"
+                onClick={() => setMore(true)}
+              >
+                <MoreHorizontal size={20} />
+              </button>
+            </>
+          }
+        >
+          Shopping
+        </LargeTitle>
+        <MealListNotice />
+        <LoadingState
+          pending={list.isPending}
+          label="Loading your shopping list..."
+        >
+          <ErrorNotice
+            message={list.error?.message}
+            retry={() => void list.refetch()}
+          />
+          {list.isSuccess && (
+            <>
+              {items.length > 0 && (
+                <>
+                  <ShopProgress
+                    left={needed.length}
+                    total={needed.length + bought.length}
+                  />
+                  <Segmented
+                    label="Group items"
+                    className="shop-seg"
+                    value={mode}
+                    onChange={setMode}
+                    options={[
+                      { value: "aisle", label: "By aisle" },
+                      { value: "recipe", label: "By recipe" },
+                    ]}
+                  />
+                </>
+              )}
+              {!items.length ? (
+                <EmptyState
+                  title="Nothing on the list"
+                  description="Add an item below, or pull in ingredients from your recipes."
+                  covers={["Lemons", "Bread"]}
+                >
+                  <button
+                    type="button"
+                    className="button button-outline"
+                    onClick={openPicker}
+                  >
+                    <BookOpen size={18} aria-hidden="true" />
+                    Add from recipes
+                  </button>
+                </EmptyState>
+              ) : (
+                !needed.length && (
+                  <EmptyState
+                    title="All done"
+                    description="Nice shop. Everything is bought or already at home."
+                    covers={["Done", "Home"]}
+                  />
+                )
+              )}
+              {groups.map((group) => (
+                <section
+                  className="shop-group"
+                  key={group.key}
+                  aria-labelledby={`shop-${group.key}`}
+                >
+                  <AisleHeading
+                    id={`shop-${group.key}`}
+                    title={group.title}
+                    category={group.category}
+                    kind={group.key === "other" ? "manual" : "recipe"}
+                    count={group.entries.length}
+                  />
+                  <ul className="shop-list">{group.entries.map(row)}</ul>
+                </section>
+              ))}
+              {owned.length > 0 && (
+                <details className="shop-done">
+                  <summary>
+                    <ChevronDown size={18} aria-hidden="true" />
+                    Have it ({owned.length})
+                  </summary>
+                  <ul className="shop-list">{owned.map(row)}</ul>
+                </details>
+              )}
+              {bought.length > 0 && (
+                <details className="shop-done">
+                  <summary>
+                    <ChevronDown size={18} aria-hidden="true" />
+                    Bought ({bought.length})
+                  </summary>
+                  <ul className="shop-list">{bought.map(row)}</ul>
+                  <button
+                    type="button"
+                    className="button button-small button-ghost shop-clear"
+                    onClick={clearBought}
+                  >
+                    <Eraser size={16} aria-hidden="true" />
+                    Clear bought items
+                  </button>
+                </details>
+              )}
+            </>
+          )}
+        </LoadingState>
+        <form
+          className="shop-quick"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (text.trim()) add.mutate({ householdId, id: newId, text });
+          }}
+        >
+          <ErrorNotice
+            message={add.error?.message}
+            retry={() => add.variables && add.mutate(add.variables)}
+          />
+          <div className="shop-quick-bar">
+            <input
+              placeholder="Add an item… e.g. 2 L milk"
+              aria-label="Add an item"
+              value={text}
+              maxLength={2000}
+              enterKeyHint="done"
+              disabled={add.isPending}
+              onChange={(event) => setText(event.target.value)}
+            />
+            <button
+              type="submit"
+              aria-label="Add"
+              disabled={add.isPending || !text.trim()}
+            >
+              <Plus size={20} />
+            </button>
+          </div>
+        </form>
+        <Sheet open={more} onOpenChange={setMore} title="List options">
+          <div className="pantry-list">
+            <button
+              type="button"
+              className="pantry-row"
+              onClick={() => {
+                setMore(false);
+                openPicker();
+              }}
+            >
+              <span className="pantry-row-icon" aria-hidden="true">
+                <BookOpen size={20} />
+              </span>
+              <span className="pantry-row-text">
+                Add from recipes
+                <small className="shop-row-note">
+                  Any recipe you can open, from any collection
+                </small>
+              </span>
+              <ChevronRight
+                size={18}
+                className="pantry-row-go"
                 aria-hidden="true"
               />
-              {household.name}
-            </span>
-          ) : undefined
-        }
-        sub={sub}
-        actions={
-          <>
+            </button>
+            {list.isSuccess && (
+              <ShoppingListAction
+                hasNeeded={needed.length > 0}
+                disabled={add.isPending}
+                onDone={() => setMore(false)}
+              />
+            )}
             <button
               type="button"
-              className="button button-small button-outline"
-              onClick={openPicker}
+              className="pantry-row"
+              disabled={!bought.length}
+              onClick={() => {
+                setMore(false);
+                clearBought();
+              }}
             >
-              <Plus size={16} aria-hidden="true" />
-              <span>Recipes</span>
-              <span className="pantry-visually-hidden"> to the list</span>
+              <span className="pantry-row-icon" aria-hidden="true">
+                <Eraser size={20} />
+              </span>
+              <span className="pantry-row-text">
+                Clear bought items
+                <small className="shop-row-note">
+                  {bought.length
+                    ? `${bought.length} ticked off`
+                    : "Nothing ticked off yet"}
+                </small>
+              </span>
             </button>
             <button
               type="button"
-              className="icon-button shop-options"
-              aria-label="List options"
-              onClick={() => setMore(true)}
+              className="pantry-row shop-danger-row"
+              disabled={!items.length}
+              onClick={() => {
+                setMore(false);
+                clearAll();
+              }}
             >
-              <MoreHorizontal size={20} />
+              <span className="pantry-row-icon" aria-hidden="true">
+                <Trash2 size={20} />
+              </span>
+              <span className="pantry-row-text">
+                Clear the whole list
+                <small className="shop-row-note">
+                  Removes everything, including bought and at-home items
+                </small>
+              </span>
             </button>
-          </>
-        }
-      >
-        Shopping
-      </LargeTitle>
-      <MealListNotice />
-      <LoadingState
-        pending={list.isPending}
-        label="Loading your shopping list..."
-      >
-        <ErrorNotice
-          message={list.error?.message}
-          retry={() => void list.refetch()}
-        />
-        {list.isSuccess && (
-          <>
-            {items.length > 0 && (
-              <>
-                <ShopProgress
-                  left={needed.length}
-                  total={needed.length + bought.length}
-                />
-                <Segmented
-                  label="Group items"
-                  className="shop-seg"
-                  value={mode}
-                  onChange={setMode}
-                  options={[
-                    { value: "aisle", label: "By aisle" },
-                    { value: "recipe", label: "By recipe" },
-                  ]}
-                />
-              </>
-            )}
-            {!items.length ? (
-              <EmptyState
-                title="Nothing on the list"
-                description="Add an item below, or pull in ingredients from your recipes."
-                covers={["Lemons", "Bread"]}
-              >
-                <button
-                  type="button"
-                  className="button button-outline"
-                  onClick={openPicker}
-                >
-                  <BookOpen size={18} aria-hidden="true" />
-                  Add from recipes
-                </button>
-              </EmptyState>
-            ) : (
-              !needed.length && (
-                <EmptyState
-                  title="All done"
-                  description="Nice shop. Everything is bought or already at home."
-                  covers={["Done", "Home"]}
-                />
-              )
-            )}
-            {groups.map((group) => (
-              <section
-                className="shop-group"
-                key={group.key}
-                aria-labelledby={`shop-${group.key}`}
-              >
-                <AisleHeading
-                  id={`shop-${group.key}`}
-                  title={group.title}
-                  category={group.category}
-                  kind={group.key === "other" ? "manual" : "recipe"}
-                  count={group.entries.length}
-                />
-                <ul className="shop-list">{group.entries.map(row)}</ul>
-              </section>
-            ))}
-            {owned.length > 0 && (
-              <details className="shop-done">
-                <summary>
-                  <ChevronDown size={18} aria-hidden="true" />
-                  Have it ({owned.length})
-                </summary>
-                <ul className="shop-list">{owned.map(row)}</ul>
-              </details>
-            )}
-            {bought.length > 0 && (
-              <details className="shop-done">
-                <summary>
-                  <ChevronDown size={18} aria-hidden="true" />
-                  Bought ({bought.length})
-                </summary>
-                <ul className="shop-list">{bought.map(row)}</ul>
-                <button
-                  type="button"
-                  className="button button-small button-ghost shop-clear"
-                  onClick={clearBought}
-                >
-                  <Eraser size={16} aria-hidden="true" />
-                  Clear bought items
-                </button>
-              </details>
-            )}
-          </>
-        )}
-      </LoadingState>
-      <form
-        className="shop-quick"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (text.trim()) add.mutate({ householdId, id: newId, text });
-        }}
-      >
-        <ErrorNotice
-          message={add.error?.message}
-          retry={() => add.variables && add.mutate(add.variables)}
-        />
-        <div className="shop-quick-bar">
-          <input
-            placeholder="Add an item… e.g. 2 L milk"
-            aria-label="Add an item"
-            value={text}
-            maxLength={2000}
-            enterKeyHint="done"
-            disabled={add.isPending}
-            onChange={(event) => setText(event.target.value)}
+          </div>
+        </Sheet>
+        {pickerKey > 0 && (
+          <RecipePicker
+            key={pickerKey}
+            open={picker}
+            onClose={() => setPicker(false)}
           />
-          <button
-            type="submit"
-            aria-label="Add"
-            disabled={add.isPending || !text.trim()}
-          >
-            <Plus size={20} />
-          </button>
-        </div>
-      </form>
-      <Sheet open={more} onOpenChange={setMore} title="List options">
-        <div className="pantry-list">
-          <button
-            type="button"
-            className="pantry-row"
-            onClick={() => {
-              setMore(false);
-              openPicker();
+        )}
+        {editingItem && (
+          <ItemSheet
+            key={editingItem.id}
+            item={editingItem}
+            userId={userId}
+            open={editingOpen}
+            onClose={() => setEditingOpen(false)}
+            onStatus={(status) => {
+              setEditingOpen(false);
+              void changeStatus(
+                editingItem,
+                status,
+                status === "owned"
+                  ? `${editingItem.text} · already have it`
+                  : `${editingItem.text} back on the list`,
+              );
             }}
-          >
-            <span className="pantry-row-icon" aria-hidden="true">
-              <BookOpen size={20} />
-            </span>
-            <span className="pantry-row-text">
-              Add from recipes
-              <small className="shop-row-note">
-                Any recipe you can open, from any collection
-              </small>
-            </span>
-            <ChevronRight
-              size={18}
-              className="pantry-row-go"
-              aria-hidden="true"
-            />
-          </button>
-          {list.isSuccess && (
-            <ShoppingListAction
-              hasNeeded={needed.length > 0}
-              disabled={add.isPending}
-              onDone={() => setMore(false)}
-            />
-          )}
-          <button
-            type="button"
-            className="pantry-row"
-            disabled={!bought.length}
-            onClick={() => {
-              setMore(false);
-              clearBought();
+            onRemove={() => {
+              setEditingOpen(false);
+              removeItem(editingItem);
             }}
-          >
-            <span className="pantry-row-icon" aria-hidden="true">
-              <Eraser size={20} />
-            </span>
-            <span className="pantry-row-text">
-              Clear bought items
-              <small className="shop-row-note">
-                {bought.length
-                  ? `${bought.length} ticked off`
-                  : "Nothing ticked off yet"}
-              </small>
-            </span>
-          </button>
-          <button
-            type="button"
-            className="pantry-row shop-danger-row"
-            disabled={!items.length}
-            onClick={() => {
-              setMore(false);
-              clearAll();
-            }}
-          >
-            <span className="pantry-row-icon" aria-hidden="true">
-              <Trash2 size={20} />
-            </span>
-            <span className="pantry-row-text">
-              Clear the whole list
-              <small className="shop-row-note">
-                Removes everything, including bought and at-home items
-              </small>
-            </span>
-          </button>
-        </div>
-      </Sheet>
-      {pickerKey > 0 && (
-        <RecipePicker
-          key={pickerKey}
-          open={picker}
-          onClose={() => setPicker(false)}
-        />
-      )}
-      {editingItem && (
-        <ItemSheet
-          key={editingItem.id}
-          item={editingItem}
-          userId={userId}
-          open={editingOpen}
-          onClose={() => setEditingOpen(false)}
-          onStatus={(status) => {
-            setEditingOpen(false);
-            void changeStatus(
-              editingItem,
-              status,
-              status === "owned"
-                ? `${editingItem.text} · already have it`
-                : `${editingItem.text} back on the list`,
-            );
-          }}
-          onRemove={() => {
-            setEditingOpen(false);
-            removeItem(editingItem);
-          }}
-        />
-      )}
-    </main>
+          />
+        )}
+      </main>
+    </>
   );
 }

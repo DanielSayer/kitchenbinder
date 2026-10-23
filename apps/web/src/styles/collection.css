@@ -499,8 +499,26 @@
   position: sticky;
   top: 0;
   z-index: 20;
+  display: flex;
+  align-items: center;
   background: var(--oat);
   -webkit-touch-callout: none;
+}
+.library-binder .pantry-binder {
+  flex: 1;
+  min-width: 0;
+}
+/* Mobile has no app header, so the household chip sits by the dividers. */
+.library-household {
+  flex: none;
+  min-height: 36px;
+  max-width: 132px;
+  margin-right: max(var(--page-gutter), env(safe-area-inset-right));
+}
+@media (min-width: 851px) {
+  .library-household {
+    display: none;
+  }
 }
 .library-binder .pantry-binder {
   padding-inline: max(

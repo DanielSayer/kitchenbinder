@@ -1,18 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import {
-  ChevronRight,
-  CircleUserRound,
-  Download,
-  KeyRound,
-  LifeBuoy,
-  Plus,
-  Puzzle,
-  Shield,
-  Tag,
-  Trash2,
-} from "lucide-react";
-import { type ReactNode, useState } from "react";
 import { Billing } from "@/components/billing";
 import { ConnectedExtensions } from "@/components/connected-extensions";
 import { ErrorNotice, LoadingState } from "@/components/feedback";
@@ -31,7 +16,7 @@ import {
   linkedProviderNames,
   useLinkedAccounts,
 } from "@/components/linked-accounts";
-import { LargeTitle, Sheet } from "@/components/pantry";
+import { Sheet } from "@/components/pantry";
 import { ReportForm } from "@/components/report-form";
 import { initialsOf } from "@/components/shell/destinations";
 import { SupportContact } from "@/components/support-contact";
@@ -39,6 +24,21 @@ import { useSignOut } from "@/components/user-menu";
 import { getSupportContact } from "@/functions/get-support-contact";
 import { authClient } from "@/lib/auth-client";
 import { useTRPC } from "@/utils/trpc";
+import { useQuery } from "@tanstack/react-query";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import {
+  ChevronRight,
+  CircleUserRound,
+  Download,
+  KeyRound,
+  LifeBuoy,
+  Plus,
+  Puzzle,
+  Shield,
+  Tag,
+  Trash2,
+} from "lucide-react";
+import { type ReactNode, useState } from "react";
 
 export const Route = createFileRoute("/_auth/settings")({
   loader: () => getSupportContact(),
@@ -79,7 +79,6 @@ function You() {
 
   return (
     <main id="main-content" className="page-width you-page">
-      <LargeTitle>You</LargeTitle>
       {session && (
         <div className="you-me">
           <span className="avatar" aria-hidden="true">

@@ -35,6 +35,7 @@ import {
 } from "@/components/collections/use-collections";
 import { useDeleteCollection } from "@/components/collections/use-delete-collection";
 import { ErrorNotice, LoadingState } from "@/components/feedback";
+import { HouseholdSwitch } from "@/components/households/household-switch";
 import {
   BinderTabs,
   Chip,
@@ -366,6 +367,7 @@ export function Collection() {
           addLabel="New collection"
           panelId="library-panel"
         />
+        <HouseholdSwitch className="library-household" />
       </div>
 
       <div id="library-panel" className="library-content page-width">
