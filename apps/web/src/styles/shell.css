@@ -107,6 +107,12 @@
   }
 }
 
+/* Page bar: mobile band above Home, Shop and Plan (mark + household chip),
+   echoing the Recipes binder row. */
+.page-bar {
+  display: none;
+}
+
 /* Tab bar: mobile only. */
 .tab-bar {
   display: none;
@@ -128,11 +134,46 @@
     gap: 12px;
     border-bottom: 0;
   }
+  /* Signed in, the tab bar is the chrome: no header, more room for content.
+     The household chip moves into the screens that need it. */
+  :root:has(.tab-bar) .site-header {
+    display: none;
+  }
+  .app-shell:has(.tab-bar) {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
   /* The app shows the mark; the wordmark is for desktop and welcome. */
   .site-header .brand-wordmark,
   .top-nav,
   .nav-account {
     display: none;
+  }
+  .page-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    height: 56px;
+    padding: 0 max(var(--page-gutter), env(safe-area-inset-right)) 0
+      max(var(--page-gutter), env(safe-area-inset-left));
+    background: var(--oat);
+  }
+  .page-bar-mark {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--tap);
+    border-radius: var(--r-s);
+  }
+  .page-bar-household {
+    min-height: 36px;
+    max-width: 160px;
+  }
+  /* Same rhythm as the Recipes title under its binder row. */
+  .page-bar + main {
+    padding-top: 18px;
+  }
+  .page-bar + main > .pantry-title:first-child {
+    margin-top: 0;
   }
   .tab-bar {
     position: fixed;

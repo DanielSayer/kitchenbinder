@@ -1,10 +1,10 @@
 import { ArrowLeft } from "lucide-react";
-import { HouseholdChip, Sheet } from "@/components/pantry";
+import { Sheet } from "@/components/pantry";
 import { HeaderSlot } from "@/components/shell/header-slot";
 import { useHousehold, useHouseholdSheet } from "./household-context";
 import { HouseholdManage } from "./household-manage";
 import { HouseholdPicker } from "./household-picker";
-import { householdTone } from "./household-ui";
+import { HouseholdSwitch } from "./household-switch";
 import { JoinWithInvite, NewHousehold } from "./new-household";
 
 /**
@@ -12,20 +12,11 @@ import { JoinWithInvite, NewHousehold } from "./new-household";
  * (only when there's more than one household) and the Households sheet.
  */
 export function HouseholdChrome() {
-  const { name, color, multiple } = useHousehold();
-  const { view, openHouseholds } = useHouseholdSheet();
   return (
     <>
-      {multiple && (
-        <HeaderSlot>
-          <HouseholdChip
-            name={name}
-            color={householdTone(color)}
-            expanded={view !== null}
-            onClick={() => openHouseholds()}
-          />
-        </HeaderSlot>
-      )}
+      <HeaderSlot>
+        <HouseholdSwitch />
+      </HeaderSlot>
       <HouseholdsSheet />
     </>
   );

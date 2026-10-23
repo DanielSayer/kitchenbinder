@@ -12,17 +12,14 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import {
-  useHousehold,
-  useHouseholdScope,
-} from "@/components/households/household-context";
+import { useHouseholdScope } from "@/components/households/household-context";
 import {
   LargeTitle,
   RecipeCover,
   StickyCta,
-  toneColor,
   undoToast,
 } from "@/components/pantry";
+import { PageBar } from "@/components/shell/page-bar";
 import { useTRPC, useTRPCClient } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
 import {
@@ -59,7 +56,6 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
   const trpc = useTRPC();
   const trpcClient = useTRPCClient();
   const householdId = useHouseholdScope();
-  const household = useHousehold();
   const client = useQueryClient();
   const query = useQuery(trpc.planner.get.queryOptions({ householdId }));
   const today = localDate();
@@ -269,159 +265,151 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
   };
 
   return (
-    <main id="main-content" className="plan-page page-width">
-      <div className="plan-week-nav">
-        <button
-          type="button"
-          className="icon-button plan-nav-button"
-          aria-label="Previous week"
-          onClick={() => setWeek(addDays(week, -7))}
-        >
-          <ChevronLeft size={18} />
-        </button>
-        <span className="plan-range" aria-live="polite">
-          {weekRangeLabel(week)}
-        </span>
-        <span className="plan-week-nav-end">
-          {!currentWeek && (
-            <button
-              type="button"
-              className="button button-small button-ghost"
-              onClick={() => setWeek(thisWeek)}
-            >
-              Today
-            </button>
-          )}
+    <>
+      <PageBar />
+      <main id="main-content" className="plan-page page-width">
+        <div className="plan-week-nav">
           <button
             type="button"
             className="icon-button plan-nav-button"
-            aria-label="Next week"
-            onClick={() => setWeek(addDays(week, 7))}
+            aria-label="Previous week"
+            onClick={() => setWeek(addDays(week, -7))}
           >
-            <ChevronRight size={18} />
+            <ChevronLeft size={18} />
           </button>
-        </span>
-      </div>
-      <LargeTitle
-        accent={accent}
-        eyebrow={
-          householdId ? (
-            <span className="plan-household">
-              <i
-                style={{
-                  background: toneColor(household.color),
-                }}
-                aria-hidden="true"
-              />
-              {household.name}
-            </span>
-          ) : undefined
-        }
-      >
-        {lead}
-      </LargeTitle>
-      <ol className="plan-strip" aria-label="Days this week">
-        {days.map((day) => (
-          <li key={day}>
-            <a
-              className="plan-strip-day"
-              href={`#plan-day-${day}`}
-              aria-current={day === today ? "date" : undefined}
-              data-past={day < today || undefined}
-              aria-label={`${weekday(day)} ${shortDate(day)}, ${mealsOn(day).length ? `${mealsOn(day).length} planned` : "nothing planned"}`}
-              onClick={(event) => {
-                const target = document.getElementById(`plan-day-${day}`);
-                event.preventDefault();
-                if (target)
-                  target.scrollIntoView({ behavior: "smooth", block: "start" });
-                else openEditor({ date: day });
-              }}
-            >
-              <small>{weekday(day, "short")}</small>
-              <b className="plan-strip-num">{dayOfMonth(day)}</b>
-              <i data-empty={!mealsOn(day).length || undefined} />
-            </a>
-          </li>
-        ))}
-      </ol>
-      {query.isSuccess && (
-        <div className="plan-progress">
-          <span>
-            <b>{planned} of 7</b> days planned
+          <span className="plan-range" aria-live="polite">
+            {weekRangeLabel(week)}
           </span>
-          <span className="plan-progress-bar" aria-hidden="true">
-            <i style={{ width: `${(planned / 7) * 100}%` }} />
+          <span className="plan-week-nav-end">
+            {!currentWeek && (
+              <button
+                type="button"
+                className="button button-small button-ghost"
+                onClick={() => setWeek(thisWeek)}
+              >
+                Today
+              </button>
+            )}
+            <button
+              type="button"
+              className="icon-button plan-nav-button"
+              aria-label="Next week"
+              onClick={() => setWeek(addDays(week, 7))}
+            >
+              <ChevronRight size={18} />
+            </button>
           </span>
         </div>
-      )}
-      {query.isSuccess && <MealListNotice />}
-      <LoadingState pending={query.isPending} label="Loading your meal plan...">
-        <ErrorNotice
-          message={query.error?.message}
-          retry={() => void query.refetch()}
-        />
-        {query.isSuccess && (
-          <div className="plan-agenda">
-            {upcoming.map(agendaDay)}
-            {earlier.length > 0 && (
-              <section
-                className="plan-day plan-earlier"
-                aria-labelledby="plan-earlier"
+        <LargeTitle accent={accent}>{lead}</LargeTitle>
+        <ol className="plan-strip" aria-label="Days this week">
+          {days.map((day) => (
+            <li key={day}>
+              <a
+                className="plan-strip-day"
+                href={`#plan-day-${day}`}
+                aria-current={day === today ? "date" : undefined}
+                data-past={day < today || undefined}
+                aria-label={`${weekday(day)} ${shortDate(day)}, ${mealsOn(day).length ? `${mealsOn(day).length} planned` : "nothing planned"}`}
+                onClick={(event) => {
+                  const target = document.getElementById(`plan-day-${day}`);
+                  event.preventDefault();
+                  if (target)
+                    target.scrollIntoView({
+                      behavior: "smooth",
+                      block: "start",
+                    });
+                  else openEditor({ date: day });
+                }}
               >
-                <h2 id="plan-earlier" className="plan-day-title">
-                  Earlier this week
-                </h2>
-                <ul className="plan-meals">
-                  {earlier.flatMap((day) =>
-                    mealsOn(day).map((meal) => mealCard(meal, day, true)),
-                  )}
-                </ul>
-              </section>
-            )}
+                <small>{weekday(day, "short")}</small>
+                <b className="plan-strip-num">{dayOfMonth(day)}</b>
+                <i data-empty={!mealsOn(day).length || undefined} />
+              </a>
+            </li>
+          ))}
+        </ol>
+        {query.isSuccess && (
+          <div className="plan-progress">
+            <span>
+              <b>{planned} of 7</b> days planned
+            </span>
+            <span className="plan-progress-bar" aria-hidden="true">
+              <i style={{ width: `${(planned / 7) * 100}%` }} />
+            </span>
           </div>
         )}
-      </LoadingState>
-      <StickyCta>
-        <button
-          type="button"
-          className="button button-primary"
-          disabled={!query.isSuccess}
-          onClick={() =>
-            setShop({
-              shoppingDate: week < today ? week : today,
-              start: week,
-              end: addDays(week, 6),
-            })
-          }
+        {query.isSuccess && <MealListNotice />}
+        <LoadingState
+          pending={query.isPending}
+          label="Loading your meal plan..."
         >
-          <ShoppingBasket size={20} aria-hidden="true" />
-          {offset === 0
-            ? "Shop for this week"
-            : offset === 1
-              ? "Shop for next week"
-              : "Shop for this week's meals"}
-        </button>
-      </StickyCta>
-      {editor && (
-        <MealEditor
-          key={editor.key}
-          date={editor.date}
-          meal={editor.meal}
-          duplicate={editor.duplicate}
-          recipeId={editor.recipeId}
-          open={editorOpen}
-          onClose={() => setEditorOpen(false)}
-          onDuplicate={(meal) =>
-            openEditor({
-              date: addDays(meal.date, 1),
-              meal,
-              duplicate: true,
-            })
-          }
-          onRemove={(meal) => remove(meal, query.data?.meals ?? [])}
-        />
-      )}
-      {shop && <PlanShop initial={shop} onClose={() => setShop(null)} />}
-    </main>
+          <ErrorNotice
+            message={query.error?.message}
+            retry={() => void query.refetch()}
+          />
+          {query.isSuccess && (
+            <div className="plan-agenda">
+              {upcoming.map(agendaDay)}
+              {earlier.length > 0 && (
+                <section
+                  className="plan-day plan-earlier"
+                  aria-labelledby="plan-earlier"
+                >
+                  <h2 id="plan-earlier" className="plan-day-title">
+                    Earlier this week
+                  </h2>
+                  <ul className="plan-meals">
+                    {earlier.flatMap((day) =>
+                      mealsOn(day).map((meal) => mealCard(meal, day, true)),
+                    )}
+                  </ul>
+                </section>
+              )}
+            </div>
+          )}
+        </LoadingState>
+        <StickyCta>
+          <button
+            type="button"
+            className="button button-primary"
+            disabled={!query.isSuccess}
+            onClick={() =>
+              setShop({
+                shoppingDate: week < today ? week : today,
+                start: week,
+                end: addDays(week, 6),
+              })
+            }
+          >
+            <ShoppingBasket size={20} aria-hidden="true" />
+            {offset === 0
+              ? "Shop for this week"
+              : offset === 1
+                ? "Shop for next week"
+                : "Shop for this week's meals"}
+          </button>
+        </StickyCta>
+        {editor && (
+          <MealEditor
+            key={editor.key}
+            date={editor.date}
+            meal={editor.meal}
+            duplicate={editor.duplicate}
+            recipeId={editor.recipeId}
+            open={editorOpen}
+            onClose={() => setEditorOpen(false)}
+            onDuplicate={(meal) =>
+              openEditor({
+                date: addDays(meal.date, 1),
+                meal,
+                duplicate: true,
+              })
+            }
+            onRemove={(meal) => remove(meal, query.data?.meals ?? [])}
+          />
+        )}
+        {shop && <PlanShop initial={shop} onClose={() => setShop(null)} />}
+      </main>
+    </>
   );
 }

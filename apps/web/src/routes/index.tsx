@@ -4,6 +4,7 @@ import { RecipeComposer } from "@/components/home/recipe-composer";
 import { RecipeSheetPreview } from "@/components/home/recipe-sheet-preview";
 import { LargeTitle } from "@/components/pantry";
 import { PublicPlans } from "@/components/plan-cards";
+import { PageBar } from "@/components/shell/page-bar";
 import { authClient } from "@/lib/auth-client";
 
 export const Route = createFileRoute("/")({ ssr: false, component: Home });
@@ -19,16 +20,19 @@ function Home() {
   const { data: session, isPending } = authClient.useSession();
   if (session)
     return (
-      <main id="main-content" className="add-page">
-        <LargeTitle
-          eyebrow={greeting(session.user.name)}
-          accent="cooking?"
-          sub="Type, paste or tap an idea."
-        >
-          What are we
-        </LargeTitle>
-        <RecipeComposer />
-      </main>
+      <>
+        <PageBar />
+        <main id="main-content" className="add-page">
+          <LargeTitle
+            eyebrow={greeting(session.user.name)}
+            accent="cooking?"
+            sub="Type, paste or tap an idea."
+          >
+            What are we
+          </LargeTitle>
+          <RecipeComposer />
+        </main>
+      </>
     );
   return (
     <main id="main-content" className="home-page">
