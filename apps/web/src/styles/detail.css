@@ -416,13 +416,17 @@
   margin: 16px 0 0;
 }
 .recipe-facts > div {
-  padding: 10px 12px;
+  min-width: 0;
+  padding: 10px;
   border-radius: var(--r-m);
   background: var(--card);
   border: 1px solid var(--line);
 }
 .recipe-facts dt {
+  overflow: hidden;
   font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: var(--ink-2);
 }
 .recipe-facts dd {
