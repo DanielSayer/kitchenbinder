@@ -322,11 +322,13 @@
 }
 .meal-days {
   display: flex;
+  min-width: 0;
   gap: 6px;
   margin: 0 -16px 14px;
   padding: 2px 16px;
   border: 0;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
   scrollbar-width: none;
 }
 .meal-days::-webkit-scrollbar {
