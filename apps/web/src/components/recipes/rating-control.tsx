@@ -71,7 +71,12 @@ export function RatingControl({
               aria-pressed={isSelected}
               disabled={mutation.isPending}
               onMouseEnter={() => setHovered(value)}
-              onFocus={() => setHovered(value)}
+              onFocus={(event) => {
+                // Sheets auto-focus the first star on open; only preview for keyboard focus.
+                if (event.currentTarget.matches(":focus-visible")) {
+                  setHovered(value);
+                }
+              }}
               onBlur={() => setHovered(null)}
               onClick={() => {
                 setPulse((previous) => ({
