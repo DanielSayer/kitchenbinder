@@ -516,7 +516,7 @@
   margin-right: max(var(--page-gutter), env(safe-area-inset-right));
 }
 @media (min-width: 851px) {
-  .library-household {
+  .library-binder .library-household {
     display: none;
   }
 }
