@@ -1,8 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { db } from "@prep-sheet/db";
 import { user } from "@prep-sheet/db/schema/auth";
-import { group } from "@prep-sheet/db/schema/group";
-import { household } from "@prep-sheet/db/schema/household";
 import {
   accountDeletionRequest,
   supportRequest,
@@ -10,6 +8,7 @@ import {
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq, gt } from "drizzle-orm";
 import { z } from "zod";
+import { householdSuccession } from "../account-deletion";
 import { protectedProcedure, router } from "../index";
 
 export const supportRouter = router({
@@ -63,15 +62,9 @@ export const supportRouter = router({
       .select()
       .from(accountDeletionRequest)
       .where(eq(accountDeletionRequest.userId, ctx.session.user.id));
-    const ownedGroups = await db
-      .select({ id: group.id, name: group.name })
-      .from(group)
-      .where(eq(group.ownerId, ctx.session.user.id));
-    const ownedHouseholds = await db
-      .select({ id: household.id, name: household.name })
-      .from(household)
-      .where(eq(household.ownerId, ctx.session.user.id));
-    return { request: request ?? null, ownedGroups, ownedHouseholds };
+    // Shared households pass to their longest-standing member, else are deleted.
+    const ownedHouseholds = await householdSuccession(db, ctx.session.user.id);
+    return { request: request ?? null, ownedHouseholds };
   }),
   requestDeletion: protectedProcedure
     .input(z.object({ confirmation: z.literal("DELETE") }))

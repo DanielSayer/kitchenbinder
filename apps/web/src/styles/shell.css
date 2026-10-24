@@ -1,0 +1,199 @@
+/* App shell: header (desktop top nav / mobile slim bar) and mobile tab bar. */
+
+/* Not sticky: several screens pin their own toolbars at top: 0. */
+.site-header {
+  position: relative;
+  z-index: 40;
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 0 max(var(--page-gutter), 5.5%);
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--line);
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  min-height: var(--tap);
+  border-radius: var(--r-s);
+}
+.top-nav {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+.top-nav a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: var(--r-pill);
+  color: var(--ink-2);
+  font: 600 14px / 1 var(--sans);
+  white-space: nowrap;
+  transition:
+    background var(--t-press) var(--ease),
+    color var(--t-press) var(--ease);
+}
+.top-nav a:hover {
+  background: var(--oat);
+  color: var(--ink);
+}
+.top-nav a.active {
+  background: var(--tomato-soft);
+  color: var(--tomato-press);
+}
+.nav-mobile-label {
+  display: none;
+}
+.site-header-end {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+  min-width: 0;
+}
+.header-slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.header-slot:empty {
+  display: none;
+}
+.account-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--tap);
+  padding: 4px 10px 4px 4px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+.account-trigger:hover,
+.account-trigger[data-popup-open],
+.account-trigger[data-active="true"] {
+  background: var(--oat);
+}
+.account-name {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (min-width: 851px) and (max-width: 1100px) {
+  .site-header {
+    gap: 12px;
+  }
+  .brand-wordmark,
+  .account-name {
+    display: none;
+  }
+  .top-nav a {
+    padding: 0 10px;
+  }
+}
+
+/* Tab bar: mobile only. */
+.tab-bar {
+  display: none;
+}
+
+@media (max-width: 850px) {
+  :root {
+    --header-height: 56px;
+  }
+  /* Signed-out screens (welcome, landing) have no tab bar. */
+  :root:has(.tab-bar) {
+    --mobile-nav-height: calc(64px + env(safe-area-inset-bottom, 0px));
+  }
+  .site-header {
+    height: calc(var(--header-height) + env(safe-area-inset-top, 0px));
+    padding: env(safe-area-inset-top, 0px)
+      max(var(--page-gutter), env(safe-area-inset-right)) 0
+      max(var(--page-gutter), env(safe-area-inset-left));
+    gap: 12px;
+    border-bottom: 0;
+  }
+  /* The app shows the mark; the wordmark is for desktop and welcome. */
+  .site-header .brand-wordmark,
+  .top-nav,
+  .nav-account {
+    display: none;
+  }
+  .tab-bar {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 40;
+    height: var(--mobile-nav-height);
+    display: flex;
+    justify-content: space-around;
+    align-items: flex-start;
+    padding: 6px max(6px, env(safe-area-inset-right))
+      env(safe-area-inset-bottom, 0px) max(6px, env(safe-area-inset-left));
+    background: color-mix(in srgb, var(--card) 90%, transparent);
+    backdrop-filter: blur(18px) saturate(1.4);
+    -webkit-backdrop-filter: blur(18px) saturate(1.4);
+    border-top: 1px solid var(--line);
+  }
+  .tab {
+    flex: 1;
+    min-width: 0;
+    min-height: 52px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 2px 0;
+    border-radius: var(--r-m);
+    color: var(--ink-3);
+    font: 600 10.5px / 1 var(--sans);
+    white-space: nowrap;
+  }
+  .tab-icon {
+    width: 52px;
+    height: 30px;
+    display: grid;
+    place-items: center;
+    border-radius: var(--r-pill);
+    transition:
+      background var(--t-base) var(--ease),
+      transform var(--t-press) var(--ease);
+  }
+  .tab[aria-current="page"] {
+    color: var(--tomato);
+  }
+  .tab[aria-current="page"] .tab-icon {
+    background: var(--tomato-soft);
+  }
+  .tab:active .tab-icon {
+    transform: scale(0.9);
+  }
+  .tab:focus-visible {
+    outline-offset: -3px;
+  }
+  .tab-avatar {
+    width: 26px;
+    height: 26px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--olive);
+    color: #fff;
+    font: 700 11px / 1 var(--sans);
+  }
+}

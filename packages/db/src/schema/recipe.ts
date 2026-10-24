@@ -13,16 +13,13 @@ import {
 } from "drizzle-orm/pg-core";
 import type { RecipeContent } from "../recipe-content";
 import { user } from "./auth";
-import { group } from "./group";
+import { household } from "./household";
 
 export const recipe = pgTable(
   "recipe",
   {
     id: uuid("id").primaryKey(),
     userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
-    groupId: uuid("group_id").references(() => group.id, {
-      onDelete: "cascade",
-    }),
     title: text("title").notNull(),
     content: jsonb("content").$type<RecipeContent>().notNull(),
     // Immutable identity of the original manual submission, including its destination.
@@ -46,12 +43,31 @@ export const recipe = pgTable(
   },
   (table) => [
     index("recipe_user_created_idx").on(table.userId, table.createdAt),
-    index("recipe_group_created_idx").on(table.groupId, table.createdAt),
     index("recipe_deleted_expiry_idx").on(table.expiresAt),
     check(
       "recipe_deletion_dates_check",
       sql`(${table.deletedAt} is null and ${table.expiresAt} is null) or (${table.deletedAt} is not null and ${table.expiresAt} is not null and ${table.expiresAt} > ${table.deletedAt})`,
     ),
+  ],
+);
+
+// Recipes are personal; sharing grants a household's members read access.
+export const recipeShare = pgTable(
+  "recipe_share",
+  {
+    recipeId: uuid("recipe_id")
+      .notNull()
+      .references(() => recipe.id, { onDelete: "cascade" }),
+    householdId: uuid("household_id")
+      .notNull()
+      .references(() => household.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.recipeId, table.householdId] }),
+    index("recipe_share_household_idx").on(table.householdId),
   ],
 );
 

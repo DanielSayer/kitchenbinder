@@ -1,16 +1,51 @@
 import { db } from "@prep-sheet/db";
 import { user } from "@prep-sheet/db/schema/auth";
 import { billingAccount } from "@prep-sheet/db/schema/billing";
-import { group } from "@prep-sheet/db/schema/group";
-import { household } from "@prep-sheet/db/schema/household";
-import { recipe } from "@prep-sheet/db/schema/recipe";
+import { household, householdMember } from "@prep-sheet/db/schema/household";
+import { recipe, recipeShare } from "@prep-sheet/db/schema/recipe";
 import { accountDeletionRequest } from "@prep-sheet/db/schema/support";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, exists, inArray, ne, not } from "drizzle-orm";
 import {
   billingEnabled,
   hasUnfinishedSubscription,
   syncBilling,
 } from "./billing/polar";
+import { type Database, deleteOrphanedRecipes } from "./households/access";
+
+// Shared households the user owns and who would inherit each (null = deleted).
+export async function householdSuccession(database: Database, userId: string) {
+  const owned = await database
+    .select({ id: household.id, name: household.name })
+    .from(household)
+    .where(and(eq(household.ownerId, userId), eq(household.personal, false)))
+    .orderBy(asc(household.createdAt), asc(household.id));
+  if (!owned.length) return [];
+  const members = await database
+    .select({
+      householdId: householdMember.householdId,
+      id: user.id,
+      name: user.name,
+    })
+    .from(householdMember)
+    .innerJoin(user, eq(user.id, householdMember.userId))
+    .where(
+      and(
+        inArray(
+          householdMember.householdId,
+          owned.map((item) => item.id),
+        ),
+        ne(householdMember.userId, userId),
+      ),
+    )
+    .orderBy(asc(householdMember.joinedAt), asc(user.id));
+  return owned.map((item) => {
+    const next = members.find((member) => member.householdId === item.id);
+    return {
+      ...item,
+      transferTo: next ? { id: next.id, name: next.name } : null,
+    };
+  });
+}
 
 // Operator-only. Never expose this as a public or authenticated user procedure.
 export async function completeAccountDeletion(requestId: string) {
@@ -27,22 +62,6 @@ export async function completeAccountDeletion(requestId: string) {
       .from(user)
       .where(eq(user.id, request.userId))
       .for("update");
-    const owned = await tx
-      .select({ id: group.id })
-      .from(group)
-      .where(eq(group.ownerId, request.userId));
-    if (owned.length)
-      throw new Error(
-        "The account still owns groups. Ask the owner to transfer or explicitly delete them first.",
-      );
-    const ownedHousehold = await tx
-      .select({ id: household.id })
-      .from(household)
-      .where(eq(household.ownerId, request.userId));
-    if (ownedHousehold.length)
-      throw new Error(
-        "The account still owns a household. Ask the owner to transfer or explicitly delete it first.",
-      );
     const [billing] = await tx
       .select()
       .from(billingAccount)
@@ -76,12 +95,46 @@ export async function completeAccountDeletion(requestId: string) {
           "Cancel the Polar subscription and wait for it to end before completing account deletion.",
         );
     }
-    // Personal recipes use SET NULL, so remove them explicitly before the user.
+    // Shared households pass to the longest-standing member; empty ones are deleted.
+    for (const item of await householdSuccession(tx, request.userId)) {
+      if (item.transferTo)
+        await tx
+          .update(household)
+          .set({ ownerId: item.transferTo.id })
+          .where(eq(household.id, item.id));
+      else {
+        await deleteOrphanedRecipes(tx, item.id);
+        await tx.delete(household).where(eq(household.id, item.id));
+      }
+    }
+    // "Just me" takes its plan and shopping list with it.
+    await tx
+      .delete(household)
+      .where(
+        and(
+          eq(household.ownerId, request.userId),
+          eq(household.personal, true),
+        ),
+      );
+    // Recipes shared with a surviving household stay there without an owner
+    // (recipe.user_id is SET NULL). Everything else the user owns is removed.
     await tx
       .delete(recipe)
-      .where(and(eq(recipe.userId, request.userId), isNull(recipe.groupId)));
-    // Cascades remove private activity, credentials, memberships, imports and requests.
-    // Shared recipes survive with their contributor and deletedBy links set to null.
+      .where(
+        and(
+          eq(recipe.userId, request.userId),
+          not(
+            exists(
+              tx
+                .select({ id: recipeShare.recipeId })
+                .from(recipeShare)
+                .where(eq(recipeShare.recipeId, recipe.id)),
+            ),
+          ),
+        ),
+      );
+    // Cascades remove private activity, collections, tags, credentials,
+    // memberships, imports and requests.
     await tx.delete(user).where(eq(user.id, request.userId));
     return { deleted: true };
   });

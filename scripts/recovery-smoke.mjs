@@ -22,6 +22,7 @@ const userId = randomUUID();
 const recipeId = randomUUID();
 const importId = randomUUID();
 const token = randomUUID();
+const householdId = randomUUID();
 await client.connect();
 try {
   await client.query('INSERT INTO "user"(id,name,email) VALUES ($1,$1,$2)', [
@@ -49,12 +50,20 @@ try {
     [importId],
   );
   await client.query(
-    'INSERT INTO meal_planner(user_id,meals,revision) VALUES ($1,\'[{"preserve":"meal"}]\',7)',
-    [userId],
+    "INSERT INTO household(id,name,owner_id,personal) VALUES ($1,'Just me',$2,true)",
+    [householdId, userId],
   );
   await client.query(
-    "INSERT INTO shopping_item(id,user_id,text) VALUES ($1,$2,'Recovery shopping')",
-    [randomUUID(), userId],
+    "INSERT INTO household_member(household_id,user_id) VALUES ($1,$2)",
+    [householdId, userId],
+  );
+  await client.query(
+    'INSERT INTO meal_planner(household_id,meals,revision) VALUES ($1,\'[{"preserve":"meal"}]\',7)',
+    [householdId],
+  );
+  await client.query(
+    "INSERT INTO shopping_item(id,household_id,added_by,text) VALUES ($1,$2,$3,'Recovery shopping')",
+    [randomUUID(), householdId, userId],
   );
   const tables = [
     "user",
@@ -63,6 +72,7 @@ try {
     "recipe_import",
     "billing_account",
     "ai_spend",
+    "household",
     "meal_planner",
     "shopping_item",
     "prep_sheet_migration",
@@ -179,6 +189,7 @@ try {
   );
 } finally {
   await client.query("DELETE FROM ai_spend WHERE import_id=$1", [importId]);
+  await client.query("DELETE FROM household WHERE owner_id=$1", [userId]);
   await client.query('DELETE FROM "user" WHERE id=$1', [userId]);
   await client.end();
   await rm(directory, { recursive: true, force: true });

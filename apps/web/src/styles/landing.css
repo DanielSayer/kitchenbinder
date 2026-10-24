@@ -1,4 +1,4 @@
-/* Landing layout and shared brand treatment. */
+/* Signed-out landing: hero + composer beside an example recipe sheet. */
 .brand {
   gap: 9px;
 }
@@ -17,65 +17,41 @@ body .home-page {
 body .home-page .hero {
   text-align: left;
   padding: 0;
-  margin: 0 0 28px;
+  margin: 0 0 24px;
 }
 body .home-page .hero h1 {
-  font-size: clamp(44px, 4.5vw, 62px);
-  letter-spacing: -2.8px;
-  line-height: 1.07;
-  margin-bottom: 20px;
+  font: 800 clamp(44px, 5vw, 64px) / 1.02 var(--sans);
+  letter-spacing: -0.03em;
+  margin-bottom: 16px;
+}
+body .home-page .hero h1 i {
+  font-weight: 400;
+  color: var(--tomato);
 }
 body .home-page .hero p {
   display: block;
-  font-size: 16px;
-  line-height: 1.65;
-  max-width: 395px;
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--ink-2);
+  max-width: 420px;
 }
-body .home-page .composer-section {
+body .home-page .add-composer-section {
   width: 100%;
   min-width: 0;
-}
-.composer-label {
-  display: block;
-  font-size: 13px;
-  font-weight: 800;
-  margin-bottom: 15px;
-}
-body .home-page .composer {
-  padding: 20px;
-}
-body .home-page .composer textarea {
-  min-height: 125px;
-  font-size: 16px;
-}
-body .home-page .composer-toolbar {
-  border-top: 1px solid var(--line);
-  margin-top: 8px;
-  padding-top: 16px;
-  gap: 10px;
-}
-body .home-page .composer-toolbar .button {
-  padding: 12px 15px;
-  font-size: 14px;
-}
-body .home-page .composer-manual {
-  font-size: 12px;
-}
-body .home-page .idea-chips {
-  justify-content: flex-start;
 }
 .sheet-preview {
   min-width: 0;
   padding: 24px;
-  background: #e8ecd9;
-  border-radius: 64px 10px 10px 10px;
+  background: var(--oat);
+  border-radius: var(--r-xl);
 }
 .sample-sheet {
-  background: #fff;
+  background: var(--card);
   padding: 27px;
-  border: 1px solid #d6ddcc;
-  box-shadow: 5px 6px 0 #d1d9c3;
-  color: #334451;
+  border: 1px solid var(--line);
+  border-radius: var(--r-l);
+  box-shadow: var(--e2);
+  color: var(--ink);
 }
 .sample-sheet-brand {
   display: flex;
@@ -85,52 +61,47 @@ body .home-page .idea-chips {
   color: var(--ink);
 }
 .sample-sheet-brand > span {
-  font-size: 20px;
-  font-weight: 800;
-  letter-spacing: -1px;
+  font: 800 20px / 1 var(--sans);
+  letter-spacing: -0.5px;
 }
 .sample-sheet-brand small {
   margin-left: auto;
   font-size: 10px;
-  color: #596451;
+  color: var(--ink-2);
 }
 .sample-sheet h2 {
-  font-size: 28px;
-  line-height: 1.12;
-  letter-spacing: -0.8px;
+  font: 800 28px / 1.12 var(--sans);
+  letter-spacing: -0.02em;
   color: var(--ink);
   margin-bottom: 10px;
 }
 .sample-description {
   font-size: 12px;
   line-height: 1.5;
-  color: #596451;
+  color: var(--ink-2);
 }
 .sample-meta {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  padding: 12px 0;
+  gap: 8px;
   margin: 18px 0;
-  background: #eff3ee;
-  border-radius: 9px;
 }
 .sample-meta > div {
-  padding: 0 12px;
-}
-.sample-meta > div + div {
-  border-left: 1px solid #bdc8bc;
+  padding: 10px 12px;
+  background: var(--paper);
+  border-radius: var(--r-m);
 }
 .sample-meta dt {
   font-size: 10px;
+  color: var(--ink-2);
 }
 .sample-meta dd {
   margin: 3px 0 0;
-  font-size: 14px;
-  font-weight: 800;
+  font: 800 15px / 1.2 var(--sans);
   color: var(--ink);
 }
 .sample-sheet h3 {
-  font-size: 18px;
+  font: 800 18px / 1.2 var(--sans);
   margin: 18px 0 12px;
   color: var(--ink);
 }
@@ -155,8 +126,8 @@ body .home-page .idea-chips {
   width: 10px;
   height: 10px;
   flex-shrink: 0;
-  border: 1px solid #809181;
-  border-radius: 2px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
   margin-top: 2px;
 }
 .sample-steps {
@@ -181,13 +152,13 @@ body .home-page .idea-chips {
   height: 23px;
   flex-shrink: 0;
   border-radius: 50%;
-  background: #dce7d6;
-  font-weight: 800;
-  color: var(--ink);
+  background: var(--tomato-soft);
+  color: var(--tomato-press);
+  font-weight: 700;
 }
 .sample-notes {
-  background: #fff5dd;
-  border-radius: 8px;
+  background: var(--butter-soft);
+  border-radius: var(--r-s);
   padding: 12px;
   margin-top: 18px;
 }
@@ -209,14 +180,6 @@ body .home-page .idea-chips {
   .sample-sheet {
     padding: 20px;
   }
-  body .home-page .composer-toolbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  body .home-page .composer-manual {
-    order: 2;
-    justify-content: center;
-  }
 }
 @media (max-width: 850px) {
   body .home-page {
@@ -226,34 +189,15 @@ body .home-page .idea-chips {
     padding: 22px var(--page-gutter) 30px;
     max-width: 590px;
   }
-  body .home-page .hero {
-    margin-bottom: 24px;
-  }
   body .home-page .hero h1 {
-    font-size: clamp(40px, 11.5vw, 56px);
-    letter-spacing: -2px;
-    margin-bottom: 17px;
+    font-size: clamp(36px, 10vw, 52px);
   }
   body .home-page .hero p {
-    font-size: 15px;
-  }
-  body .home-page .composer {
-    padding: 16px;
-  }
-  body .home-page .composer textarea {
-    min-height: 100px;
-  }
-  body .home-page .idea-chips {
-    gap: 6px;
-    margin-top: 16px;
-  }
-  body .home-page .idea-chips button {
-    font-size: 11px;
-    padding-inline: 11px;
+    font-size: 16px;
   }
   .sheet-preview {
-    padding: 20px 16px;
-    border-radius: 44px 8px 8px 8px;
+    padding: 16px;
+    border-radius: var(--r-l);
   }
   .sample-sheet {
     padding: 20px 16px;

@@ -1,98 +1,387 @@
 import type { Coverage, Meal } from "@prep-sheet/db/meal-planner";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@prep-sheet/ui/components/dropdown-menu";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  Check,
   ChevronLeft,
   ChevronRight,
-  CookingPot,
-  MoreHorizontal,
+  NotebookPen,
+  Play,
   Plus,
   RotateCcw,
   ShoppingBasket,
-  Utensils,
 } from "lucide-react";
 import { useState } from "react";
-import { useTRPC } from "@/utils/trpc";
+import { toast } from "sonner";
+import {
+  useHousehold,
+  useHouseholdScope,
+} from "@/components/households/household-context";
+import {
+  LargeTitle,
+  RecipeCover,
+  StickyCta,
+  toneColor,
+  undoToast,
+} from "@/components/pantry";
+import { useTRPC, useTRPCClient } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
 import {
-  PlanningWorkspace,
-  planningRefresh,
-  usePlanningScope,
-} from "../households/planning-context";
-import { PlanningScopeBar } from "../households/scope-bar";
-import { OrganiseDialog } from "../recipes/organise-dialog";
-import { addDays, dateLabel, localDate, weekStart } from "./dates";
+  addDays,
+  dayOfMonth,
+  localDate,
+  shortDate,
+  weekDays,
+  weekday,
+  weekRangeLabel,
+  weekStart,
+  weeksBetween,
+} from "./dates";
 import { MealEditor } from "./meal-editor";
 import { MealListNotice, mealTitle, PlanShop } from "./plan-shop";
-import { PlannedRecipe } from "./planned-recipe";
 
 type Editor = {
+  key: number;
   date: string;
   meal?: Meal;
   duplicate?: boolean;
   recipeId?: string;
 };
-export function MealPlanner(props: { recipeId?: string }) {
-  return (
-    <PlanningWorkspace>
-      <PlannerContent {...props} />
-    </PlanningWorkspace>
-  );
+const slotOrder = ["Breakfast", "Lunch", "Dinner", ""];
+
+function weekTitle(offset: number, start: string) {
+  if (offset === 0) return ["This", "week"];
+  if (offset === 1) return ["Next", "week"];
+  if (offset === -1) return ["Last", "week"];
+  return ["Week of", shortDate(start)];
 }
-function PlannerContent({ recipeId }: { recipeId?: string }) {
-  const { scope } = usePlanningScope();
+
+export function MealPlanner({ recipeId }: { recipeId?: string }) {
   const trpc = useTRPC();
+  const trpcClient = useTRPCClient();
+  const householdId = useHouseholdScope();
+  const household = useHousehold();
   const client = useQueryClient();
-  const query = useQuery(
-    trpc.planner.get.queryOptions(scope, planningRefresh(scope)),
-  );
+  const query = useQuery(trpc.planner.get.queryOptions({ householdId }));
   const today = localDate();
-  const [week, setWeek] = useState(weekStart(today));
+  const thisWeek = weekStart(today);
+  const [week, setWeek] = useState(thisWeek);
   const [editor, setEditor] = useState<Editor | null>(
-    recipeId ? { date: today, recipeId } : null,
+    recipeId ? { key: 0, date: today, recipeId } : null,
   );
+  const [editorOpen, setEditorOpen] = useState(Boolean(recipeId));
   const [shop, setShop] = useState<Coverage | null>(null);
-  const [cooking, setCooking] = useState<Extract<
-    Meal,
-    { kind: "recipe" }
-  > | null>(null);
-  const [removing, setRemoving] = useState<Meal | null>(null);
-  const remove = useMutation(
-    trpc.planner.remove.mutationOptions({
-      onSuccess: async () => {
-        await Promise.all([
-          client.invalidateQueries({ queryKey: trpc.planner.pathKey() }),
-          client.invalidateQueries({ queryKey: trpc.shopping.pathKey() }),
-        ]);
-        setRemoving(null);
+  // Meals removed but still inside their undo window.
+  const [removing, setRemoving] = useState<ReadonlySet<string>>(new Set());
+  const openEditor = (next: Omit<Editor, "key">) => {
+    setEditor((current) => ({ ...next, key: (current?.key ?? 0) + 1 }));
+    setEditorOpen(true);
+  };
+  const refresh = () =>
+    Promise.all([
+      client.invalidateQueries({ queryKey: trpc.planner.pathKey() }),
+      client.invalidateQueries({ queryKey: trpc.shopping.pathKey() }),
+    ]);
+  const unhide = (id: string) =>
+    setRemoving((current) => {
+      const next = new Set(current);
+      next.delete(id);
+      return next;
+    });
+  const remove = (meal: Meal, meals: Meal[]) => {
+    setEditorOpen(false);
+    setRemoving((current) => new Set(current).add(meal.id));
+    const linked = meals.some(
+      (entry) => entry.kind === "leftovers" && entry.sourceId === meal.id,
+    );
+    undoToast(
+      `Removed ${mealTitle(meal, meals)}${linked ? ". Its leftovers need another cook." : ""}`,
+      {
+        onUndo: () => unhide(meal.id),
+        onCommit: async () => {
+          try {
+            // Remove against the latest revision; the undo window may be long.
+            const fresh = await client.fetchQuery({
+              ...trpc.planner.get.queryOptions({ householdId }),
+              staleTime: 0,
+            });
+            if (fresh.meals.some((entry) => entry.id === meal.id))
+              await trpcClient.planner.remove.mutate({
+                householdId,
+                id: meal.id,
+                revision: fresh.revision,
+              });
+            await refresh();
+          } catch (cause) {
+            toast.error(
+              cause instanceof Error
+                ? cause.message
+                : "Couldn't remove that meal.",
+            );
+          } finally {
+            unhide(meal.id);
+          }
+        },
       },
-    }),
+    );
+  };
+  const offset = weeksBetween(thisWeek, week);
+  const days = weekDays(week);
+  const meals = (query.data?.meals ?? []).filter(
+    (meal) => !removing.has(meal.id),
   );
-  const days = Array.from({ length: 7 }, (_, index) => addDays(week, index));
-  const meals = query.data?.meals ?? [];
+  const mealsOn = (day: string) =>
+    meals
+      .filter((meal) => meal.date === day)
+      .sort((a, b) => slotOrder.indexOf(a.slot) - slotOrder.indexOf(b.slot));
   const trip = query.data?.trip;
-  const listedMeals = new Set(trip?.demands.map((demand) => demand.mealId));
-  return (
-    <main id="main-content" className="planner-page page-width">
-      <div className="page-heading">
-        <div>
-          <h1>
-            <span className="desktop-screen-title">Meal planner</span>
-            <span className="mobile-screen-title">Planner</span>
-            <span className="title-dot">.</span>
-          </h1>
-          <p>
-            {scope.kind === "household"
-              ? "Your shared weekly plan."
-              : "Your private weekly plan."}
-          </p>
+  const listed = new Set(trip?.demands.map((demand) => demand.mealId));
+  const planned = days.filter((day) => mealsOn(day).length).length;
+  const currentWeek = offset === 0;
+  const upcoming = currentWeek ? days.filter((day) => day >= today) : days;
+  const earlier = currentWeek
+    ? days.filter((day) => day < today && mealsOn(day).length)
+    : [];
+  const [lead, accent] = weekTitle(offset, week);
+  const issuesFor = (id: string) =>
+    query.data?.issues.filter((issue) => issue.id === id) ?? [];
+
+  const mealCard = (meal: Meal, day: string, compact = false) => {
+    const isToday = day === today;
+    const past = day < today;
+    const title = mealTitle(meal, meals);
+    const detail =
+      meal.kind === "recipe"
+        ? `Cook ${meal.cook} · eat ${meal.eat}${meal.cook > meal.eat ? ` · ${meal.cook - meal.eat} spare` : ""}`
+        : meal.kind === "leftovers"
+          ? `Leftovers · ${meal.portions} portions`
+          : "Note";
+    return (
+      <li key={meal.id}>
+        <div
+          className="plan-meal"
+          data-today={(isToday && !compact) || undefined}
+          data-past={past || undefined}
+          data-kind={meal.kind}
+        >
+          <button
+            type="button"
+            className="plan-meal-main"
+            onClick={() => openEditor({ date: meal.date, meal })}
+          >
+            {meal.kind === "recipe" ? (
+              <RecipeCover
+                id={meal.recipeId}
+                title={meal.title}
+                size={compact ? "thumb" : "list"}
+              />
+            ) : (
+              <span className="plan-meal-icon" aria-hidden="true">
+                {meal.kind === "leftovers" ? (
+                  <RotateCcw size={20} />
+                ) : (
+                  <NotebookPen size={20} />
+                )}
+              </span>
+            )}
+            <span className="plan-meal-text">
+              <b>{title}</b>{" "}
+              <small>
+                {listed.has(meal.id) && (
+                  <span className="plan-pill" data-tone="olive">
+                    On list
+                  </span>
+                )}
+                {compact
+                  ? `${weekday(day, "short")} · ${meal.kind === "out" ? "note" : meal.kind === "leftovers" ? "leftovers" : "cooked"}`
+                  : [meal.slot, detail].filter(Boolean).join(" · ")}
+              </small>
+            </span>
+          </button>
+          {isToday && meal.kind === "recipe" && !compact && (
+            <Link
+              className="plan-cook"
+              to="/recipes/$recipeId"
+              params={{ recipeId: meal.recipeId }}
+              aria-label={`Open ${meal.title}`}
+            >
+              <Play size={18} aria-hidden="true" />
+            </Link>
+          )}
         </div>
+        {issuesFor(meal.id).map((issue) => (
+          <p className="meal-warning" key={issue.message}>
+            {issue.message}
+          </p>
+        ))}
+      </li>
+    );
+  };
+
+  const agendaDay = (day: string) => {
+    const entries = mealsOn(day);
+    const isToday = day === today;
+    const past = day < today;
+    return (
+      <section
+        key={day}
+        id={`plan-day-${day}`}
+        className="plan-day"
+        data-past={past || undefined}
+        aria-labelledby={`plan-day-${day}-title`}
+      >
+        <h2 id={`plan-day-${day}-title`} className="plan-day-title">
+          {weekday(day)}
+          {isToday ? (
+            <span className="plan-tonight">Today</span>
+          ) : (
+            <small>{shortDate(day)}</small>
+          )}
+          {entries.length > 0 && (
+            <button
+              type="button"
+              className="icon-button plan-day-add"
+              aria-label={`Add another meal on ${weekday(day)} ${shortDate(day)}`}
+              onClick={() => openEditor({ date: day })}
+            >
+              <Plus size={18} />
+            </button>
+          )}
+        </h2>
+        {entries.length ? (
+          <ul className="plan-meals">
+            {entries.map((meal) => mealCard(meal, day))}
+          </ul>
+        ) : (
+          <button
+            type="button"
+            className="plan-add"
+            aria-label={`Add a meal on ${weekday(day)} ${shortDate(day)}`}
+            onClick={() => openEditor({ date: day })}
+          >
+            <span aria-hidden="true">
+              <Plus size={16} />
+            </span>
+            Add a meal
+          </button>
+        )}
+      </section>
+    );
+  };
+
+  return (
+    <main id="main-content" className="plan-page page-width">
+      <div className="plan-week-nav">
+        <button
+          type="button"
+          className="icon-button plan-nav-button"
+          aria-label="Previous week"
+          onClick={() => setWeek(addDays(week, -7))}
+        >
+          <ChevronLeft size={18} />
+        </button>
+        <span className="plan-range" aria-live="polite">
+          {weekRangeLabel(week)}
+        </span>
+        <span className="plan-week-nav-end">
+          {!currentWeek && (
+            <button
+              type="button"
+              className="button button-small button-ghost"
+              onClick={() => setWeek(thisWeek)}
+            >
+              Today
+            </button>
+          )}
+          <button
+            type="button"
+            className="icon-button plan-nav-button"
+            aria-label="Next week"
+            onClick={() => setWeek(addDays(week, 7))}
+          >
+            <ChevronRight size={18} />
+          </button>
+        </span>
+      </div>
+      <LargeTitle
+        accent={accent}
+        eyebrow={
+          householdId ? (
+            <span className="plan-household">
+              <i
+                style={{
+                  background: toneColor(household.color),
+                }}
+                aria-hidden="true"
+              />
+              {household.name}
+            </span>
+          ) : undefined
+        }
+      >
+        {lead}
+      </LargeTitle>
+      <ol className="plan-strip" aria-label="Days this week">
+        {days.map((day) => (
+          <li key={day}>
+            <a
+              className="plan-strip-day"
+              href={`#plan-day-${day}`}
+              aria-current={day === today ? "date" : undefined}
+              data-past={day < today || undefined}
+              aria-label={`${weekday(day)} ${shortDate(day)}, ${mealsOn(day).length ? `${mealsOn(day).length} planned` : "nothing planned"}`}
+              onClick={(event) => {
+                const target = document.getElementById(`plan-day-${day}`);
+                event.preventDefault();
+                if (target)
+                  target.scrollIntoView({ behavior: "smooth", block: "start" });
+                else openEditor({ date: day });
+              }}
+            >
+              <small>{weekday(day, "short")}</small>
+              <b className="plan-strip-num">{dayOfMonth(day)}</b>
+              <i data-empty={!mealsOn(day).length || undefined} />
+            </a>
+          </li>
+        ))}
+      </ol>
+      {query.isSuccess && (
+        <div className="plan-progress">
+          <span>
+            <b>{planned} of 7</b> days planned
+          </span>
+          <span className="plan-progress-bar" aria-hidden="true">
+            <i style={{ width: `${(planned / 7) * 100}%` }} />
+          </span>
+        </div>
+      )}
+      {query.isSuccess && <MealListNotice />}
+      <LoadingState pending={query.isPending} label="Loading your meal plan...">
+        <ErrorNotice
+          message={query.error?.message}
+          retry={() => void query.refetch()}
+        />
+        {query.isSuccess && (
+          <div className="plan-agenda">
+            {upcoming.map(agendaDay)}
+            {earlier.length > 0 && (
+              <section
+                className="plan-day plan-earlier"
+                aria-labelledby="plan-earlier"
+              >
+                <h2 id="plan-earlier" className="plan-day-title">
+                  Earlier this week
+                </h2>
+                <ul className="plan-meals">
+                  {earlier.flatMap((day) =>
+                    mealsOn(day).map((meal) => mealCard(meal, day, true)),
+                  )}
+                </ul>
+              </section>
+            )}
+          </div>
+        )}
+      </LoadingState>
+      <StickyCta>
         <button
           type="button"
           className="button button-primary"
@@ -105,242 +394,34 @@ function PlannerContent({ recipeId }: { recipeId?: string }) {
             })
           }
         >
-          <ShoppingBasket size={18} />
-          Make shopping list
+          <ShoppingBasket size={20} aria-hidden="true" />
+          {offset === 0
+            ? "Shop for this week"
+            : offset === 1
+              ? "Shop for next week"
+              : "Shop for this week's meals"}
         </button>
-      </div>
-      <PlanningScopeBar />
-      {query.isSuccess && <MealListNotice />}
-      <div className="meal-week-toolbar">
-        <h2>
-          {dateLabel(week)} to {dateLabel(addDays(week, 6))}
-        </h2>
-        <div>
-          <button
-            type="button"
-            className="icon-button"
-            aria-label="Previous week"
-            onClick={() => setWeek(addDays(week, -7))}
-          >
-            <ChevronLeft size={20} />
-          </button>
-          <button
-            type="button"
-            className="button button-small button-outline"
-            onClick={() => setWeek(weekStart(today))}
-          >
-            Today
-          </button>
-          <button
-            type="button"
-            className="icon-button"
-            aria-label="Next week"
-            onClick={() => setWeek(addDays(week, 7))}
-          >
-            <ChevronRight size={20} />
-          </button>
-        </div>
-      </div>
-      <LoadingState pending={query.isPending} label="Loading your meal plan...">
-        <ErrorNotice
-          message={query.error?.message}
-          retry={() => void query.refetch()}
+      </StickyCta>
+      {editor && (
+        <MealEditor
+          key={editor.key}
+          date={editor.date}
+          meal={editor.meal}
+          duplicate={editor.duplicate}
+          recipeId={editor.recipeId}
+          open={editorOpen}
+          onClose={() => setEditorOpen(false)}
+          onDuplicate={(meal) =>
+            openEditor({
+              date: addDays(meal.date, 1),
+              meal,
+              duplicate: true,
+            })
+          }
+          onRemove={(meal) => remove(meal, query.data?.meals ?? [])}
         />
-        {query.isSuccess && (
-          <div className="meal-week">
-            {days.map((day) => (
-              <section
-                className={`meal-day ${day === today ? "meal-today" : ""}`}
-                key={day}
-                aria-label={dateLabel(day)}
-              >
-                <div className="meal-day-heading">
-                  <h3>
-                    {new Date(`${day}T12:00:00`).toLocaleDateString("en-AU", {
-                      weekday: "short",
-                    })}
-                    <span>{new Date(`${day}T12:00:00`).getDate()}</span>
-                  </h3>
-                </div>
-                <div className="meal-day-entries">
-                  {meals
-                    .filter((meal) => meal.date === day)
-                    .sort(
-                      (a, b) =>
-                        ["Breakfast", "Lunch", "Dinner", ""].indexOf(a.slot) -
-                        ["Breakfast", "Lunch", "Dinner", ""].indexOf(b.slot),
-                    )
-                    .map((meal) => (
-                      <article
-                        className={`meal-card meal-card-${meal.kind}`}
-                        key={meal.id}
-                      >
-                        <div className="meal-card-top">
-                          <span>
-                            {meal.kind === "recipe" ? (
-                              <CookingPot size={16} />
-                            ) : meal.kind === "leftovers" ? (
-                              <RotateCcw size={16} />
-                            ) : (
-                              <Utensils size={16} />
-                            )}
-                            {meal.slot ||
-                              (meal.kind === "recipe"
-                                ? "Cook"
-                                : meal.kind === "leftovers"
-                                  ? "Leftovers"
-                                  : "Eating out")}
-                          </span>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger
-                              className="icon-button"
-                              aria-label={`Actions for ${mealTitle(meal, meals)}`}
-                            >
-                              <MoreHorizontal size={18} />
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent
-                              className="collection-select-menu"
-                              align="end"
-                            >
-                              <DropdownMenuItem
-                                className="collection-select-manage"
-                                onClick={() =>
-                                  setEditor({ date: meal.date, meal })
-                                }
-                              >
-                                Edit or move
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="collection-select-manage"
-                                onClick={() =>
-                                  setEditor({
-                                    date: addDays(meal.date, 1),
-                                    meal,
-                                    duplicate: true,
-                                  })
-                                }
-                              >
-                                Duplicate
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="collection-select-manage"
-                                onClick={() => {
-                                  remove.reset();
-                                  setRemoving(meal);
-                                }}
-                              >
-                                Remove
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                        {meal.kind === "recipe" ? (
-                          <button
-                            type="button"
-                            className="meal-card-title meal-recipe-link"
-                            onClick={() => setCooking(meal)}
-                          >
-                            {meal.title}
-                          </button>
-                        ) : (
-                          <strong className="meal-card-title">
-                            {mealTitle(meal, meals)}
-                          </strong>
-                        )}
-                        <p>
-                          {meal.kind === "recipe"
-                            ? `Cook ${meal.cook} · Eat ${meal.eat}`
-                            : meal.kind === "leftovers"
-                              ? `${meal.portions} portions`
-                              : "No ingredients needed"}
-                        </p>
-                        {listedMeals.has(meal.id) && (
-                          <span className="meal-on-list">
-                            <Check size={13} />
-                            On list
-                          </span>
-                        )}
-                        {meal.kind === "recipe" && meal.cook > meal.eat && (
-                          <small>Save {meal.cook - meal.eat} portions</small>
-                        )}
-                        {query.data.issues
-                          .filter((issue) => issue.id === meal.id)
-                          .map((issue) => (
-                            <p className="meal-warning" key={issue.message}>
-                              {issue.message}
-                            </p>
-                          ))}
-                      </article>
-                    ))}
-                </div>
-                <button
-                  type="button"
-                  className="meal-add"
-                  aria-label={`Add meal for ${dateLabel(day)}`}
-                  onClick={() => setEditor({ date: day })}
-                >
-                  <Plus size={17} />
-                  Add meal
-                </button>
-              </section>
-            ))}
-          </div>
-        )}
-      </LoadingState>
-      {cooking && (
-        <PlannedRecipe meal={cooking} onClose={() => setCooking(null)} />
       )}
-      {editor && <MealEditor {...editor} onClose={() => setEditor(null)} />}
       {shop && <PlanShop initial={shop} onClose={() => setShop(null)} />}
-      {removing && (
-        <OrganiseDialog
-          title="Remove meal?"
-          onClose={() => {
-            if (!remove.isPending) setRemoving(null);
-          }}
-        >
-          <div className="meal-form">
-            <p>
-              Remove {mealTitle(removing, meals)} from{" "}
-              {dateLabel(removing.date)}?
-            </p>
-            {meals.some(
-              (meal) =>
-                meal.kind === "leftovers" && meal.sourceId === removing.id,
-            ) && (
-              <p className="meal-warning">
-                Linked leftovers will need another cooking session.
-              </p>
-            )}
-            <ErrorNotice message={remove.error?.message} />
-            <div className="organise-dialog-footer">
-              <button
-                className="button button-outline"
-                type="button"
-                disabled={remove.isPending}
-                onClick={() => setRemoving(null)}
-              >
-                Cancel
-              </button>
-              <button
-                className="button button-primary"
-                type="button"
-                disabled={remove.isPending}
-                onClick={() => {
-                  if (query.data)
-                    remove.mutate({
-                      scope,
-                      id: removing.id,
-                      revision: query.data.revision,
-                    });
-                }}
-              >
-                {remove.isPending ? "Removing..." : "Remove meal"}
-              </button>
-            </div>
-          </div>
-        </OrganiseDialog>
-      )}
     </main>
   );
 }

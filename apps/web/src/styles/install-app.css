@@ -48,7 +48,7 @@
   height: 26px;
   background: var(--surface-muted);
   border-radius: 50%;
-  font-weight: 800;
+  font-weight: 700;
   font-size: 13px;
 }
 .install-steps svg {
@@ -81,7 +81,7 @@
     align-items: flex-start;
     margin: 16px var(--page-gutter) 0;
     padding: 14px;
-    background: #fffdf7;
+    background: var(--card);
     border: 1px solid var(--control-line);
     border-radius: 14px;
   }
@@ -95,7 +95,7 @@
   }
   .install-suggestion p {
     font-size: 14px;
-    font-weight: 800;
+    font-weight: 700;
   }
   .install-suggestion span {
     display: block;
@@ -113,7 +113,7 @@
     border: 0;
     background: none;
     color: var(--green-dark);
-    font-weight: 800;
+    font-weight: 700;
     font-size: 13px;
     text-align: left;
   }

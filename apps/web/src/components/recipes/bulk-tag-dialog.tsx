@@ -4,7 +4,6 @@ import { type ComponentProps, useState } from "react";
 import { toast } from "sonner";
 import { useTRPC } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
-import { useCollection } from "../groups/collection-context";
 import { OrganiseDialog } from "./organise-dialog";
 import { RecipePagination, recipePageSize, useRecipePage } from "./pagination";
 import { TagChoices } from "./tag-choices";
@@ -88,23 +87,19 @@ export function ApplyTagDialog({
   tag,
   onClose,
   onApplied,
-  groupId,
 }: {
-  groupId: string | null;
   tag: TagOption;
   onClose: () => void;
   onApplied?: () => void;
 }) {
   const trpc = useTRPC();
   const client = useQueryClient();
-  const { groups } = useCollection();
   const [search, setSearch] = useState("");
   const { page, setPage } = useRecipePage(JSON.stringify([search, tag.id]));
   const recipes = useQuery(
     trpc.recipes.taggingList.queryOptions({
       search,
       excludeTagId: tag.id,
-      groupId,
       page,
       pageSize: recipePageSize,
     }),
@@ -126,12 +121,6 @@ export function ApplyTagDialog({
       },
     }),
   );
-
-  const collectionName = (groupId: string | null) =>
-    groupId
-      ? (groups.data?.find((group) => group.id === groupId)?.name ??
-        "Shared collection")
-      : "Personal collection";
 
   return (
     <OrganiseDialog title={`Add ${tag.name} to recipes`} onClose={onClose}>
@@ -200,7 +189,6 @@ export function ApplyTagDialog({
                   >
                     <span>
                       <strong>{recipe.title}</strong>
-                      <small>{collectionName(recipe.groupId)}</small>
                     </span>
                     <span className="recipe-selection-mark" aria-hidden="true">
                       {selected.includes(recipe.id) && <Check size={18} />}

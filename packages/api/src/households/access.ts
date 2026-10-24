@@ -1,91 +1,191 @@
 import { db } from "@prep-sheet/db";
-import type { PlanningScope } from "@prep-sheet/db/planning-scope";
-import { user } from "@prep-sheet/db/schema/auth";
+import { ensurePersonalHousehold } from "@prep-sheet/db/households";
+import {
+  collection,
+  collectionRecipe,
+  collectionShare,
+} from "@prep-sheet/db/schema/collection";
 import { household, householdMember } from "@prep-sheet/db/schema/household";
+import { recipe, recipeShare } from "@prep-sheet/db/schema/recipe";
 import { TRPCError } from "@trpc/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, exists, isNull, or, type SQL, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
-import type { Database } from "../groups/access";
 
-export type PlanningOwner =
-  | { kind: "personal"; userId: string; householdId: null }
-  | { kind: "household"; userId: null; householdId: string };
+export type Database =
+  | typeof db
+  | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-export function scopeOwner(
-  scope: PlanningScope,
+export const memberOf = (householdId: AnyPgColumn | SQL, userId: string) =>
+  exists(
+    db
+      .select({ id: householdMember.userId })
+      .from(householdMember)
+      .where(
+        and(
+          eq(householdMember.householdId, householdId),
+          eq(householdMember.userId, userId),
+        ),
+      ),
+  );
+
+const sharedWithMember = (userId: string) =>
+  exists(
+    db
+      .select({ id: recipeShare.recipeId })
+      .from(recipeShare)
+      .innerJoin(
+        householdMember,
+        eq(householdMember.householdId, recipeShare.householdId),
+      )
+      .where(
+        and(
+          eq(recipeShare.recipeId, recipe.id),
+          eq(householdMember.userId, userId),
+        ),
+      ),
+  );
+
+// Only the collection owner's own recipes travel through a shared collection.
+const inSharedCollection = (userId: string) =>
+  exists(
+    db
+      .select({ id: collectionRecipe.recipeId })
+      .from(collectionRecipe)
+      .innerJoin(collection, eq(collection.id, collectionRecipe.collectionId))
+      .innerJoin(
+        collectionShare,
+        eq(collectionShare.collectionId, collection.id),
+      )
+      .innerJoin(
+        householdMember,
+        eq(householdMember.householdId, collectionShare.householdId),
+      )
+      .where(
+        and(
+          eq(collectionRecipe.recipeId, recipe.id),
+          eq(collection.userId, recipe.userId),
+          eq(householdMember.userId, userId),
+        ),
+      ),
+  );
+
+// The three recipe access rules from docs/households.md, ignoring deletion.
+export const recipePermission = (userId: string) =>
+  or(
+    eq(recipe.userId, userId),
+    sharedWithMember(userId),
+    inSharedCollection(userId),
+  );
+
+export const accessibleRecipe = (userId: string) =>
+  and(isNull(recipe.deletedAt), recipePermission(userId));
+
+// Only the owner edits, deletes, tags or shares a recipe.
+export const ownedRecipe = (userId: string) =>
+  and(isNull(recipe.deletedAt), eq(recipe.userId, userId));
+
+export const visibleCollection = (userId: string) =>
+  or(
+    eq(collection.userId, userId),
+    exists(
+      db
+        .select({ id: collectionShare.householdId })
+        .from(collectionShare)
+        .innerJoin(
+          householdMember,
+          eq(householdMember.householdId, collectionShare.householdId),
+        )
+        .where(
+          and(
+            eq(collectionShare.collectionId, collection.id),
+            eq(householdMember.userId, userId),
+          ),
+        ),
+    ),
+  );
+
+export async function requireHousehold(
+  database: Database,
+  id: string,
   userId: string,
-): PlanningOwner {
-  return scope.kind === "personal"
-    ? { kind: "personal", userId, householdId: null }
-    : { kind: "household", userId: null, householdId: scope.householdId };
-}
-export function ownerColumns(owner: PlanningOwner) {
-  return { userId: owner.userId, householdId: owner.householdId };
-}
-export function scopeFilter(
-  table: { userId: AnyPgColumn; householdId: AnyPgColumn },
-  owner: PlanningOwner,
+  { ownerOnly = false, allowPersonal = true } = {},
 ) {
-  return owner.kind === "personal"
-    ? eq(table.userId, owner.userId)
-    : eq(table.householdId, owner.householdId);
+  const [result] = await database
+    .select()
+    .from(household)
+    .innerJoin(householdMember, eq(householdMember.householdId, household.id))
+    .where(and(eq(household.id, id), eq(householdMember.userId, userId)));
+  if (!result)
+    throw new TRPCError({
+      code: "NOT_FOUND",
+      message: "Household not found or you no longer have access.",
+    });
+  if (!allowPersonal && result.household.personal)
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Just me is your personal household and can't be changed.",
+    });
+  if (ownerOnly && result.household.ownerId !== userId)
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Only the household owner can do this.",
+    });
+  return result.household;
 }
-export function scopeTarget<
-  Table extends { userId: AnyPgColumn; householdId: AnyPgColumn },
->(table: Table, owner: { householdId: string | null }) {
-  return owner.householdId === null ? table.userId : table.householdId;
-}
-export async function lockAccount(tx: Database, userId: string) {
-  await tx
-    .select({ id: user.id })
-    .from(user)
-    .where(eq(user.id, userId))
-    .for("update");
-}
-export async function lockHousehold(tx: Database, id: string) {
-  await tx
+
+// Serialize membership changes, invites, plan and list writes for this household.
+export async function lockHousehold(database: Database, id: string) {
+  await database
     .select({ id: household.id })
     .from(household)
     .where(eq(household.id, id))
     .for("update");
 }
-export async function requireHousehold(
-  tx: Database,
+
+// Omitted household means the caller's personal household.
+export async function resolveHousehold(
+  database: Database,
+  userId: string,
+  householdId: string | undefined,
+  { lock = false } = {},
+) {
+  const id = householdId ?? (await ensurePersonalHousehold(database, userId));
+  if (lock) await lockHousehold(database, id);
+  await requireHousehold(database, id, userId);
+  return id;
+}
+
+export async function requireCollection(
+  database: Database,
   id: string,
   userId: string,
-  ownerOnly = false,
+  { ownerOnly = false, lock = false } = {},
 ) {
-  const [found] = await tx
-    .select({ household })
-    .from(household)
-    .innerJoin(householdMember, eq(householdMember.householdId, household.id))
-    .where(and(eq(household.id, id), eq(householdMember.userId, userId)));
+  const query = database
+    .select()
+    .from(collection)
+    .where(
+      and(
+        eq(collection.id, id),
+        ownerOnly ? eq(collection.userId, userId) : visibleCollection(userId),
+      ),
+    );
+  const [found] = lock ? await query.for("update") : await query;
   if (!found)
     throw new TRPCError({
       code: "NOT_FOUND",
-      message:
-        "This household is no longer available to you. Switch to Personal to continue.",
+      message: "Collection not found or you no longer have access.",
     });
-  if (ownerOnly && found.household.ownerId !== userId)
-    throw new TRPCError({
-      code: "FORBIDDEN",
-      message: "Only the household owner can do this.",
-    });
-  return found.household;
+  return found;
 }
 
-// Membership changes and all shared reads/writes use the same lock. A removed
-// member cannot pass a stale membership check while a change is in flight.
-export function withPlanningScope<T>(
-  userId: string,
-  scope: PlanningScope,
-  action: (tx: Database, owner: PlanningOwner) => Promise<T>,
-) {
-  return db.transaction(async (tx) => {
-    if (scope.kind === "household") {
-      await lockHousehold(tx, scope.householdId);
-      await requireHousehold(tx, scope.householdId, userId);
-    } else await lockAccount(tx, userId);
-    return action(tx, scopeOwner(scope, userId));
-  });
+export const nextCollectionPosition = (collectionId: string) =>
+  sql<number>`(select coalesce(max(${collectionRecipe.position}) + 1, 0) from ${collectionRecipe} where ${collectionRecipe.collectionId} = ${collectionId})`;
+
+// Recipes whose owner deleted their account survive only while shared somewhere.
+export async function deleteOrphanedRecipes(tx: Database, householdId: string) {
+  await tx.execute(sql`
+    delete from recipe r where r.user_id is null
+      and exists (select 1 from recipe_share s where s.recipe_id = r.id and s.household_id = ${householdId})
+      and not exists (select 1 from recipe_share s where s.recipe_id = r.id and s.household_id <> ${householdId})`);
 }

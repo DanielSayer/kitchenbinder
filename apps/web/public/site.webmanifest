@@ -3,8 +3,8 @@
   "short_name": "Kitchenbinder",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#faf7ef",
-  "theme_color": "#faf7ef",
+  "background_color": "#f7f0e3",
+  "theme_color": "#f7f0e3",
   "icons": [
     {
       "src": "/branding/icon-192.png",

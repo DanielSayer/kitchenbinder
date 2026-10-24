@@ -1,39 +1,103 @@
-/* Website brand source of truth. Also imported by the extension popup. */
+/* Website brand source of truth (Pantry, see DESIGN.md).
+   Also imported by the extension popup. */
 :root {
-  --paper: #faf7ef;
-  --ink: #283e32;
-  --green: #527b42;
-  --green-dark: #35532d;
-  --green-hover: #466e38;
-  --orange: #ee8a4b;
-  --line: #dedfce;
-  --muted-ink: #596451;
-  --control-line: #7b876f;
-  --surface-muted: #e9eddf;
-  --success-background: #e9f0dc;
-  --error-background: #ffede1;
-  --error-ink: #803e23;
-  --error-line: #d99a75;
-  --font-sans: "Trebuchet MS", Arial, sans-serif;
-  --font-heading: var(--font-sans);
+  /* Surfaces */
+  --paper: #f7f0e3;
+  --oat: #eee3cf;
+  --card: #fffbf4;
+  --line: #e3d5be;
+  /* Text */
+  --ink: #2b1d14;
+  --ink-2: #6e5a49;
+  --ink-3: #a08b77;
+  /* Tomato = do this. Olive = done / have it. */
+  --tomato: #c2412d;
+  --tomato-press: #a2321f;
+  --tomato-soft: #f6dcd3;
+  --on-tomato: #fff7ee;
+  --olive: #5e6b2f;
+  --olive-soft: #e4e5c8;
+  --butter: #edb94a;
+  --butter-soft: #f8eacb;
+  --butter-ink: #8a5d0a;
+  --plum: #6d3b4e;
+  --plum-soft: #ebdae0;
+  --sage: #3f6b5c;
+  --sage-soft: #dce8e1;
+  --danger: #b3261e;
+  /* Cook mode only */
+  --night: #1e1510;
+  --night-2: #2c2019;
+  --night-line: #45362b;
+  --night-ink: #f7ebdd;
+  --night-ink-2: #bfa994;
+
+  /* Type */
+  --sans:
+    "Nunito Variable", "Nunito", -apple-system, "Segoe UI", Roboto, Arial,
+    sans-serif;
+
+  /* Radius */
+  --r-s: 10px;
+  --r-m: 16px;
+  --r-l: 24px;
+  --r-xl: 32px;
+  --r-pill: 999px;
+
+  /* Elevation, warm-tinted */
+  --e1: 0 1px 2px rgba(60, 35, 20, 0.07), 0 1px 1px rgba(60, 35, 20, 0.04);
+  --e2:
+    0 6px 16px -6px rgba(60, 35, 20, 0.18), 0 2px 4px rgba(60, 35, 20, 0.05);
+  --e3: 0 -10px 40px -10px rgba(60, 35, 20, 0.3);
+  --scrim: rgba(30, 20, 15, 0.38);
+
+  /* Motion */
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --t-press: 120ms;
+  --t-base: 240ms;
+  --t-sheet: 420ms;
+
+  /* Spacing */
+  --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
   --space-5: 20px;
   --space-6: 24px;
-  --control-radius: 12px;
-  --focus-outline: 3px solid var(--ink);
-  --focus-offset: 4px;
+  --space-8: 32px;
+  --tap: 44px;
+
+  /* Legacy names, mapped onto Pantry so older screens re-skin. */
+  --green: var(--tomato);
+  --green-dark: var(--tomato-press);
+  --green-hover: var(--tomato-press);
+  --orange: var(--butter);
+  --muted-ink: var(--ink-2);
+  --control-line: #d4c2a5;
+  --surface-muted: var(--oat);
+  --success-background: var(--olive-soft);
+  --error-background: var(--tomato-soft);
+  --error-ink: var(--tomato-press);
+  --error-line: #e3a897;
+  --font-sans: var(--sans);
+  --font-heading: var(--sans);
+  --control-radius: var(--r-pill);
+  --focus-outline: 3px solid var(--tomato);
+  --focus-offset: 3px;
 }
 
 .brand-icon {
-  width: 38px;
-  height: 38px;
-  object-fit: contain;
+  width: 32px;
+  height: 32px;
+  color: var(--tomato);
 }
 .brand-wordmark {
-  font-size: 25px;
-  font-weight: 800;
-  letter-spacing: -1.2px;
+  font: 800 24px / 1 var(--sans);
+  letter-spacing: -0.6px;
   color: var(--ink);
+}
+.brand-wordmark i {
+  font-weight: 700;
+  color: var(--tomato);
 }

@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { db } from "@prep-sheet/db";
 import { recipeContentSchema } from "@prep-sheet/db/recipe-content";
 import { user } from "@prep-sheet/db/schema/auth";
-import { group, groupMember } from "@prep-sheet/db/schema/group";
+import { household, householdMember } from "@prep-sheet/db/schema/household";
 import { recipeImport } from "@prep-sheet/db/schema/import";
 import { recipe } from "@prep-sheet/db/schema/recipe";
 import { TRPCError } from "@trpc/server";
@@ -28,12 +28,12 @@ import {
   checkRecipeCapacity,
   reserveAiSpend,
 } from "./billing/usage";
+import { accessibleRecipe, type Database } from "./households/access";
 import {
-  accessibleRecipe,
-  type Database,
-  lockGroup,
-  requireGroup,
-} from "./groups/access";
+  applyPlacement,
+  type Placement,
+  preparePlacement,
+} from "./households/placement";
 import {
   type ImportStatus,
   importInputSchema,
@@ -50,14 +50,17 @@ import { persistRecipe } from "./recipes/persist";
 import { checkRecipeUsage } from "./recipes/usage";
 import { availableTags } from "./routers/tags";
 
+// Extension destinations: keep it personal (null) or share with a household.
 export async function importCollections(userId: string) {
-  const groups = await db
-    .select({ id: group.id, name: group.name })
-    .from(group)
-    .innerJoin(groupMember, eq(groupMember.groupId, group.id))
-    .where(eq(groupMember.userId, userId))
-    .orderBy(asc(group.name));
-  return [{ id: null, name: "My recipes" }, ...groups];
+  const households = await db
+    .select({ id: household.id, name: household.name })
+    .from(household)
+    .innerJoin(householdMember, eq(householdMember.householdId, household.id))
+    .where(
+      and(eq(householdMember.userId, userId), eq(household.personal, false)),
+    )
+    .orderBy(asc(household.name));
+  return [{ id: null, name: "My recipes" }, ...households];
 }
 
 export async function recentImports(userId: string) {
@@ -124,8 +127,7 @@ export async function importStatus(
           job.error ?? "Import failed. Start a new attempt to try again.",
       };
     case "saved": {
-      // A recovered link must not expose a recipe after membership loss or deletion.
-      if (job.groupId) await requireGroup(db, job.groupId, userId);
+      // Imported recipes are owned by the importer; a deleted recipe is not exposed.
       const [saved] = await db
         .select({ title: recipe.title })
         .from(recipe)
@@ -147,21 +149,22 @@ export async function importStatus(
   }
 }
 
-type JobInput = {
+type JobInput = Placement & {
   id: string;
   content: string;
   sourceUrl: string | null;
-  groupId: string | null;
   sourceKind: "captured" | "website";
 };
 
 function fingerprintOf(input: JobInput) {
+  // "groupId" keeps fingerprints of imports admitted before households stable.
   return createHash("sha256")
     .update(
       JSON.stringify({
         content: input.content,
         sourceUrl: input.sourceUrl,
-        groupId: input.groupId,
+        groupId: input.householdId,
+        ...(input.collectionId ? { collectionId: input.collectionId } : {}),
         ...(input.sourceKind === "website"
           ? { sourceKind: input.sourceKind }
           : {}),
@@ -218,7 +221,8 @@ async function discardJob(userId: string, input: JobInput) {
     await tx.insert(recipeImport).values({
       id: input.id,
       userId,
-      groupId: input.groupId,
+      householdId: input.householdId,
+      collectionId: input.collectionId,
       fingerprint,
       sourceUrl: input.sourceUrl,
       input: "",
@@ -243,7 +247,8 @@ function websiteInput(value: unknown): JobInput {
   return {
     id: input.id,
     content: input.input,
-    groupId: input.groupId ?? null,
+    householdId: input.householdId ?? null,
+    collectionId: input.collectionId ?? null,
     sourceUrl: null,
     sourceKind: "website",
   };
@@ -285,7 +290,7 @@ async function submitJob(userId: string, input: JobInput) {
         });
       return;
     }
-    if (input.groupId) await requireGroup(tx, input.groupId, userId);
+    await preparePlacement(tx, userId, input, { lock: false });
     await checkRecipeUsage(tx, userId);
     await checkRecipeCapacity(tx, userId);
     const usageBucket = await checkAiAllowance(tx, userId);
@@ -334,7 +339,8 @@ async function submitJob(userId: string, input: JobInput) {
     await tx.insert(recipeImport).values({
       id: input.id,
       userId,
-      groupId: input.groupId,
+      householdId: input.householdId,
+      collectionId: input.collectionId,
       input: input.content,
       sourceKind: input.sourceKind,
       sourceUrl: input.sourceUrl,
@@ -557,7 +563,7 @@ export async function processNextImport(
   let generationStarted = false;
   let saveClaim: SaveClaim | undefined;
   try {
-    if (job.groupId) await requireGroup(db, job.groupId, job.userId);
+    await preparePlacement(db, job.userId, job, { lock: false });
     const prepared =
       job.sourceKind === "website"
         ? await prepareRecipeInput(
@@ -566,7 +572,7 @@ export async function processNextImport(
             job.id,
           )
         : { content: job.input, sourceUrl: job.sourceUrl };
-    const tags = await availableTags(job.userId, job.groupId);
+    const tags = await availableTags(job.userId);
     // A missing provider key must fail before reserving spend or consuming AI usage.
     ensureProviderReady();
     recipeSystemPrompt(prepared.content, tags, prepared.sourceUrl);
@@ -716,24 +722,22 @@ async function saveReady(claim: SaveClaim) {
           failure: { type: "InvalidCheckpoint" },
         } as const;
       }
-      if (job.groupId) {
-        await lockGroup(tx, job.groupId);
-        try {
-          await requireGroup(tx, job.groupId, job.userId);
-        } catch (error) {
-          await tx
-            .update(recipeImport)
-            .set({
-              state: "failed",
-              saveClaimedAt: null,
-              workerToken: null,
-              generated: null,
-              error:
-                "Group access changed. Start a new attempt and choose a collection you can write to.",
-            })
-            .where(eq(recipeImport.id, id));
-          return { kind: "failed", failure: importFailure(error) } as const;
-        }
+      let placement: Awaited<ReturnType<typeof preparePlacement>>;
+      try {
+        placement = await preparePlacement(tx, job.userId, job);
+      } catch (error) {
+        await tx
+          .update(recipeImport)
+          .set({
+            state: "failed",
+            saveClaimedAt: null,
+            workerToken: null,
+            generated: null,
+            error:
+              "Household or collection access changed. Start a new attempt and choose a destination you can use.",
+          })
+          .where(eq(recipeImport.id, id));
+        return { kind: "failed", failure: importFailure(error) } as const;
       }
       const [existing] = await tx
         .select({ id: recipe.id })
@@ -760,7 +764,6 @@ async function saveReady(claim: SaveClaim) {
         {
           id,
           userId: job.userId,
-          groupId: job.groupId,
           title: checkpoint.data.content.title,
           content: checkpoint.data.content,
           sourceUrl: job.sourceUrl,
@@ -768,6 +771,7 @@ async function saveReady(claim: SaveClaim) {
         },
         checkpoint.data.tagIds,
       );
+      if (inserted) await applyPlacement(tx, id, placement);
       await tx
         .update(recipeImport)
         .set({

@@ -1,10 +1,21 @@
 import { Sun } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-export function KeepAwake() {
-  const supported = typeof navigator !== "undefined" && "wakeLock" in navigator;
-  const [enabled, setEnabled] = useState(false);
-  const [status, setStatus] = useState("off");
+export type WakeLockStatus = "off" | "pending" | "active" | "paused" | "error";
+
+export function wakeLockSupported() {
+  return typeof navigator !== "undefined" && "wakeLock" in navigator;
+}
+
+/**
+ * Hold a screen wake lock while `enabled`, re-acquiring it when the page
+ * becomes visible again. Calls `onError` (once per failure) if denied.
+ */
+export function useWakeLock(enabled: boolean, onError?: () => void) {
+  const supported = wakeLockSupported();
+  const [status, setStatus] = useState<WakeLockStatus>("off");
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
 
   useEffect(() => {
     if (!enabled || !supported) return;
@@ -36,7 +47,7 @@ export function KeepAwake() {
       } catch {
         if (!disposed) {
           setStatus("error");
-          setEnabled(false);
+          onErrorRef.current?.();
         }
       } finally {
         pending = false;
@@ -50,6 +61,15 @@ export function KeepAwake() {
       void lock?.release().catch(() => {});
     };
   }, [enabled, supported]);
+
+  return { supported, status, setStatus };
+}
+
+export function KeepAwake() {
+  const [enabled, setEnabled] = useState(false);
+  const { supported, status, setStatus } = useWakeLock(enabled, () =>
+    setEnabled(false),
+  );
 
   return (
     <>

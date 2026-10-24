@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Kitchenbinder</title>
+  <rect width="64" height="64" rx="14" fill="#F7F0E3"/>
+  <rect x=".5" y=".5" width="63" height="63" rx="14" fill="none" stroke="#E3D5BE"/>
+  <g transform="translate(1.9 4.05) scale(0.86)">
+    <rect x="14" y="5" width="9" height="40" rx="4.5" fill="#C2412D"/>
+    <circle cx="36" cy="40" r="15.5" fill="none" stroke="#C2412D" stroke-width="9"/>
+    <circle cx="36" cy="40" r="4" fill="#2B1D14"/>
+  </g>
+</svg>

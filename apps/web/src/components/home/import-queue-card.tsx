@@ -1,15 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import {
-  ArrowRight,
-  Check,
-  FileText,
-  LoaderCircle,
-  Pencil,
-  RefreshCw,
-  X,
-} from "lucide-react";
+import { AlertCircle, Check, Pencil, RefreshCw, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { RecipeCover } from "@/components/pantry";
 import { useTRPC } from "@/utils/trpc";
 import { ErrorNotice } from "../feedback";
 import { OrganiseDialog } from "../recipes/organise-dialog";
@@ -20,11 +12,14 @@ export function ImportQueueCard({
   collectionName,
   canEdit,
   onRemove,
+  onOpen,
 }: {
   request: PendingImport;
   collectionName: string;
   canEdit: boolean;
   onRemove: (id: string, restoreInput?: string) => boolean;
+  /** Opens the ready-to-save sheet for the saved recipe. */
+  onOpen: (recipeId: string) => void;
 }) {
   const trpc = useTRPC();
   const client = useQueryClient();
@@ -70,6 +65,12 @@ export function ImportQueueCard({
   const rejected = admissionRejected && !result;
   const busy = !terminal && !rejected;
   const saved = result?.kind === "saved" ? result : undefined;
+  const recipe = useQuery(
+    trpc.recipes.get.queryOptions(
+      { id: saved?.recipeId ?? "" },
+      { enabled: !!saved, meta: { errorToast: false } },
+    ),
+  );
 
   useEffect(() => {
     if (!saved || completed.current) return;
@@ -89,8 +90,22 @@ export function ImportQueueCard({
           : !result && create.isPending
             ? "Sending your request. You can keep adding recipes."
             : "Creating your recipe. You can refresh or return later to check progress.";
+  // Rough stage position for the progress bar.
+  const stage =
+    result?.kind === "processing"
+      ? result.stage === "fetching"
+        ? 0.3
+        : result.stage === "saving"
+          ? 0.9
+          : 0.6
+      : result?.kind === "queued"
+        ? 0.15
+        : 0.06;
+  const ingredients = recipe.data?.content.ingredients.length;
   const label = saved
-    ? "Saved"
+    ? ingredients
+      ? `Ready · ${ingredients} ingredients`
+      : "Ready"
     : result?.kind === "failed"
       ? "Failed"
       : rejected
@@ -113,6 +128,8 @@ export function ImportQueueCard({
       : undefined);
   const summary = request.input.replace(/\s+/g, " ");
   const excerpt = summary.length > 110 ? `${summary.slice(0, 110)}…` : summary;
+  const title = saved?.title ?? excerpt;
+  const failed = result?.kind === "failed" || rejected;
 
   async function editOrCancel(edit: boolean) {
     if (edit && !canEdit) return;
@@ -132,118 +149,113 @@ export function ImportQueueCard({
 
   return (
     <article
-      className={
-        saved
-          ? "import-queue-card import-queue-card-saved"
-          : "import-queue-card"
-      }
+      className="qcard"
+      data-state={saved ? "ready" : failed ? "failed" : "busy"}
       aria-label={`Recipe request: ${excerpt}`}
     >
-      <div className="import-card-heading">
-        <h3>{saved?.title ?? excerpt}</h3>
-        <span className="import-card-state" role="status">
-          {saved ? (
-            <Check size={15} aria-hidden="true" />
-          ) : busy ? (
-            <LoaderCircle size={15} className="spin" aria-hidden="true" />
-          ) : null}
-          {label}
-        </span>
-      </div>
-      {saved && <p className="import-card-source">{excerpt}</p>}
-      <p className="import-card-destination">{collectionName}</p>
-      {busy && (
-        <div className="import-card-progress" role="status">
-          <span className="progress-track" aria-hidden="true">
-            <span />
+      <div className="qcard-main">
+        {saved ? (
+          <RecipeCover
+            id={saved.recipeId}
+            title={saved.title}
+            size="list"
+            className="qcard-cover"
+          />
+        ) : failed ? (
+          <span className="qcard-thumb qcard-thumb-failed" aria-hidden="true">
+            <AlertCircle size={22} />
           </span>
-          <p>{progress}</p>
-        </div>
-      )}
-      {saved && (
-        <p className="import-card-success" role="status">
-          Added to your collection!
-        </p>
-      )}
-      <ErrorNotice message={error} />
-      <div className="import-card-actions">
-        <button
-          type="button"
-          className="import-card-action import-card-input"
-          ref={viewInput}
-          onClick={() => setShowInput(true)}
-        >
-          <FileText size={14} aria-hidden="true" /> View input
-        </button>
-        <div className="import-card-next-actions">
-          {saved && (
-            <>
-              <Link
-                className="import-card-action import-card-open"
-                to="/recipes/$recipeId"
-                params={{ recipeId: saved.recipeId }}
-              >
-                Open recipe <ArrowRight size={17} aria-hidden="true" />
-              </Link>
-              <button
-                type="button"
-                className="import-card-action import-card-dismiss"
-                aria-label="Dismiss"
-                title="Dismiss request"
-                onClick={() => onRemove(request.id)}
-              >
-                <X size={16} aria-hidden="true" />
-              </button>
-            </>
+        ) : (
+          <span className="qcard-thumb" aria-hidden="true" />
+        )}
+        <div className="qcard-body">
+          <h3>{title}</h3>
+          <p className="qcard-state" role="status">
+            {saved ? (
+              <span className="qcard-ready" aria-hidden="true">
+                <Check size={10} strokeWidth={3} />
+              </span>
+            ) : busy ? (
+              <span className="qcard-pulse" aria-hidden="true" />
+            ) : null}
+            {label}
+            {!saved && collectionName !== "Just me" && (
+              <span className="qcard-destination">{collectionName}</span>
+            )}
+          </p>
+          {busy && (
+            <span className="qcard-bar" aria-hidden="true">
+              <i style={{ width: `${Math.round(stage * 100)}%` }} />
+            </span>
           )}
+        </div>
+        {saved && (
+          <button
+            type="button"
+            className="qcard-open"
+            aria-label={`Open ${saved.title}`}
+            onClick={() => onOpen(saved.recipeId)}
+          >
+            Open
+          </button>
+        )}
+      </div>
+      {busy && <p className="qcard-hint">{progress}</p>}
+      <ErrorNotice message={error} />
+      {!saved && (
+        <div className="qcard-actions">
+          <button
+            type="button"
+            className="qcard-link"
+            ref={viewInput}
+            onClick={() => setShowInput(true)}
+          >
+            View input
+          </button>
           {busy && (create.isError || status.isError) && !admissionRejected && (
             <button
               type="button"
-              className="import-card-action import-card-open"
+              className="qcard-action"
               disabled={create.isPending || status.isFetching}
               onClick={() =>
                 create.isError ? create.mutate(request) : void status.refetch()
               }
             >
-              <RefreshCw size={17} aria-hidden="true" /> Check again
+              <RefreshCw size={15} aria-hidden="true" /> Check again
             </button>
           )}
-          {(result?.kind === "failed" || rejected) && (
+          {failed && (
             <button
               type="button"
-              className="import-card-action import-card-open"
+              className="qcard-action"
               disabled={discard.isPending || !canEdit}
               onClick={() => void editOrCancel(true)}
             >
-              <Pencil size={17} aria-hidden="true" />{" "}
+              <Pencil size={15} aria-hidden="true" />{" "}
               {rejected ? "Edit and try again" : "Edit and retry"}
             </button>
           )}
-          {(result?.kind === "failed" || create.isError) && !saved && (
+          {(result?.kind === "failed" || create.isError) && (
             <button
               type="button"
-              className={
-                busy
-                  ? "import-card-action"
-                  : "import-card-action import-card-dismiss"
-              }
+              className="qcard-action qcard-dismiss"
               aria-label={busy ? "Cancel request" : "Dismiss"}
               title={busy ? "Cancel request" : "Dismiss request"}
               disabled={discard.isPending}
               onClick={() => void editOrCancel(false)}
             >
-              <X size={17} aria-hidden="true" /> {busy && "Cancel request"}
+              <X size={15} aria-hidden="true" /> {busy && "Cancel request"}
             </button>
           )}
         </div>
-      </div>
-      {(result?.kind === "failed" || rejected) && !canEdit && (
-        <p className="import-card-note">
+      )}
+      {failed && !canEdit && (
+        <p className="qcard-hint">
           Clear your current input or finish manual entry to edit this request.
         </p>
       )}
       {result?.kind === "failed" && (
-        <p className="import-card-note">
+        <p className="qcard-hint">
           Retrying uses your AI allowance if generation starts.
         </p>
       )}

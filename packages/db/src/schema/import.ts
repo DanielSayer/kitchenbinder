@@ -18,8 +18,10 @@ export const recipeImport = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
-    // Keep the destination if a group is deleted. Never silently save personally.
-    groupId: uuid("group_id"),
+    // Keep destinations if a household or collection is deleted. Never silently
+    // save without the requested share/collection placement.
+    householdId: uuid("household_id"),
+    collectionId: uuid("collection_id"),
     fingerprint: text("fingerprint").notNull(),
     input: text("input").notNull(),
     sourceUrl: text("source_url"),

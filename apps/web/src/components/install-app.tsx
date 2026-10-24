@@ -218,6 +218,33 @@ export function InstallMenuItem() {
   );
 }
 
+/** Plain-button install action for lists (e.g. the You screen). */
+export function InstallButton({
+  className,
+  children,
+}: {
+  className?: string;
+  children: ReactNode;
+}) {
+  const { state, install } = useInstallApp();
+  if (
+    state.kind === "checking" ||
+    state.kind === "installed" ||
+    state.kind === "accepted"
+  )
+    return null;
+  return (
+    <button
+      type="button"
+      className={className}
+      onClick={install}
+      disabled={state.kind === "prompting"}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function InstallSuggestion() {
   const { state, suggested, install, dismiss } = useInstallApp();
   if (

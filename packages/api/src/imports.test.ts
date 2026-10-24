@@ -4,9 +4,9 @@ import { db } from "@prep-sheet/db";
 import { user } from "@prep-sheet/db/schema/auth";
 import { aiSpend, billingAccount } from "@prep-sheet/db/schema/billing";
 import { extensionCredential } from "@prep-sheet/db/schema/extension";
-import { group, groupMember } from "@prep-sheet/db/schema/group";
+import { household, householdMember } from "@prep-sheet/db/schema/household";
 import { extensionRate, recipeImport } from "@prep-sheet/db/schema/import";
-import { recipe } from "@prep-sheet/db/schema/recipe";
+import { recipe, recipeShare } from "@prep-sheet/db/schema/recipe";
 import { recipeTag, tag } from "@prep-sheet/db/schema/tag";
 import { and, eq, inArray } from "drizzle-orm";
 import {
@@ -32,7 +32,7 @@ import { checkRecipeUsage } from "./recipes/usage";
 
 const owner = randomUUID();
 const other = randomUUID();
-const groupId = randomUUID();
+const householdId = randomUUID();
 const token = `pse_${randomBytes(32).toString("base64url")}`;
 const credentialId = randomUUID();
 const origin = "chrome-extension://kjmnecmcpdklkaaiklbfoialfdiamabj";
@@ -41,7 +41,7 @@ const input = () => ({
   content:
     "Soup. Ingredients: 1 onion, 500 ml water. Instructions: Chop the onion. Simmer in water for 20 minutes and serve.",
   sourceUrl: "https://recipes.example/soup",
-  groupId: null,
+  householdId: null,
 });
 const generated = {
   content: sampleRecipe,
@@ -89,9 +89,9 @@ describe("durable extension imports with PostgreSQL", () => {
       })),
     );
     await db
-      .insert(group)
-      .values({ id: groupId, name: "Shared recipes", ownerId: owner });
-    await db.insert(groupMember).values({ groupId, userId: owner });
+      .insert(household)
+      .values({ id: householdId, name: "Shared recipes", ownerId: owner });
+    await db.insert(householdMember).values({ householdId, userId: owner });
     await db.insert(extensionCredential).values({
       id: credentialId,
       userId: owner,
@@ -111,7 +111,9 @@ describe("durable extension imports with PostgreSQL", () => {
           .where(inArray(recipeImport.userId, [owner, other])),
       ),
     );
-    await db.delete(group).where(eq(group.id, groupId));
+    await db
+      .delete(household)
+      .where(inArray(household.ownerId, [owner, other]));
     await db.delete(recipe).where(inArray(recipe.userId, [owner, other]));
     await db.delete(user).where(inArray(user.id, [owner, other]));
     await db.$client.end();
@@ -191,17 +193,21 @@ describe("durable extension imports with PostgreSQL", () => {
   it("lists only writable collections and rejects non-members", async () => {
     expect(await importCollections(owner)).toEqual([
       { id: null, name: "My recipes" },
-      { id: groupId, name: "Shared recipes" },
+      { id: householdId, name: "Shared recipes" },
     ]);
     expect(await importCollections(other)).toEqual([
       { id: null, name: "My recipes" },
     ]);
     await expect(
-      submitImport(other, { ...input(), groupId }),
+      submitImport(other, { ...input(), householdId }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    // Older extension builds send the household as groupId.
+    await expect(
+      submitImport(other, { ...input(), groupId: householdId }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
-  it("imports through the authenticated endpoint and recovers a group recipe privately", async () => {
-    const item = { ...input(), groupId };
+  it("imports through the authenticated endpoint, shares with the household and keeps the recipe personal", async () => {
+    const item = { ...input(), householdId };
     const response = await handleExtensionRequest(request("import", item));
     expect(response.status).toBe(202);
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe(origin);
@@ -221,21 +227,30 @@ describe("durable extension imports with PostgreSQL", () => {
       .from(recipe)
       .where(eq(recipe.id, item.id));
     expect(saved).toMatchObject({
-      groupId,
       userId: owner,
       origin: "imported",
       sourceUrl: item.sourceUrl,
     });
+    expect(
+      await db
+        .select({ householdId: recipeShare.householdId })
+        .from(recipeShare)
+        .where(eq(recipeShare.recipeId, item.id)),
+    ).toEqual([{ householdId }]);
+    // The importer owns the recipe, so leaving the household keeps it.
     await db
-      .delete(groupMember)
+      .delete(householdMember)
       .where(
-        and(eq(groupMember.groupId, groupId), eq(groupMember.userId, owner)),
+        and(
+          eq(householdMember.householdId, householdId),
+          eq(householdMember.userId, owner),
+        ),
       );
     expect(
       (await handleExtensionRequest(request("import-status", { id: item.id })))
         .status,
-    ).toBe(404);
-    await db.insert(groupMember).values({ groupId, userId: owner });
+    ).toBe(200);
+    await db.insert(householdMember).values({ householdId, userId: owner });
   });
   it("concurrent retries produce one AI call and one imported recipe with valid tags", async () => {
     const item = input();
@@ -277,7 +292,6 @@ describe("durable extension imports with PostgreSQL", () => {
       .where(eq(recipe.id, item.id));
     expect(saved).toMatchObject({
       userId: owner,
-      groupId: null,
       sourceUrl: item.sourceUrl,
       origin: "imported",
       content: sampleRecipe,
@@ -296,13 +310,16 @@ describe("durable extension imports with PostgreSQL", () => {
     expect(generate).toHaveBeenCalledTimes(1);
   });
   it("rechecks membership immediately before saving", async () => {
-    const item = { ...input(), groupId };
+    const item = { ...input(), householdId };
     await submitImport(owner, item);
     const generate = vi.fn().mockImplementation(async () => {
       await db
-        .delete(groupMember)
+        .delete(householdMember)
         .where(
-          and(eq(groupMember.groupId, groupId), eq(groupMember.userId, owner)),
+          and(
+            eq(householdMember.householdId, householdId),
+            eq(householdMember.userId, owner),
+          ),
         );
       return generated;
     });
@@ -311,7 +328,7 @@ describe("durable extension imports with PostgreSQL", () => {
     expect(
       await db.select().from(recipe).where(eq(recipe.id, item.id)),
     ).toHaveLength(0);
-    await db.insert(groupMember).values({ groupId, userId: owner });
+    await db.insert(householdMember).values({ householdId, userId: owner });
   });
   it("recovers checkpointed output without AI, and never replays an interrupted AI call", async () => {
     const ready = input();

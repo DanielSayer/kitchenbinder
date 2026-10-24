@@ -5,7 +5,7 @@ import { recipe } from "@prep-sheet/db/schema/recipe";
 import { providerConfiguration } from "@prep-sheet/env/server";
 import { TRPCError } from "@trpc/server";
 import { and, count, eq, gte, inArray, isNull, sql, sum } from "drizzle-orm";
-import type { Database } from "../groups/access";
+import type { Database } from "../households/access";
 import { allowance, pricing } from "./policy";
 
 export async function lockAccount(tx: Database, userId: string) {

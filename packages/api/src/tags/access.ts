@@ -1,25 +1,17 @@
 import { tag } from "@prep-sheet/db/schema/tag";
-import { and, eq, isNull, or } from "drizzle-orm";
+import { eq, isNull, or } from "drizzle-orm";
 import { lockAccount } from "../billing/usage";
-import { type Database, lockGroup, requireGroup } from "../groups/access";
+import type { Database } from "../households/access";
 
-export const builtInTag = () => and(isNull(tag.userId), isNull(tag.groupId));
+export const builtInTag = () => isNull(tag.userId);
 
-export const customTagScope = (userId: string, groupId: string | null) =>
-  groupId ? eq(tag.groupId, groupId) : eq(tag.userId, userId);
+// Custom tags are personal to the recipe owner.
+export const customTagScope = (userId: string) => eq(tag.userId, userId);
 
-export const collectionTagScope = (userId: string, groupId: string | null) =>
-  or(builtInTag(), customTagScope(userId, groupId));
+export const availableTagScope = (userId: string) =>
+  or(builtInTag(), customTagScope(userId));
 
-export async function lockTagCollection(
-  database: Database,
-  userId: string,
-  groupId: string | null,
-) {
-  if (groupId) {
-    await lockGroup(database, groupId);
-    await requireGroup(database, groupId, userId);
-  } else {
-    await lockAccount(database, userId);
-  }
+// The account lock serializes tag writes, name checks and admission.
+export async function lockTags(database: Database, userId: string) {
+  await lockAccount(database, userId);
 }

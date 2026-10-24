@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { ErrorNotice } from "@/components/feedback";
 import { type SignInProvider, SocialSignIn } from "@/components/social-sign-in";
+import { WelcomeArt, WelcomeScreen } from "@/components/welcome";
 import { authClient } from "@/lib/auth-client";
 
 export const Route = createFileRoute("/login")({
@@ -61,39 +62,36 @@ function Login() {
   }
 
   return (
-    <main id="main-content" className="login-page">
-      <div className="login-card">
-        <span className="login-illustration">
-          <img src="/branding/icon-192.png" alt="" width={96} height={96} />
-        </span>
-
-        <h1>Your recipe collection</h1>
-
-        <p>
-          {billing
-            ? "Sign in to choose Pro and review your free trial eligibility."
-            : "Sign in to save and organise recipes."}
-        </p>
-
-        <SocialSignIn
-          pending={pending}
-          onSignIn={(provider) => void signIn(provider)}
-        />
-
-        <ErrorNotice message={error} />
-
-        <Link to="/" className="text-button">
-          Back to the kitchen
-        </Link>
-        <div className="help-actions">
-          <Link to="/privacy" className="text-button">
-            Privacy
-          </Link>
-          <Link to="/support" className="text-button">
-            Need help?
-          </Link>
-        </div>
-      </div>
-    </main>
+    <WelcomeScreen
+      art={<WelcomeArt />}
+      title="Every recipe,"
+      accent="one tidy binder."
+      lead={
+        billing
+          ? "Sign in to choose Pro and check if you can start a free trial."
+          : "Paste a link, some text, or just “nan’s pie”. We’ll do the tidying."
+      }
+      footer={
+        <>
+          <p className="welcome-fine">
+            Free to start · No passwords to remember
+          </p>
+          <div className="welcome-links">
+            <Link to="/privacy" className="text-button">
+              Privacy
+            </Link>
+            <Link to="/support" className="text-button">
+              Need help?
+            </Link>
+          </div>
+        </>
+      }
+    >
+      <ErrorNotice message={error} />
+      <SocialSignIn
+        pending={pending}
+        onSignIn={(provider) => void signIn(provider)}
+      />
+    </WelcomeScreen>
   );
 }

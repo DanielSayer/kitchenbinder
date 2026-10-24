@@ -3,7 +3,8 @@ import http from "node:http";
 import { db } from "@prep-sheet/db";
 import { user } from "@prep-sheet/db/schema/auth";
 import { aiSpend, billingAccount } from "@prep-sheet/db/schema/billing";
-import { group, groupMember } from "@prep-sheet/db/schema/group";
+import { collection, collectionRecipe } from "@prep-sheet/db/schema/collection";
+import { household, householdMember } from "@prep-sheet/db/schema/household";
 import { recipeImport } from "@prep-sheet/db/schema/import";
 import { recipe } from "@prep-sheet/db/schema/recipe";
 import { eq, inArray } from "drizzle-orm";
@@ -35,7 +36,7 @@ const account = randomUUID();
 const input = () => ({
   id: randomUUID(),
   input: "Make lemon pasta",
-  groupId: null,
+  householdId: null,
 });
 const output = {
   content: sampleRecipe,
@@ -86,7 +87,7 @@ describe("website durable imports", () => {
         ),
       );
     await db.delete(recipe).where(eq(recipe.userId, account));
-    await db.delete(group).where(eq(group.ownerId, account));
+    await db.delete(household).where(eq(household.ownerId, account));
     await db.delete(user).where(eq(user.id, account));
     await db.$client.end();
   });
@@ -166,19 +167,41 @@ describe("website durable imports", () => {
       .where(eq(recipeImport.id, item.id));
     expect(job?.startedAt).toBeNull();
   });
-  it("hides completed recipe titles and links after group access is lost", async () => {
-    const groupId = randomUUID();
+  it("shares and collects on save, keeps owned imports after leaving and hides deleted recipes", async () => {
+    const householdId = randomUUID();
+    const collectionId = randomUUID();
     await db
-      .insert(group)
-      .values({ id: groupId, name: "Import collection", ownerId: account });
-    await db.insert(groupMember).values({ groupId, userId: account });
-    const item = { ...input(), groupId };
+      .insert(household)
+      .values({ id: householdId, name: "Import household", ownerId: account });
+    await db.insert(householdMember).values({ householdId, userId: account });
+    await db
+      .insert(collection)
+      .values({ id: collectionId, userId: account, name: "Weeknights" });
+    const item = { ...input(), householdId, collectionId };
     await submitWebsiteImport(account, item);
     await processNextImport(vi.fn().mockResolvedValue(output));
     expect(await recentImports(account)).toMatchObject([
       { recipeId: item.id, title: sampleRecipe.title },
     ]);
-    await db.delete(groupMember).where(eq(groupMember.groupId, groupId));
+    expect(
+      await db
+        .select({ recipeId: collectionRecipe.recipeId })
+        .from(collectionRecipe)
+        .where(eq(collectionRecipe.collectionId, collectionId)),
+    ).toEqual([{ recipeId: item.id }]);
+    await db
+      .delete(householdMember)
+      .where(eq(householdMember.householdId, householdId));
+    expect(await recentImports(account)).toMatchObject([
+      { recipeId: item.id, title: sampleRecipe.title },
+    ]);
+    await db
+      .update(recipe)
+      .set({
+        deletedAt: new Date(),
+        expiresAt: new Date(Date.now() + 86400000),
+      })
+      .where(eq(recipe.id, item.id));
     expect(await recentImports(account)).toMatchObject([
       { state: "saved", recipeId: null, title: null },
     ]);

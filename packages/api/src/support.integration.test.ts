@@ -2,9 +2,11 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { db } from "@prep-sheet/db";
+import { ensurePersonalHousehold } from "@prep-sheet/db/households";
 import { user } from "@prep-sheet/db/schema/auth";
-import { group, groupMember } from "@prep-sheet/db/schema/group";
-import { recipe } from "@prep-sheet/db/schema/recipe";
+import { collection } from "@prep-sheet/db/schema/collection";
+import { household, householdMember } from "@prep-sheet/db/schema/household";
+import { recipe, recipeShare } from "@prep-sheet/db/schema/recipe";
 import { accountDeletionRequest } from "@prep-sheet/db/schema/support";
 import { eq, inArray } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -16,9 +18,11 @@ import { listSupportQueue } from "./support-operations";
 
 const ownerId = randomUUID();
 const otherId = randomUUID();
-const groupId = randomUUID();
+const householdId = randomUUID();
+const emptyId = randomUUID();
 const personalId = randomUUID();
 const sharedId = randomUUID();
+const emptySharedId = randomUUID();
 function operatorCommand(...args: string[]) {
   return execFileSync(
     process.execPath,
@@ -68,13 +72,29 @@ describe("account support with PostgreSQL", () => {
         email: `${id}@example.test`,
       })),
     );
-    await db
-      .insert(group)
-      .values({ id: groupId, ownerId, name: "Support test group" });
-    await db.insert(groupMember).values([
-      { groupId, userId: ownerId },
-      { groupId, userId: otherId },
+    await db.insert(household).values([
+      {
+        id: householdId,
+        ownerId,
+        name: "Support test household",
+        createdAt: new Date("2026-01-01T00:00:00Z"),
+      },
+      {
+        id: emptyId,
+        ownerId,
+        name: "Only me",
+        createdAt: new Date("2026-01-02T00:00:00Z"),
+      },
     ]);
+    await db.insert(householdMember).values([
+      { householdId, userId: ownerId },
+      { householdId, userId: otherId },
+      { householdId: emptyId, userId: ownerId },
+    ]);
+    await ensurePersonalHousehold(db, ownerId);
+    await db
+      .insert(collection)
+      .values({ id: randomUUID(), userId: ownerId, name: "Favourites" });
     await db.insert(recipe).values([
       {
         id: personalId,
@@ -86,16 +106,30 @@ describe("account support with PostgreSQL", () => {
       {
         id: sharedId,
         userId: ownerId,
-        groupId,
         title: "Shared",
         origin: "manual",
         content: sampleRecipe,
       },
+      {
+        id: emptySharedId,
+        userId: ownerId,
+        title: "Shared with nobody else",
+        origin: "manual",
+        content: sampleRecipe,
+      },
+    ]);
+    await db.insert(recipeShare).values([
+      { recipeId: sharedId, householdId },
+      { recipeId: emptySharedId, householdId: emptyId },
     ]);
   });
   afterAll(async () => {
-    await db.delete(group).where(eq(group.id, groupId));
-    await db.delete(recipe).where(eq(recipe.id, personalId));
+    await db
+      .delete(household)
+      .where(inArray(household.ownerId, [ownerId, otherId]));
+    await db
+      .delete(recipe)
+      .where(inArray(recipe.id, [personalId, sharedId, emptySharedId]));
     await db.delete(user).where(inArray(user.id, [ownerId, otherId]));
     await db.$client.end();
   });
@@ -151,7 +185,14 @@ describe("account support with PostgreSQL", () => {
     ).toHaveLength(1);
     await other.cancelDeletion();
     const current = await owner.deletion();
-    expect(current.ownedGroups).toHaveLength(1);
+    expect(current.ownedHouseholds).toEqual([
+      {
+        id: householdId,
+        name: "Support test household",
+        transferTo: { id: otherId, name: "Support test" },
+      },
+      { id: emptyId, name: "Only me", transferTo: null },
+    ]);
     expect(current.request).not.toBeNull();
     await owner.cancelDeletion();
     expect((await owner.deletion()).request).toBeNull();
@@ -160,20 +201,10 @@ describe("account support with PostgreSQL", () => {
       "No pending",
     );
   });
-  it("blocks group owners, then removes private data while preserving shared contributions", async () => {
+  it("transfers or deletes owned households, removes private data and preserves shared recipes", async () => {
     await owner.requestDeletion({ confirmation: "DELETE" });
     const { request } = await owner.deletion();
     if (!request) throw new Error("Missing request");
-    await expect(completeAccountDeletion(request.id)).rejects.toThrow(
-      "still owns groups",
-    );
-    expect(
-      await db.select().from(recipe).where(eq(recipe.id, personalId)),
-    ).toHaveLength(1);
-    await db
-      .update(group)
-      .set({ ownerId: otherId })
-      .where(eq(group.id, groupId));
     expect(
       operatorCommand("complete-deletion", request.id, "--confirm"),
     ).toContain(request.id);
@@ -188,7 +219,27 @@ describe("account support with PostgreSQL", () => {
       .from(recipe)
       .where(eq(recipe.id, sharedId));
     expect(shared?.userId).toBeNull();
-    expect(shared?.groupId).toBe(groupId);
+    expect(
+      await db
+        .select({ householdId: recipeShare.householdId })
+        .from(recipeShare)
+        .where(eq(recipeShare.recipeId, sharedId)),
+    ).toEqual([{ householdId }]);
+    expect(
+      await db.select().from(recipe).where(eq(recipe.id, emptySharedId)),
+    ).toHaveLength(0);
+    expect(
+      await db
+        .select({ id: household.id, ownerId: household.ownerId })
+        .from(household)
+        .where(inArray(household.id, [householdId, emptyId])),
+    ).toEqual([{ id: householdId, ownerId: otherId }]);
+    expect(
+      await db.select().from(household).where(eq(household.ownerId, ownerId)),
+    ).toHaveLength(0);
+    expect(
+      await db.select().from(collection).where(eq(collection.userId, ownerId)),
+    ).toHaveLength(0);
     await expect(completeAccountDeletion(request.id)).rejects.toThrow(
       "No pending",
     );

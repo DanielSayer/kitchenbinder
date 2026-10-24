@@ -61,3 +61,13 @@ export function sortableRecipeMinutes({
   if (prepMinutes === null || cookMinutes === null) return null;
   return prepMinutes + cookMinutes;
 }
+
+/** Compact time for cards and facts: "45 min", "1 h 10", or null when unknown. */
+export function shortRecipeTime(times: RecipeTimes) {
+  const minutes = sortableRecipeMinutes(times);
+  if (minutes === null) return null;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (!hours) return `${rest} min`;
+  return rest ? `${hours} h ${rest}` : `${hours} h`;
+}

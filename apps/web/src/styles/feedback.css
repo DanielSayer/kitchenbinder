@@ -36,7 +36,7 @@
   gap: 6px;
   text-decoration: underline;
   text-underline-offset: 3px;
-  font-weight: 800;
+  font-weight: 700;
   border: 0;
   background: none;
   font-size: 14px;
@@ -48,7 +48,7 @@
   gap: 14px;
   margin-top: 20px;
   background: var(--success-background);
-  border: 1.5px solid #8d9f70;
+  border: 1.5px solid var(--olive);
   border-radius: 12px;
   padding: 18px;
 }
@@ -63,7 +63,7 @@
   flex-shrink: 0;
 }
 .save-success strong {
-  font-weight: 900;
+  font-weight: 700;
 }
 .save-success p {
   font-size: 13px;
@@ -79,7 +79,7 @@
 }
 .progress-track {
   display: block;
-  background: #e0e6d3;
+  background: var(--oat);
   height: 5px;
   overflow: hidden;
   border-radius: 8px;

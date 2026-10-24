@@ -2,12 +2,18 @@ import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { db } from "@prep-sheet/db";
 import { user } from "@prep-sheet/db/schema/auth";
-import { group, groupMember } from "@prep-sheet/db/schema/group";
+import {
+  collection,
+  collectionRecipe,
+  collectionShare,
+} from "@prep-sheet/db/schema/collection";
+import { household, householdMember } from "@prep-sheet/db/schema/household";
 import {
   recipe,
   recipeCooking,
   recipeFavourite,
   recipeRating,
+  recipeShare,
 } from "@prep-sheet/db/schema/recipe";
 import { recipeTag, tag } from "@prep-sheet/db/schema/tag";
 import { eq, inArray } from "drizzle-orm";
@@ -22,8 +28,12 @@ const ownerId = randomUUID();
 const memberId = randomUUID();
 const outsiderId = randomUUID();
 const users = [ownerId, memberId, outsiderId];
-const groupId = randomUUID();
-const otherGroupId = randomUUID();
+const householdId = randomUUID();
+const otherHouseholdId = randomUUID();
+// The owner's 61 recipes, a member's shared collection and an outsider's collection.
+const ownerCollection = randomUUID();
+const sharedCollection = randomUUID();
+const otherCollection = randomUUID();
 const tagIds = [randomUUID(), randomUUID()];
 function caller(id: string) {
   const now = new Date();
@@ -60,7 +70,6 @@ const rows = Array.from({ length: 61 }, (_, index) => ({
       ? (["Soup 10", "sóup 2", "SOUP 2"][index] ?? "Soup")
       : `Recipe ${index}`,
   userId: ownerId,
-  groupId: null,
   origin: "manual" as const,
   createdAt: new Date("2026-09-01T00:00:00Z"),
   content: {
@@ -78,6 +87,7 @@ const rows = Array.from({ length: 61 }, (_, index) => ({
   },
 }));
 const sharedId = randomUUID();
+const otherId = randomUUID();
 const deletedId = randomUUID();
 
 describe("paginated recipe lists with PostgreSQL", () => {
@@ -89,30 +99,28 @@ describe("paginated recipe lists with PostgreSQL", () => {
         email: `${id}@example.test`,
       })),
     );
-    await db.insert(group).values([
-      { id: groupId, ownerId, name: "Shared" },
-      { id: otherGroupId, ownerId: outsiderId, name: "Other" },
+    await db.insert(household).values([
+      { id: householdId, ownerId, name: "Shared" },
+      { id: otherHouseholdId, ownerId: outsiderId, name: "Other" },
     ]);
-    await db.insert(groupMember).values([
-      { groupId, userId: ownerId },
-      { groupId, userId: memberId },
-      { groupId: otherGroupId, userId: outsiderId },
+    await db.insert(householdMember).values([
+      { householdId, userId: ownerId },
+      { householdId, userId: memberId },
+      { householdId: otherHouseholdId, userId: outsiderId },
     ]);
     await db.insert(recipe).values([
       ...rows,
       {
         id: sharedId,
         title: "Shared soup",
-        userId: null,
-        groupId,
+        userId: memberId,
         origin: "manual",
         content: sampleRecipe,
       },
       {
-        id: randomUUID(),
+        id: otherId,
         title: "Other soup",
-        userId: null,
-        groupId: otherGroupId,
+        userId: outsiderId,
         origin: "manual",
         content: sampleRecipe,
       },
@@ -132,6 +140,28 @@ describe("paginated recipe lists with PostgreSQL", () => {
         deletedAt: new Date(),
         expiresAt: new Date(Date.now() + 86400000),
       },
+    ]);
+    await db.insert(recipeShare).values([
+      { recipeId: sharedId, householdId },
+      { recipeId: otherId, householdId: otherHouseholdId },
+    ]);
+    await db.insert(collection).values([
+      { id: ownerCollection, userId: ownerId, name: "Mine" },
+      { id: sharedCollection, userId: memberId, name: "Shared" },
+      { id: otherCollection, userId: outsiderId, name: "Other" },
+    ]);
+    await db.insert(collectionRecipe).values([
+      ...rows.map(({ id }, position) => ({
+        collectionId: ownerCollection,
+        recipeId: id,
+        position,
+      })),
+      { collectionId: sharedCollection, recipeId: sharedId },
+      { collectionId: otherCollection, recipeId: otherId },
+    ]);
+    await db.insert(collectionShare).values([
+      { collectionId: sharedCollection, householdId },
+      { collectionId: otherCollection, householdId: otherHouseholdId },
     ]);
     await db.insert(tag).values(
       tagIds.map((id, index) => ({
@@ -193,32 +223,53 @@ describe("paginated recipe lists with PostgreSQL", () => {
     ]);
   });
   afterAll(async () => {
-    await db.delete(group).where(inArray(group.ownerId, users));
     await db.delete(recipe).where(inArray(recipe.userId, users));
+    await db.delete(household).where(inArray(household.ownerId, users));
     await db.delete(user).where(inArray(user.id, users));
     await db.$client.end();
   });
 
   it("bounds default/max pages, covers exact and trailing boundaries, and breaks timestamp ties by ID", async () => {
     const pages = await Promise.all(
-      [0, 1, 2, 3].map((page) => owner.recipes.list({ page })),
+      [0, 1, 2, 3].map((page) =>
+        owner.recipes.list({ collectionId: ownerCollection, page }),
+      ),
     );
     expect(pages.map((page) => page.items.length)).toEqual([24, 24, 13, 0]);
     expect(pages.map((page) => page.total)).toEqual([61, 61, 61, 61]);
     expect(pages.flatMap((page) => page.items.map((r) => r.id))).toEqual(
       rows.map((r) => r.id),
     );
-    expect((await owner.recipes.list({ pageSize: 48 })).items).toHaveLength(48);
     expect(
-      (await owner.recipes.list({ pageSize: 1, page: 60 })).items[0]?.id,
+      (
+        await owner.recipes.list({
+          collectionId: ownerCollection,
+          pageSize: 48,
+        })
+      ).items,
+    ).toHaveLength(48);
+    expect(
+      (
+        await owner.recipes.list({
+          collectionId: ownerCollection,
+          pageSize: 1,
+          page: 60,
+        })
+      ).items[0]?.id,
     ).toBe(rows[60]?.id);
-    await expect(owner.recipes.list({ pageSize: 49 })).rejects.toMatchObject({
+    await expect(
+      owner.recipes.list({ collectionId: ownerCollection, pageSize: 49 }),
+    ).rejects.toMatchObject({
       code: "BAD_REQUEST",
     });
-    await expect(owner.recipes.list({ page: -1 })).rejects.toMatchObject({
+    await expect(
+      owner.recipes.list({ collectionId: ownerCollection, page: -1 }),
+    ).rejects.toMatchObject({
       code: "BAD_REQUEST",
     });
-    await expect(owner.recipes.list({ pageSize: 0 })).rejects.toMatchObject({
+    await expect(
+      owner.recipes.list({ collectionId: ownerCollection, pageSize: 0 }),
+    ).rejects.toMatchObject({
       code: "BAD_REQUEST",
     });
     expect(pages[0]?.items[0]).toMatchObject({
@@ -237,22 +288,49 @@ describe("paginated recipe lists with PostgreSQL", () => {
   it("searches names and ingredient lines before slicing pages, treating SQL wildcard characters literally", async () => {
     const found = await Promise.all(
       [0, 1, 2].map((page) =>
-        owner.recipes.list({ search: "  tOmAtO  ", page, pageSize: 12 }),
+        owner.recipes.list({
+          collectionId: ownerCollection,
+          search: "  tOmAtO  ",
+          page,
+          pageSize: 12,
+        }),
       ),
     );
     expect(found.map((page) => page.items.length)).toEqual([12, 12, 7]);
     expect(found.flatMap((page) => page.items.map((r) => r.id))).toEqual(
       rows.filter((_, i) => i % 2 === 0).map((r) => r.id),
     );
-    expect((await owner.recipes.list({ search: "%_\\" })).total).toBe(31);
-    expect((await owner.recipes.list({ search: "Secret notes" })).total).toBe(
-      0,
-    );
     expect(
-      (await owner.recipes.list({ search: "Invisible method" })).total,
+      (
+        await owner.recipes.list({
+          collectionId: ownerCollection,
+          search: "%_\\",
+        })
+      ).total,
+    ).toBe(31);
+    expect(
+      (
+        await owner.recipes.list({
+          collectionId: ownerCollection,
+          search: "Secret notes",
+        })
+      ).total,
     ).toBe(0);
     expect(
-      (await owner.recipes.list({ search: "RECIPE 60" })).items[0]?.id,
+      (
+        await owner.recipes.list({
+          collectionId: ownerCollection,
+          search: "Invisible method",
+        })
+      ).total,
+    ).toBe(0);
+    expect(
+      (
+        await owner.recipes.list({
+          collectionId: ownerCollection,
+          search: "RECIPE 60",
+        })
+      ).items[0]?.id,
     ).toBe(rows[60]?.id);
   });
 
@@ -264,29 +342,47 @@ describe("paginated recipe lists with PostgreSQL", () => {
       pageSize: 5,
     };
     const pages = await Promise.all(
-      [0, 1, 2].map((page) => owner.recipes.list({ ...filters, page })),
+      [0, 1, 2].map((page) =>
+        owner.recipes.list({ collectionId: ownerCollection, ...filters, page }),
+      ),
     );
     expect(pages[0]?.total).toBe(15);
     expect(pages.flatMap((page) => page.items.map((r) => r.id))).toEqual(
       rows.filter((_, i) => i > 0 && i % 4 === 0).map((r) => r.id),
     );
-    expect((await owner.recipes.list({ neverCooked: true })).total).toBe(58);
     expect(
-      (await owner.recipes.list({ cookedBefore: "2026-09-01" })).items.map(
-        (r) => r.id,
-      ),
+      (
+        await owner.recipes.list({
+          collectionId: ownerCollection,
+          neverCooked: true,
+        })
+      ).total,
+    ).toBe(58);
+    expect(
+      (
+        await owner.recipes.list({
+          collectionId: ownerCollection,
+          cookedBefore: "2026-09-01",
+        })
+      ).items.map((r) => r.id),
     ).toEqual([rows[0]?.id]);
     expect(
       (
         await owner.recipes.list({
+          collectionId: ownerCollection,
           neverCooked: true,
           cookedBefore: "2026-09-01",
         })
       ).total,
     ).toBe(0);
-    expect((await owner.recipes.list({ tagIds: [randomUUID()] })).total).toBe(
-      0,
-    );
+    expect(
+      (
+        await owner.recipes.list({
+          collectionId: ownerCollection,
+          tagIds: [randomUUID()],
+        })
+      ).total,
+    ).toBe(0);
   });
 
   it("keeps natural name, null-last rating/history/time semantics and deterministic ties across pages", async () => {
@@ -294,9 +390,15 @@ describe("paginated recipe lists with PostgreSQL", () => {
       sort: "name" | "highest-rated" | "last-cooked" | "cooking-time",
     ) => {
       const pages = await Promise.all(
-        [0, 1, 2].map((page) => owner.recipes.list({ sort, page })),
+        [0, 1, 2].map((page) =>
+          owner.recipes.list({ collectionId: ownerCollection, sort, page }),
+        ),
       );
-      const again = await owner.recipes.list({ sort, page: 1 });
+      const again = await owner.recipes.list({
+        collectionId: ownerCollection,
+        sort,
+        page: 1,
+      });
       expect(again).toEqual(pages[1]);
       const ids = pages.flatMap((page) => page.items.map((r) => r.id));
       expect(new Set(ids).size).toBe(61);
@@ -322,50 +424,76 @@ describe("paginated recipe lists with PostgreSQL", () => {
     ]);
   });
 
-  it("isolates accounts and groups, including metadata, and excludes deleted recipes from every list/detail projection", async () => {
-    expect((await member.recipes.list()).total).toBe(1);
-    expect((await outsider.recipes.list()).total).toBe(0);
-    const shared = await member.recipes.list({ groupId });
+  it("isolates accounts and households, including metadata, and excludes deleted recipes from every list/detail projection", async () => {
+    // Member: own private recipe plus their shared recipe. Outsider: their own.
+    expect((await member.recipes.list()).total).toBe(2);
+    expect((await outsider.recipes.list()).total).toBe(1);
+    // "All" for the owner includes the recipe shared with their household.
+    expect((await owner.recipes.list()).total).toBe(62);
+    const shared = await member.recipes.list({
+      collectionId: sharedCollection,
+    });
     expect(shared.total).toBe(1);
     expect(shared.items[0]).toMatchObject({
       id: sharedId,
       rating: 3,
       cookedCount: 1,
       isFavourite: false,
+      isOwner: true,
       tagIds: [],
     });
-    expect((await owner.recipes.list({ groupId })).items[0]).toMatchObject({
+    expect(
+      (await owner.recipes.list({ collectionId: sharedCollection })).items[0],
+    ).toMatchObject({
       rating: null,
       cookedCount: 0,
+      isOwner: false,
+      ownerId: memberId,
     });
-    await expect(outsider.recipes.list({ groupId })).rejects.toMatchObject({
+    await expect(
+      outsider.recipes.list({ collectionId: sharedCollection }),
+    ).rejects.toMatchObject({
       code: "NOT_FOUND",
     });
     await expect(
-      member.shopping.recipes({ collection: otherGroupId }),
+      member.shopping.recipes({ collectionId: otherCollection }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect((await owner.shopping.recipes()).total).toBe(62);
     expect((await member.shopping.recipes()).total).toBe(2);
     expect(
-      (await owner.shopping.recipes({ collection: "personal" })).total,
+      (await owner.shopping.recipes({ collectionId: ownerCollection })).total,
     ).toBe(61);
     expect(
-      (await owner.shopping.recipes({ collection: groupId })).items,
-    ).toEqual([{ id: sharedId, groupId, title: "Shared soup", servings: "2" }]);
+      (await owner.shopping.recipes({ collectionId: sharedCollection })).items,
+    ).toEqual([
+      { id: sharedId, ownerId: memberId, title: "Shared soup", servings: "2" },
+    ]);
     expect(await member.shopping.recipe({ id: rows[0]?.id ?? "" })).toBeNull();
     expect(await owner.shopping.recipe({ id: deletedId })).toBeNull();
     expect(await member.shopping.recipe({ id: sharedId })).toMatchObject({
       id: sharedId,
       servings: "2",
     });
+    // Only owners tag recipes, so tagging lists contain owned recipes only.
     expect(
       (await owner.recipes.taggingList({ excludeTagId: tagIds[0] })).total,
-    ).toBe(46);
+    ).toBe(45);
     expect(
       (await member.recipes.taggingList({ excludeTagId: tagIds[0] })).total,
     ).toBe(2);
     expect((await owner.recipes.taggingList({ search: "Deleted" })).total).toBe(
       0,
+    );
+  });
+
+  it("orders a collection by its manual position", async () => {
+    const page = await owner.recipes.list({
+      collectionId: ownerCollection,
+      sort: "position",
+      pageSize: 3,
+    });
+    expect(page.items.map((r) => r.id)).toEqual(
+      rows.slice(0, 3).map((r) => r.id),
     );
   });
 
@@ -386,7 +514,7 @@ describe("paginated recipe lists with PostgreSQL", () => {
     const tags = await Promise.all(
       [0, 1, 2].map((page) => owner.recipes.taggingList({ page })),
     );
-    expect(tags.map((page) => page.items.length)).toEqual([24, 24, 14]);
+    expect(tags.map((page) => page.items.length)).toEqual([24, 24, 13]);
     expect(
       (await owner.recipes.taggingList({ search: "Recipe 60" })).items.map(
         (r) => r.id,

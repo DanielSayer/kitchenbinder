@@ -1,0 +1,784 @@
+/* Pantry primitives (apps/web/src/components/pantry). */
+
+/* Large title */
+.pantry-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0 16px;
+}
+.pantry-title-text {
+  min-width: 0;
+}
+.pantry-large {
+  font: 800 36px / 1.04 var(--sans);
+  letter-spacing: -0.025em;
+}
+.pantry-large i {
+  font-weight: 400;
+  color: var(--tomato);
+}
+.pantry-title-eyebrow {
+  font-size: 15px;
+  color: var(--ink-2);
+  margin-bottom: 4px;
+}
+.pantry-title-sub {
+  font-size: 14px;
+  color: var(--ink-2);
+  margin-top: 6px;
+}
+.pantry-title-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Sheet */
+.pantry-sheet-root {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.pantry-sheet-scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+  animation: pantry-fade-in var(--t-base) var(--ease);
+}
+.pantry-sheet {
+  position: relative;
+  width: 100%;
+  max-height: 88dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  color: var(--ink);
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  box-shadow: var(--e3);
+  padding: 0 16px max(20px, env(safe-area-inset-bottom));
+  transition: transform var(--t-sheet) var(--spring);
+  animation: pantry-sheet-up var(--t-sheet) var(--spring);
+  outline: none;
+}
+.pantry-sheet-root[data-state="closed"] .pantry-sheet {
+  animation: pantry-sheet-down 260ms var(--ease) forwards;
+}
+.pantry-sheet-root[data-state="closed"] .pantry-sheet-scrim {
+  animation: pantry-fade-out 260ms var(--ease) forwards;
+}
+.pantry-sheet-root[data-state="closed"] {
+  pointer-events: none;
+}
+.pantry-sheet-handle {
+  display: grid;
+  place-items: center;
+  height: 24px;
+  margin: 0 -16px;
+  cursor: grab;
+  touch-action: none;
+}
+.pantry-sheet-handle span {
+  width: 40px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--line);
+}
+.pantry-sheet-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 4px 8px;
+  margin: 0 4px 12px;
+}
+.pantry-sheet-title {
+  font: 800 22px / 1.2 var(--sans);
+  letter-spacing: -0.01em;
+}
+.pantry-sheet-description {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.pantry-sheet-head[data-hidden] {
+  margin-bottom: 0;
+}
+.pantry-sheet-head[data-hidden] .pantry-sheet-title,
+.pantry-sheet-head[data-hidden] .pantry-sheet-description {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+/* Close is for keyboard/screen readers on mobile, visible on desktop. */
+.pantry-sheet-close {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  border: 0;
+  padding: 0;
+  background: var(--oat);
+  color: var(--ink);
+  border-radius: 50%;
+}
+.pantry-sheet-close:focus-visible {
+  position: static;
+  width: 40px;
+  height: 40px;
+  overflow: visible;
+  clip-path: none;
+  display: grid;
+  place-items: center;
+}
+.pantry-sheet-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0 -16px;
+  padding: 0 16px 4px;
+}
+.pantry-sheet-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 12px;
+}
+
+@media (min-width: 700px) {
+  .pantry-sheet-root {
+    align-items: center;
+    padding: 24px;
+  }
+  .pantry-sheet {
+    width: min(520px, 100%);
+    max-height: min(720px, 90dvh);
+    border-radius: var(--r-xl);
+    box-shadow:
+      var(--e2),
+      0 30px 80px -20px rgba(60, 35, 20, 0.35);
+    padding: 20px 20px 20px;
+    animation: pantry-pop-in var(--t-base) var(--spring);
+  }
+  .pantry-sheet-root[data-state="closed"] .pantry-sheet {
+    animation: pantry-pop-out 200ms var(--ease) forwards;
+  }
+  .pantry-sheet-root[data-desktop="side"] {
+    justify-content: flex-end;
+    align-items: stretch;
+    padding: 12px;
+  }
+  .pantry-sheet-root[data-desktop="side"] .pantry-sheet {
+    width: min(440px, 100%);
+    max-height: none;
+    animation: pantry-side-in var(--t-sheet) var(--spring);
+  }
+  .pantry-sheet-root[data-desktop="side"][data-state="closed"] .pantry-sheet {
+    animation: pantry-side-out 220ms var(--ease) forwards;
+  }
+  .pantry-sheet-handle {
+    display: none;
+  }
+  .pantry-sheet-close,
+  .pantry-sheet-close:focus-visible {
+    position: static;
+    width: 40px;
+    height: 40px;
+    overflow: visible;
+    clip-path: none;
+    display: grid;
+    place-items: center;
+    margin: -6px -6px 0 0;
+  }
+  .pantry-sheet-close:hover {
+    background: var(--line);
+  }
+  .pantry-sheet-body {
+    margin: 0 -20px;
+    padding: 0 20px 4px;
+  }
+}
+
+@keyframes pantry-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes pantry-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes pantry-sheet-up {
+  from {
+    transform: translateY(105%);
+  }
+}
+@keyframes pantry-sheet-down {
+  to {
+    transform: translateY(105%);
+  }
+}
+@keyframes pantry-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+}
+@keyframes pantry-pop-out {
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+@keyframes pantry-side-in {
+  from {
+    transform: translateX(105%);
+  }
+}
+@keyframes pantry-side-out {
+  to {
+    transform: translateX(105%);
+  }
+}
+
+/* Sticky CTA: one tomato button in the thumb zone, above the tab bar. */
+.pantry-sticky-cta {
+  position: sticky;
+  bottom: var(--mobile-nav-height);
+  z-index: 30;
+  display: flex;
+  gap: 10px;
+  margin: 16px calc(var(--page-gutter) * -1) 0;
+  padding: 12px var(--page-gutter);
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--paper) 0%, transparent) 0,
+    var(--paper) 35%
+  );
+}
+@media (max-width: 850px) {
+  .pantry-sticky-cta {
+    padding-bottom: 12px;
+  }
+}
+.pantry-sticky-cta > .button {
+  flex: 1;
+  min-height: 56px;
+  font-size: 17px;
+}
+.pantry-sticky-cta > .icon-button {
+  flex: none;
+  width: 56px;
+  height: 56px;
+  background: var(--card);
+  border: 1px solid var(--line);
+}
+@media (min-width: 851px) {
+  .pantry-sticky-cta {
+    justify-content: flex-end;
+  }
+  .pantry-sticky-cta > .button {
+    flex: 0 1 auto;
+    min-width: 220px;
+  }
+}
+
+/* Recipe cover */
+.pantry-cover {
+  --c: var(--oat);
+  --i: var(--ink-2);
+  --fs: 34px;
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--c);
+  color: var(--i);
+  border-radius: var(--r-m);
+}
+.pantry-cover:not([data-photo])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 1px 1px, currentColor 1px, transparent 1.4px) 0 0
+    / 12px 12px;
+  opacity: 0.13;
+}
+.pantry-cover:not([data-photo])::after {
+  content: "";
+  position: absolute;
+  width: 130%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  opacity: 0.16;
+  left: 35%;
+  top: 30%;
+}
+.pantry-cover b {
+  position: relative;
+  max-width: 92%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 700 italic var(--fs) / 1.1 var(--sans);
+  letter-spacing: -0.03em;
+}
+.pantry-cover img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.pantry-cover[data-tone="tomato"] {
+  --c: var(--tomato-soft);
+  --i: var(--tomato-press);
+}
+.pantry-cover[data-tone="olive"] {
+  --c: var(--olive-soft);
+  --i: var(--olive);
+}
+.pantry-cover[data-tone="butter"] {
+  --c: var(--butter-soft);
+  --i: var(--butter-ink);
+}
+.pantry-cover[data-tone="plum"] {
+  --c: var(--plum-soft);
+  --i: var(--plum);
+}
+.pantry-cover[data-tone="sage"] {
+  --c: var(--sage-soft);
+  --i: var(--sage);
+}
+.pantry-cover[data-size="thumb"] {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  --fs: 18px;
+}
+.pantry-cover[data-size="list"] {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  --fs: 24px;
+}
+.pantry-cover[data-size="grid"] {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  --fs: 34px;
+}
+.pantry-cover[data-size="hero"] {
+  width: 100%;
+  height: 150px;
+  border-radius: var(--r-l);
+  --fs: 56px;
+}
+.pantry-cover[data-size="detail"] {
+  width: 100%;
+  height: clamp(220px, 42vw, 360px);
+  border-radius: 0;
+  --fs: clamp(56px, 12vw, 96px);
+}
+@media (min-width: 851px) {
+  .pantry-cover[data-size="detail"] {
+    border-radius: var(--r-l);
+  }
+}
+
+/* Chips */
+.pantry-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 2px;
+}
+.pantry-chips::-webkit-scrollbar {
+  display: none;
+}
+.pantry-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--card);
+  color: var(--ink-2);
+  font: 600 14px / 1 var(--sans);
+  white-space: nowrap;
+  transition:
+    transform var(--t-press) var(--ease),
+    background var(--t-press) var(--ease),
+    color var(--t-press) var(--ease);
+}
+/* 44px hit area without growing the visual chip. */
+.pantry-chip {
+  position: relative;
+}
+.pantry-chip::after {
+  content: "";
+  position: absolute;
+  inset: -4px 0;
+}
+.pantry-chip:active {
+  transform: scale(0.96);
+}
+.pantry-chip[aria-pressed="true"] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+.pantry-chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+/* Segmented (native radios inside labels) */
+.pantry-seg {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  margin: 0;
+  padding: 4px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--oat);
+  min-inline-size: 0;
+}
+.pantry-seg label {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: var(--r-pill);
+  color: var(--ink-2);
+  font: 600 14px / 1 var(--sans);
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background var(--t-base) var(--ease),
+    color var(--t-base) var(--ease);
+}
+.pantry-seg input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.pantry-seg label:has(input:checked) {
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--e1);
+}
+.pantry-seg label:has(input:focus-visible) {
+  outline: var(--focus-outline);
+  outline-offset: 1px;
+}
+.pantry-seg[data-icon-only] label {
+  width: 44px;
+  min-height: 36px;
+  padding: 0;
+}
+.pantry-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Binder tabs */
+.pantry-binder {
+  --hc: var(--ink-3);
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 56px;
+  padding: 6px 12px 0;
+  background: var(--oat);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.pantry-binder::-webkit-scrollbar {
+  display: none;
+}
+.pantry-binder-list {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+}
+.pantry-divider {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 12px 12px 0 0;
+  background: color-mix(in srgb, var(--card) 45%, var(--oat));
+  color: var(--ink-2);
+  font: 600 14px / 1 var(--sans);
+  white-space: nowrap;
+  transition:
+    height var(--t-base) var(--ease),
+    background var(--t-base) var(--ease);
+}
+.pantry-divider b {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  background: var(--hc);
+}
+.pantry-divider[aria-selected="true"] {
+  height: 50px;
+  background: var(--paper);
+  color: var(--ink);
+}
+.pantry-divider[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 0;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: var(--hc, var(--tomato));
+}
+.pantry-divider:focus-visible {
+  outline-offset: -3px;
+}
+.pantry-divider-add {
+  width: 44px;
+  padding: 0;
+  justify-content: center;
+  background: transparent;
+  color: var(--ink-3);
+}
+.pantry-divider-add:hover {
+  color: var(--tomato);
+}
+
+/* Household chip */
+.pantry-household-chip {
+  --hc: var(--sage);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  max-width: 220px;
+  padding: 0 10px 0 12px;
+  border: 1px solid color-mix(in srgb, var(--hc) 28%, var(--line));
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--hc) 12%, var(--card));
+  color: var(--ink);
+  font: 600 14px / 1 var(--sans);
+  transition: transform var(--t-press) var(--ease);
+}
+.pantry-household-chip:active {
+  transform: scale(0.96);
+}
+.pantry-household-chip > i {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--hc);
+}
+.pantry-household-chip > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pantry-household-chip > svg {
+  flex: none;
+  color: var(--ink-3);
+}
+
+/* Empty state */
+.pantry-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 40px 12px 8px;
+}
+.pantry-empty-art {
+  position: relative;
+  width: 180px;
+  height: 150px;
+  margin-bottom: 22px;
+}
+.pantry-empty-art .pantry-empty-cover {
+  position: absolute;
+  top: 22px;
+  width: 96px;
+  height: 120px;
+  aspect-ratio: auto;
+  border-radius: 14px;
+  --fs: 26px;
+  box-shadow: var(--e1);
+}
+.pantry-empty-art .pantry-empty-cover:first-child {
+  left: 10px;
+  transform: rotate(-8deg);
+}
+.pantry-empty-art .pantry-empty-cover:nth-child(2) {
+  right: 10px;
+  top: 12px;
+  transform: rotate(7deg);
+}
+.pantry-empty-plus {
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  transform: translateX(-50%);
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--tomato);
+  color: #fff;
+  box-shadow: var(--e2);
+}
+.pantry-empty-title {
+  font: 800 24px / 1.2 var(--sans);
+}
+.pantry-empty-description {
+  max-width: 300px;
+  margin: 8px 0 0;
+  color: var(--ink-2);
+}
+.pantry-empty-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  width: min(360px, 100%);
+  margin-top: 22px;
+}
+
+/* Grouped list rows (You screen, sheets) */
+.pantry-list {
+  overflow: hidden;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-m);
+}
+.pantry-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 56px;
+  padding: 8px 16px;
+  border: 0;
+  background: var(--card);
+  color: var(--ink);
+  font: 500 16px / 1.3 var(--sans);
+  text-align: left;
+  transition: background var(--t-press);
+}
+.pantry-row:hover,
+.pantry-row:active {
+  background: var(--oat);
+}
+.pantry-row + .pantry-row::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 70px;
+  right: 0;
+  height: 1px;
+  background: var(--line);
+}
+.pantry-row:focus-visible {
+  outline-offset: -3px;
+}
+.pantry-row-icon {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--oat);
+  color: var(--ink-2);
+}
+.pantry-row-text {
+  flex: 1;
+  min-width: 0;
+}
+.pantry-row-go {
+  color: var(--ink-3);
+}
+
+/* Toasts (sonner). Undo action in butter, per the design. */
+[data-sonner-toaster] {
+  font-family: var(--sans);
+}
+[data-sonner-toast][data-styled="true"] {
+  min-height: 52px;
+  padding: 8px 8px 8px 16px;
+  box-shadow: var(--e2);
+  font-size: 15px;
+}
+[data-sonner-toast][data-styled="true"] [data-button][data-action] {
+  height: 40px;
+  padding: 0 14px;
+  border-radius: var(--r-s);
+  background: transparent;
+  color: var(--butter);
+  font: 700 15px / 1 var(--sans);
+}
+[data-sonner-toast][data-styled="true"][data-rich-colors="true"]
+  [data-button][data-action] {
+  color: inherit;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pantry-sheet,
+  .pantry-sheet-scrim,
+  .pantry-sheet-root[data-state] .pantry-sheet,
+  .pantry-sheet-root[data-state] .pantry-sheet-scrim,
+  .pantry-chip,
+  .pantry-seg label,
+  .pantry-divider,
+  .pantry-household-chip,
+  .tab-icon,
+  .button {
+    animation-duration: 1ms;
+    transition: none;
+  }
+}

@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { ErrorNotice } from "@/components/feedback";
-import { LinkedAccounts } from "@/components/linked-accounts";
 import { useTRPC } from "@/utils/trpc";
 
 export function AccountControls() {
@@ -24,12 +23,8 @@ export function AccountControls() {
   );
   const busy = request.isPending || cancel.isPending;
   return (
-    <section className="help-section" aria-labelledby="account-heading">
-      <h2 id="account-heading">Account</h2>
-      <p>Manage your password, email and security in Google or Discord.</p>
-      <LinkedAccounts />
-      <details className="account-deletion">
-        <summary>Request account deletion</summary>
+    <section className="account-deletion" aria-label="Delete account">
+      <div>
         <p>
           Deletion is reviewed manually. Your account stays active until then,
           and you can cancel while pending. Your Google or Discord account is
@@ -46,21 +41,18 @@ export function AccountControls() {
             from the live database.
           </li>
           <li>
-            Your sessions, extension connections, group and household
-            memberships are removed.
+            Your sessions, extension connections, household memberships and your
+            "Just me" household are removed.
           </li>
           <li>
-            Shared recipes and collection tags stay in surviving groups with
-            your account link removed. Copies saved by others remain. Review any
-            personal details in shared recipe text first.
+            Recipes you shared with a household stay there without an owner;
+            your other recipes, collections and tags are deleted. Copies saved
+            by others remain. Review any personal details in shared recipe text
+            first.
           </li>
           <li>
-            Transfer groups you own or explicitly delete them before deletion
-            can be completed. Deleting a group removes its recipes for everyone.
-          </li>
-          <li>
-            Transfer or delete any household you own before account deletion.
-            Shared meals and groceries stay in surviving households.
+            Households you own pass to their longest-standing member, or are
+            deleted if you are the only member.
           </li>
         </ul>
         <p>
@@ -79,36 +71,20 @@ export function AccountControls() {
           <>
             {deletion.data.ownedHouseholds.length > 0 && (
               <div className="account-group-notice">
-                <strong>Household to resolve before deletion</strong>
+                <strong>Households you own</strong>
                 <ul>
                   {deletion.data.ownedHouseholds.map((item) => (
-                    <li key={item.id}>{item.name}</li>
+                    <li key={item.id}>
+                      {item.name}:{" "}
+                      {item.transferTo
+                        ? `passes to ${item.transferTo.name}`
+                        : "will be deleted"}
+                    </li>
                   ))}
                 </ul>
-                <Link to="/household" className="text-button">
-                  Manage household
+                <Link to="/households" className="text-button">
+                  Manage households
                 </Link>
-                <p>
-                  You can request deletion now. Transfer ownership or delete
-                  this household before completion.
-                </p>
-              </div>
-            )}
-            {deletion.data.ownedGroups.length > 0 && (
-              <div className="account-group-notice">
-                <strong>Groups to resolve before deletion</strong>
-                <ul>
-                  {deletion.data.ownedGroups.map((item) => (
-                    <li key={item.id}>{item.name}</li>
-                  ))}
-                </ul>
-                <Link to="/groups" className="text-button">
-                  Manage groups
-                </Link>
-                <p>
-                  You can request deletion now. Resolve these groups before
-                  completion.
-                </p>
               </div>
             )}
             {deletion.data.request ? (
@@ -171,7 +147,7 @@ export function AccountControls() {
               : undefined
           }
         />
-      </details>
+      </div>
     </section>
   );
 }

@@ -111,7 +111,7 @@ describe("extension worker credential isolation", () => {
       input: {
         content: "Soup ingredients and instructions. ".repeat(5),
         sourceUrl: "https://recipes.test/soup",
-        groupId: null,
+        householdId: null,
       },
     };
     const key = `import:http://localhost:3001:${credential.account.id}`;
@@ -158,7 +158,7 @@ describe("extension worker credential isolation", () => {
       id: crypto.randomUUID(),
       content: "Soup recipe. ".repeat(10),
       sourceUrl: "https://recipes.test/soup",
-      groupId: null,
+      householdId: null,
     };
     fake.get.mockImplementation(async (name) => ({
       [name]: name === "credential" ? credential : pending,
@@ -176,7 +176,7 @@ describe("extension worker credential isolation", () => {
     expect(fake.remove).toHaveBeenCalledWith(key);
   });
   it("remembers validated collections per account and recovers stale access without changing pending work", async () => {
-    const groupId = crypto.randomUUID();
+    const householdId = crypto.randomUUID();
     const storage: Record<string, unknown> = { credential };
     fake.get.mockImplementation(async (key) => ({ [key]: storage[key] }));
     fake.set.mockImplementation(async (value) => {
@@ -185,28 +185,28 @@ describe("extension worker credential isolation", () => {
     fetchMock.mockImplementation(async () =>
       Response.json([
         { id: null, name: "My recipes" },
-        { id: groupId, name: "Family" },
+        { id: householdId, name: "Family" },
       ]),
     );
     const select = () =>
       new Promise((resolve) =>
         listener()(
-          { kind: "select-collection", groupId, accountId: "test" },
+          { kind: "select-collection", householdId, accountId: "test" },
           sender,
           resolve,
         ),
       );
-    expect(await select()).toMatchObject({ ok: true, data: { groupId } });
+    expect(await select()).toMatchObject({ ok: true, data: { householdId } });
     background.main();
     expect(await send("destinations")).toMatchObject({
-      data: { groupId, changed: false },
+      data: { householdId, changed: false },
     });
     storage.credential = {
       ...credential,
       account: { ...credential.account, id: "other" },
     };
     expect(await send("destinations")).toMatchObject({
-      data: { groupId: null },
+      data: { householdId: null },
     });
     expect(await select()).toMatchObject({ ok: false, reconnect: true });
     storage.credential = credential;
@@ -215,7 +215,7 @@ describe("extension worker credential isolation", () => {
       id: crypto.randomUUID(),
       content: "Recipe ".repeat(20),
       sourceUrl: "https://recipes.test/soup",
-      groupId,
+      householdId,
       title: "Soup",
       collectionName: "Family",
     };
@@ -223,10 +223,10 @@ describe("extension worker credential isolation", () => {
       Response.json([{ id: null, name: "My recipes" }]),
     );
     expect(await send("destinations")).toMatchObject({
-      data: { groupId: null, changed: true },
+      data: { householdId: null, changed: true },
     });
     expect(await send("pending-import")).toMatchObject({
-      data: { groupId, title: "Soup", collectionName: "Family" },
+      data: { householdId, title: "Soup", collectionName: "Family" },
     });
     expect(await select()).toMatchObject({ ok: false });
   });
@@ -235,7 +235,7 @@ describe("extension worker credential isolation", () => {
       id: crypto.randomUUID(),
       content: "Recipe ".repeat(20),
       sourceUrl: "https://recipes.test/soup",
-      groupId: null,
+      householdId: null,
       title: "Soup",
       collectionName: "My recipes",
     };
@@ -255,7 +255,7 @@ describe("extension worker credential isolation", () => {
         id: pending.id,
         content: pending.content.trim(),
         sourceUrl: pending.sourceUrl,
-        groupId: null,
+        householdId: null,
       });
       return Response.json({
         kind: "failed",
@@ -274,7 +274,7 @@ describe("extension worker credential isolation", () => {
             input: {
               content: "A different recipe ".repeat(10),
               sourceUrl: pending.sourceUrl,
-              groupId: null,
+              householdId: null,
             },
           },
           sender,

@@ -1,42 +1,59 @@
 import type { AppRouter } from "@prep-sheet/api/routers/index";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@prep-sheet/ui/components/dropdown-menu";
+  categoriseGrocery,
+  shoppingCategories,
+} from "@prep-sheet/db/shopping-plan";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
 import type { inferRouterOutputs } from "@trpc/server";
 import {
+  BookOpen,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Eraser,
+  House,
   MoreHorizontal,
-  Pencil,
   Plus,
-  ShoppingBasket,
   Trash2,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import {
+  type PointerEvent as ReactPointerEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { toast } from "sonner";
+import {
+  useHousehold,
+  useHouseholdScope,
+} from "@/components/households/household-context";
+import {
+  EmptyState,
+  LargeTitle,
+  Segmented,
+  Sheet,
+  toneColor,
+  undoToast,
+} from "@/components/pantry";
 import { authClient } from "@/lib/auth-client";
-import { useTRPC } from "@/utils/trpc";
+import { useTRPC, useTRPCClient } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
-import {
-  PlanningWorkspace,
-  planningRefresh,
-  usePlanningScope,
-} from "../households/planning-context";
-import { PlanningScopeBar } from "../households/scope-bar";
 import { MealListNotice } from "../planner/plan-shop";
-import { OrganiseDialog } from "../recipes/organise-dialog";
 import { RecipePicker } from "./add-recipes";
+import { AisleHeading, ShopProgress } from "./aisles";
 import { ShoppingListAction } from "./generated-list";
-import {
-  groceryNeedsReview,
-  readShoppingDraft,
-  type ShoppingDraft,
-} from "./shopping-draft";
 
 type Item = inferRouterOutputs<AppRouter>["shopping"]["list"][number];
+type Status = Item["status"];
+type Mode = "aisle" | "recipe";
+
+const modeKey = "shopping-group-mode";
+const hintKey = "shopping-swipe-hint";
+const SWIPE_COMMIT_PX = 96;
+
+function errorText(cause: unknown, fallback: string) {
+  return cause instanceof Error ? cause.message : fallback;
+}
 
 function useDraft(key: string, initial: string) {
   const [value, setValue] = useState(() => {
@@ -58,407 +75,531 @@ function useDraft(key: string, initial: string) {
   return [value, update] as const;
 }
 
-function ShoppingRow({ item, userId }: { item: Item; userId: string }) {
-  const { scope } = usePlanningScope();
-  const trpc = useTRPC();
-  const client = useQueryClient();
-  const draftKey = `shopping:${userId}:${item.id}`;
-  const [legacySource] = useState(() => {
-    try {
-      return localStorage.getItem(draftKey);
-    } catch {
-      return null;
-    }
-  });
-  const [stored, setStored] = useState<ShoppingDraft>(() =>
-    readShoppingDraft(draftKey, item.text),
-  );
-  const draft = stored.text;
-  const needsReview = groceryNeedsReview(stored, item.text);
-  const [storageError, setStorageError] = useState(false);
-  const setDraft = (text: string, baseText = stored.baseText) => {
-    const next = { text, baseText };
-    setStored(next);
-    try {
-      sessionStorage.setItem(draftKey, JSON.stringify(next));
-      setStorageError(false);
-    } catch {
-      setStorageError(true);
-    }
+/**
+ * One list row. Tap to tick; swipe left (or the Have it button, shown on
+ * desktop and to keyboard/screen-reader users) to mark it already at home.
+ */
+function ShopRow({
+  item,
+  note,
+  swipeable,
+  nudge,
+  onToggle,
+  onHave,
+  onNeed,
+  onMore,
+}: {
+  item: Item;
+  note?: string | null;
+  swipeable: boolean;
+  nudge?: boolean;
+  onToggle: () => void;
+  onHave: () => void;
+  onNeed: () => void;
+  onMore: () => void;
+}) {
+  const [dx, setDx] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const row = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ x: number; y: number; axis?: "x" } | null>(null);
+  const offset = useRef(0);
+  const swiped = useRef(false);
+  const move = (value: number) => {
+    offset.current = value;
+    setDx(value);
   };
-  const clearDraft = () => {
-    setStored({ text: item.text, baseText: item.text });
-    try {
-      sessionStorage.removeItem(draftKey);
-      if (
-        legacySource !== null &&
-        localStorage.getItem(draftKey) === legacySource
-      )
-        localStorage.removeItem(draftKey);
-    } catch {
-      /* Optional draft storage. */
-    }
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!swipeable || (event.pointerType === "mouse" && event.button !== 0))
+      return;
+    drag.current = { x: event.clientX, y: event.clientY };
+    swiped.current = false;
   };
-  const [editing, setEditing] = useState(draft !== item.text);
-  const editInput = useRef<HTMLInputElement>(null);
-  const actionTrigger = useRef<HTMLButtonElement>(null);
-  const wasEditing = useRef(false);
-  useEffect(() => {
-    if (editing) editInput.current?.focus();
-    else if (wasEditing.current) actionTrigger.current?.focus();
-    wasEditing.current = editing;
-  }, [editing]);
-  const refresh = () =>
-    client.invalidateQueries({ queryKey: trpc.shopping.pathKey() });
-  const update = useMutation(
-    trpc.shopping.updateItem.mutationOptions({
-      onSuccess: async (_, input) => {
-        if (input.kind === "text") {
-          try {
-            sessionStorage.removeItem(draftKey);
-            // Remove a legacy draft only if it is still the one we restored.
-            if (
-              legacySource !== null &&
-              localStorage.getItem(draftKey) === legacySource
-            )
-              localStorage.removeItem(draftKey);
-          } catch {
-            /* Optional draft storage. */
-          }
-          setEditing(false);
-        }
-        await refresh();
-      },
-    }),
-  );
-  const remove = useMutation(
-    trpc.shopping.removeItem.mutationOptions({ onSuccess: refresh }),
-  );
-  const pending = update.isPending || remove.isPending;
+  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const current = drag.current;
+    if (!current) return;
+    const mx = event.clientX - current.x;
+    const my = event.clientY - current.y;
+    if (!current.axis) {
+      if (Math.abs(mx) > 8 && Math.abs(mx) > Math.abs(my)) {
+        current.axis = "x";
+        event.currentTarget.setPointerCapture?.(event.pointerId);
+        setDragging(true);
+      } else if (Math.abs(my) > 8) {
+        drag.current = null;
+        return;
+      } else return;
+    }
+    move(Math.min(0, mx));
+  };
+  const onPointerUp = () => {
+    const current = drag.current;
+    drag.current = null;
+    if (current?.axis !== "x") return;
+    swiped.current = true;
+    setDragging(false);
+    const width = row.current?.offsetWidth ?? 320;
+    if (offset.current < -Math.min(SWIPE_COMMIT_PX, width * 0.3)) {
+      move(-width);
+      window.setTimeout(onHave, 160);
+    } else move(0);
+  };
+  const onPointerCancel = () => {
+    drag.current = null;
+    setDragging(false);
+    move(0);
+  };
+  const bought = item.status === "bought";
   return (
-    <li className="shopping-row">
-      {editing ? (
-        <form
-          className="shopping-edit"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (needsReview) return;
-            update.mutate({
-              scope,
-              kind: "text",
-              id: item.id,
-              text: draft,
-              expectedText: stored.baseText ?? item.text,
-            });
-          }}
-        >
-          <label className="shopping-field">
-            Edit item
-            <input
-              ref={editInput}
-              value={draft}
-              maxLength={2000}
-              onChange={(e) => setDraft(e.target.value)}
-              disabled={pending}
-            />
-          </label>
-          {needsReview && (
-            <div className="shopping-edit-review" role="alert">
-              <p>
-                This grocery changed. Saved item: <strong>{item.text}</strong>
-              </p>
-              <p>Your edit is still in the field above.</p>
-              <button
-                type="button"
-                className="text-button"
-                disabled={pending}
-                onClick={() => {
-                  setDraft(draft, item.text);
-                  update.reset();
-                }}
-              >
-                Keep my edit, then save
-              </button>
-            </div>
-          )}
-          {storageError && (
-            <p role="alert">
-              This draft could not be stored. Keep this page open until you
-              save.
-            </p>
-          )}
-          <div className="shopping-row-actions">
-            <button
-              type="submit"
-              className="button button-small button-outline"
-              disabled={pending || needsReview || !draft.trim()}
-            >
-              {update.isPending ? "Saving..." : "Save"}
-            </button>
-            <button
-              type="button"
-              className="text-button"
-              disabled={pending}
-              onClick={() => {
-                clearDraft();
-                update.reset();
-                setEditing(false);
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
-      ) : (
-        <>
-          <label className="shopping-check">
-            <input
-              type="checkbox"
-              checked={item.status === "bought"}
-              disabled={pending}
-              aria-label={`${item.status === "bought" ? "Mark needed" : "Mark bought"}: ${item.text}`}
-              onChange={() =>
-                update.mutate({
-                  scope,
-                  kind: "status",
-                  id: item.id,
-                  status: item.status === "bought" ? "needed" : "bought",
-                })
-              }
-            />
-            <span className={item.status === "bought" ? "shopping-bought" : ""}>
-              {item.text}
-            </span>
-          </label>
+    <li className="shop-item" data-nudge={nudge || undefined}>
+      {swipeable && (
+        <div className="shop-under" aria-hidden="true">
+          <House size={18} />
+          Have it
+        </div>
+      )}
+      <div
+        ref={row}
+        className="shop-row"
+        data-done={item.status !== "needed" || undefined}
+        data-dragging={dragging || undefined}
+        data-swipe={swipeable || undefined}
+        style={dx ? { transform: `translateX(${dx}px)` } : undefined}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
+        onClickCapture={(event) => {
+          if (!swiped.current) return;
+          swiped.current = false;
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+      >
+        <label className="shop-tick">
+          <input
+            type="checkbox"
+            className="pantry-visually-hidden"
+            checked={bought}
+            aria-label={`${bought ? "Mark needed" : "Mark bought"}: ${item.text}`}
+            onChange={onToggle}
+          />
+          <span className="shop-check" aria-hidden="true">
+            <Check size={16} />
+          </span>
+          <span className="shop-text">
+            <b className="shop-name">{item.text}</b>{" "}
+            {note && <small>{note}</small>}
+          </span>
+        </label>
+        {item.status === "needed" ? (
           <button
             type="button"
-            className="shopping-status-action"
-            disabled={pending}
-            aria-label={`${item.status === "needed" ? "Already have it" : "Need this"}: ${item.text}`}
-            onClick={() =>
-              update.mutate({
-                kind: "status",
-                id: item.id,
-                status: item.status === "needed" ? "owned" : "needed",
-              })
-            }
+            className="shop-have"
+            aria-label={`Already have it: ${item.text}`}
+            onClick={onHave}
           >
-            {item.status === "needed" ? "Have it" : "Need this"}
+            <House size={16} aria-hidden="true" />
+            <span>Have it</span>
           </button>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              ref={actionTrigger}
-              className="icon-button"
-              aria-label={`Actions for ${item.text}`}
-              disabled={pending}
-            >
-              <MoreHorizontal size={18} />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              className="collection-select-menu shopping-item-menu"
-              align="end"
-            >
-              <DropdownMenuItem
-                className="collection-select-manage shopping-item-action"
-                onClick={() => {
-                  setDraft(item.text, item.text);
-                  update.reset();
-                  setEditing(true);
-                }}
-              >
-                <Pencil size={16} /> Edit item
-              </DropdownMenuItem>
-              <DropdownMenuSeparator className="collection-select-divider" />
-              <DropdownMenuItem
-                className="collection-select-manage shopping-item-action"
-                variant="destructive"
-                onClick={() => remove.mutate({ scope, id: item.id })}
-              >
-                <Trash2 size={16} /> Remove item
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </>
-      )}
-      <ErrorNotice
-        message={update.error?.message || remove.error?.message}
-        retry={() => {
-          if (update.isError && update.variables) {
-            void refresh();
-          } else if (remove.variables) remove.mutate(remove.variables);
-        }}
-      />
+        ) : item.status === "owned" ? (
+          <button
+            type="button"
+            className="shop-have"
+            data-visible
+            aria-label={`Need this: ${item.text}`}
+            onClick={onNeed}
+          >
+            Need this
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="icon-button shop-more"
+          aria-label={`Actions for ${item.text}`}
+          onClick={onMore}
+        >
+          <MoreHorizontal size={18} />
+        </button>
+      </div>
     </li>
   );
 }
 
-function ItemGroups({ items, userId }: { items: Item[]; userId: string }) {
-  const { scope } = usePlanningScope();
-  const groups = new Map<string, Item[]>();
-  for (const item of items) {
-    const key = item.plannedMealId ?? item.recipeId ?? "other";
-    const current = groups.get(key);
-    if (current) current.push(item);
-    else groups.set(key, [item]);
-  }
+function ItemSheet({
+  item,
+  userId,
+  open,
+  onClose,
+  onStatus,
+  onRemove,
+}: {
+  item: Item;
+  userId: string;
+  open: boolean;
+  onClose: () => void;
+  onStatus: (status: Status) => void;
+  onRemove: () => void;
+}) {
+  const trpc = useTRPC();
+  const householdId = useHouseholdScope();
+  const client = useQueryClient();
+  const draftKey = `shopping:${userId}:${item.id}`;
+  const [draft, setDraft] = useDraft(draftKey, item.text);
+  const update = useMutation(
+    trpc.shopping.updateItem.mutationOptions({
+      onSuccess: async () => {
+        try {
+          localStorage.removeItem(draftKey);
+        } catch {
+          /* Optional draft storage. */
+        }
+        await client.invalidateQueries({ queryKey: trpc.shopping.pathKey() });
+        onClose();
+      },
+    }),
+  );
   return (
-    <>
-      {[...groups].map(([key, group]) => {
-        const first = group[0];
-        if (!first) return null;
-        return (
-          <section className="shopping-group" key={key}>
-            <div className="shopping-group-heading">
-              <h2>
-                {first.recipeId && scope.kind === "personal" ? (
-                  <Link
-                    to="/recipes/$recipeId"
-                    params={{ recipeId: first.recipeId }}
-                  >
-                    {first.recipeTitle}
-                  </Link>
-                ) : (
-                  (first.recipeTitle ?? "Other groceries")
-                )}
-              </h2>
-            </div>
-            <ul>
-              {group.map((item) => (
-                <ShoppingRow key={item.id} item={item} userId={userId} />
-              ))}
-            </ul>
-          </section>
-        );
-      })}
-    </>
+    <Sheet
+      open={open}
+      onOpenChange={(next) => {
+        if (!next && !update.isPending) onClose();
+      }}
+      title="Edit item"
+      footer={
+        <>
+          <button
+            type="submit"
+            form={`shop-edit-${item.id}`}
+            className="button button-primary button-block"
+            disabled={update.isPending || !draft.trim()}
+          >
+            {update.isPending ? "Saving..." : "Save"}
+          </button>
+          <div className="shop-sheet-secondary">
+            <button
+              type="button"
+              className="button button-ghost"
+              disabled={update.isPending}
+              onClick={() =>
+                onStatus(item.status === "needed" ? "owned" : "needed")
+              }
+            >
+              {item.status === "needed" ? "Have it" : "Need this"}
+            </button>
+            <button
+              type="button"
+              className="button button-ghost shop-remove"
+              disabled={update.isPending}
+              onClick={onRemove}
+            >
+              <Trash2 size={16} aria-hidden="true" />
+              Remove
+            </button>
+          </div>
+        </>
+      }
+    >
+      <form
+        id={`shop-edit-${item.id}`}
+        onSubmit={(event) => {
+          event.preventDefault();
+          update.mutate({
+            householdId,
+            kind: "text",
+            id: item.id,
+            text: draft,
+          });
+        }}
+      >
+        <label className="pick-field">
+          <span>Item</span>
+          <input
+            value={draft}
+            maxLength={2000}
+            disabled={update.isPending}
+            onChange={(event) => setDraft(event.target.value)}
+          />
+        </label>
+        {item.recipeTitle && (
+          <p className="meal-sheet-hint shop-sheet-from">
+            From {item.recipeTitle}
+          </p>
+        )}
+        <ErrorNotice message={update.error?.message} />
+      </form>
+    </Sheet>
   );
 }
 
 export function ShoppingList() {
-  return (
-    <PlanningWorkspace>
-      <AccountList />
-    </PlanningWorkspace>
-  );
-}
-function AccountList() {
-  const { scope, scopeKey } = usePlanningScope();
   const { data: session } = authClient.useSession();
   return session ? (
-    <ScopedList
-      key={`${session.user.id}:${scopeKey}`}
-      userId={
-        scope.kind === "household"
-          ? `${session.user.id}:${scopeKey}`
-          : session.user.id
-      }
-    />
+    <ListScreen key={session.user.id} userId={session.user.id} />
   ) : null;
 }
 
-function ScopedList({ userId }: { userId: string }) {
-  const { scope } = usePlanningScope();
+function ListScreen({ userId }: { userId: string }) {
   const trpc = useTRPC();
+  const trpcClient = useTRPCClient();
+  const householdId = useHouseholdScope();
+  const household = useHousehold();
   const client = useQueryClient();
-  const list = useQuery(
-    trpc.shopping.list.queryOptions(scope, planningRefresh(scope)),
-  );
+  const listKey = trpc.shopping.list.queryKey({ householdId });
+  const list = useQuery(trpc.shopping.list.queryOptions({ householdId }));
+  const [mode, setModeState] = useState<Mode>(() => {
+    try {
+      return localStorage.getItem(modeKey) === "recipe" ? "recipe" : "aisle";
+    } catch {
+      return "aisle";
+    }
+  });
+  const setMode = (next: Mode) => {
+    setModeState(next);
+    try {
+      localStorage.setItem(modeKey, next);
+    } catch {
+      /* Optional preference. */
+    }
+  };
+  const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
   const [picker, setPicker] = useState(false);
-  const [reset, setReset] = useState(false);
+  const [pickerKey, setPickerKey] = useState(0);
+  const [more, setMore] = useState(false);
+  const [editing, setEditing] = useState<Item | null>(null);
+  const [editingOpen, setEditingOpen] = useState(false);
   const [text, setText] = useDraft(`shopping:${userId}:new`, "");
   const [newId, setNewId] = useState(() => crypto.randomUUID());
+  const [nudge, setNudge] = useState(false);
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(hintKey)) return;
+      localStorage.setItem(hintKey, "1");
+      setNudge(true);
+    } catch {
+      /* The hint is optional. */
+    }
+  }, []);
   const refresh = () =>
     client.invalidateQueries({ queryKey: trpc.shopping.pathKey() });
+  const statusUpdate = useMutation(trpc.shopping.updateItem.mutationOptions());
+  const changeStatus = async (item: Item, status: Status, message?: string) => {
+    const previous = item.status;
+    client.setQueryData(listKey, (old) =>
+      old?.map((entry) =>
+        entry.id === item.id ? { ...entry, status } : entry,
+      ),
+    );
+    if (message)
+      undoToast(message, {
+        id: "shopping-status",
+        onUndo: () => void changeStatus({ ...item, status }, previous),
+      });
+    try {
+      await statusUpdate.mutateAsync({
+        householdId,
+        kind: "status",
+        id: item.id,
+        status,
+      });
+    } catch (cause) {
+      toast.error(errorText(cause, "Couldn't update that item."));
+    } finally {
+      await refresh();
+    }
+  };
+  const unhide = (ids: readonly string[]) =>
+    setHidden((current) => {
+      const next = new Set(current);
+      for (const id of ids) next.delete(id);
+      return next;
+    });
+  // Undo, not "are you sure?": hide now, delete when the toast closes.
+  const removeLater = (
+    ids: readonly string[],
+    message: string,
+    commit: () => Promise<unknown>,
+  ) => {
+    if (!ids.length) return;
+    setHidden((current) => new Set([...current, ...ids]));
+    undoToast(message, {
+      onUndo: () => unhide(ids),
+      onCommit: async () => {
+        try {
+          await commit();
+          await Promise.all([
+            refresh(),
+            client.invalidateQueries({ queryKey: trpc.planner.pathKey() }),
+          ]);
+        } catch (cause) {
+          toast.error(errorText(cause, "Couldn't remove those items."));
+        } finally {
+          unhide(ids);
+        }
+      },
+    });
+  };
+  const removeItem = (item: Item) =>
+    removeLater([item.id], `Removed ${item.text}`, () =>
+      trpcClient.shopping.removeItem.mutate({ householdId, id: item.id }),
+    );
   const add = useMutation(
     trpc.shopping.addItem.mutationOptions({
-      onSuccess: async () => {
+      onSuccess: async (_, input) => {
         setText("");
         setNewId(crypto.randomUUID());
         await refresh();
+        undoToast(`Added ${input.text.trim()}`, {
+          onUndo: () =>
+            void trpcClient.shopping.removeItem
+              .mutate({ householdId, id: input.id })
+              .then(refresh, (cause) =>
+                toast.error(errorText(cause, "Couldn't undo.")),
+              ),
+        });
       },
     }),
   );
-  const clear = useMutation(
-    trpc.shopping.clear.mutationOptions({
-      onSuccess: async () => {
-        setReset(false);
-        await Promise.all([
-          refresh(),
-          client.invalidateQueries({ queryKey: trpc.planner.pathKey() }),
-        ]);
-      },
-    }),
-  );
-  const items = list.data ?? [];
+  const items = (list.data ?? []).filter((item) => !hidden.has(item.id));
   const needed = items.filter((item) => item.status === "needed");
   const bought = items.filter((item) => item.status === "bought");
   const owned = items.filter((item) => item.status === "owned");
+  const recipeCount = new Set(
+    items.flatMap((item) => (item.recipeId ? [item.recipeId] : [])),
+  ).size;
+  const extras = items.filter((item) => !item.recipeId).length;
+  const members =
+    household.households.data?.find((entry) => entry.id === householdId)
+      ?.members ?? [];
+  const addedBy = (item: Item) => {
+    if (!householdId || item.recipeId) return null;
+    if (!item.addedBy || item.addedBy === userId) return "Added by you";
+    const name = members.find((member) => member.id === item.addedBy)?.name;
+    return `Added by ${name?.split(" ")[0] || "a member"}`;
+  };
+  const noteFor = (item: Item) =>
+    mode === "aisle" ? (item.recipeTitle ?? addedBy(item)) : addedBy(item);
+  const firstNeeded = needed[0]?.id;
+  const row = (item: Item) => (
+    <ShopRow
+      key={item.id}
+      item={item}
+      note={noteFor(item)}
+      swipeable={item.status === "needed"}
+      nudge={nudge && item.id === firstNeeded}
+      onToggle={() =>
+        void changeStatus(
+          item,
+          item.status === "bought" ? "needed" : "bought",
+          item.status === "bought"
+            ? `${item.text} back on the list`
+            : `Ticked ${item.text}`,
+        )
+      }
+      onHave={() =>
+        void changeStatus(item, "owned", `${item.text} · already have it`)
+      }
+      onNeed={() =>
+        void changeStatus(item, "needed", `${item.text} back on the list`)
+      }
+      onMore={() => {
+        setEditing(item);
+        setEditingOpen(true);
+      }}
+    />
+  );
+  const groups =
+    mode === "aisle"
+      ? shoppingCategories.flatMap((category) => {
+          const entries = needed.filter(
+            (item) => categoriseGrocery(item.text) === category,
+          );
+          return entries.length
+            ? [{ key: category, title: category, category, entries }]
+            : [];
+        })
+      : [
+          ...needed
+            .reduce((map, item) => {
+              const key = item.plannedMealId ?? item.recipeId ?? "other";
+              map.set(key, [...(map.get(key) ?? []), item]);
+              return map;
+            }, new Map<string, Item[]>())
+            .entries(),
+        ].map(([key, entries]) => ({
+          key,
+          title: entries[0]?.recipeTitle ?? "Other groceries",
+          category: undefined,
+          entries,
+        }));
+  const openPicker = () => {
+    setPickerKey((current) => current + 1);
+    setPicker(true);
+  };
+  const clearBought = () =>
+    removeLater(
+      bought.map((item) => item.id),
+      `Cleared ${bought.length} bought ${bought.length === 1 ? "item" : "items"}`,
+      () => trpcClient.shopping.clear.mutate({ householdId, scope: "bought" }),
+    );
+  const clearAll = () =>
+    removeLater(
+      items.map((item) => item.id),
+      "List cleared",
+      () => trpcClient.shopping.clear.mutate({ householdId, scope: "all" }),
+    );
+  const editingItem = editing
+    ? (items.find((item) => item.id === editing.id) ?? editing)
+    : null;
+  const sub = items.length
+    ? [
+        recipeCount
+          ? `From ${recipeCount} ${recipeCount === 1 ? "recipe" : "recipes"}`
+          : null,
+        extras ? `${extras} ${extras === 1 ? "extra" : "extras"}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : undefined;
   return (
-    <main id="main-content" className="shopping-page page-width">
-      <div className="page-heading">
-        <div>
-          <h1>
-            <span className="desktop-screen-title">Shopping list</span>
-            <span className="mobile-screen-title">Shopping</span>
-            <span className="title-dot">.</span>
-          </h1>
-          <p>
-            {scope.kind === "household"
-              ? "Your household list, saved as you go."
-              : "Your personal list, saved as you go."}
-          </p>
-        </div>
-        <button
-          type="button"
-          className="button button-small button-outline"
-          onClick={() => setPicker(true)}
-        >
-          <Plus size={18} />
-          Add recipes
-        </button>
-      </div>
-      <PlanningScopeBar />
-      <MealListNotice />
-      {list.isSuccess && (
-        <div className="shopping-trip-bar">
-          <strong role="status">
-            {needed.length} {needed.length === 1 ? "item" : "items"} to buy
-          </strong>
-          <ShoppingListAction
-            hasNeeded={needed.length > 0}
-            disabled={add.isPending || clear.isPending}
-          />
-        </div>
-      )}
-      <form
-        className="shopping-add-form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          add.mutate({ scope, id: newId, text });
-        }}
+    <main id="main-content" className="shop-page page-width">
+      <LargeTitle
+        eyebrow={
+          householdId ? (
+            <span className="plan-household">
+              <i
+                style={{ background: toneColor(household.color) }}
+                aria-hidden="true"
+              />
+              {household.name}
+            </span>
+          ) : undefined
+        }
+        sub={sub}
+        actions={
+          <>
+            <button
+              type="button"
+              className="button button-small button-outline"
+              onClick={openPicker}
+            >
+              <Plus size={16} aria-hidden="true" />
+              <span>Recipes</span>
+              <span className="pantry-visually-hidden"> to the list</span>
+            </button>
+            <button
+              type="button"
+              className="icon-button shop-options"
+              aria-label="List options"
+              onClick={() => setMore(true)}
+            >
+              <MoreHorizontal size={20} />
+            </button>
+          </>
+        }
       >
-        <label className="shopping-field">
-          Add a grocery
-          <input
-            placeholder="e.g. Milk, 2 litres"
-            value={text}
-            maxLength={2000}
-            disabled={add.isPending}
-            onChange={(e) => setText(e.target.value)}
-          />
-        </label>
-        <button
-          type="submit"
-          className="button button-outline"
-          disabled={add.isPending || !text.trim()}
-        >
-          {add.isPending ? "Adding..." : "Add item"}
-        </button>
-      </form>
-      <ErrorNotice
-        message={add.error?.message}
-        retry={() => add.variables && add.mutate(add.variables)}
-      />
+        Shopping
+      </LargeTitle>
+      <MealListNotice />
       <LoadingState
         pending={list.isPending}
         label="Loading your shopping list..."
@@ -469,54 +610,86 @@ function ScopedList({ userId }: { userId: string }) {
         />
         {list.isSuccess && (
           <>
-            <div className="shopping-summary">
-              <span>Ingredients by recipe</span>
-              {items.length > 0 && (
+            {items.length > 0 && (
+              <>
+                <ShopProgress
+                  left={needed.length}
+                  total={needed.length + bought.length}
+                />
+                <Segmented
+                  label="Group items"
+                  className="shop-seg"
+                  value={mode}
+                  onChange={setMode}
+                  options={[
+                    { value: "aisle", label: "By aisle" },
+                    { value: "recipe", label: "By recipe" },
+                  ]}
+                />
+              </>
+            )}
+            {!items.length ? (
+              <EmptyState
+                title="Nothing on the list"
+                description="Add an item below, or pull in ingredients from your recipes."
+                covers={["Lemons", "Bread"]}
+              >
                 <button
                   type="button"
-                  className="text-button"
-                  disabled={clear.isPending}
-                  onClick={() => setReset(true)}
+                  className="button button-outline"
+                  onClick={openPicker}
                 >
-                  Reset list
+                  <BookOpen size={18} aria-hidden="true" />
+                  Add from recipes
                 </button>
-              )}
-            </div>
-            {!items.length ? (
-              <div className="shopping-empty">
-                <ShoppingBasket size={36} />
-                <h2>What’s on the menu?</h2>
-                <p>
-                  Add recipes to get their ingredients, or start with a grocery
-                  above.
-                </p>
-              </div>
+              </EmptyState>
             ) : (
               !needed.length && (
-                <p className="shopping-empty">
-                  Everything is bought or already at home.
-                </p>
+                <EmptyState
+                  title="All done"
+                  description="Nice shop. Everything is bought or already at home."
+                  covers={["Done", "Home"]}
+                />
               )
             )}
-            <ItemGroups items={needed} userId={userId} />
+            {groups.map((group) => (
+              <section
+                className="shop-group"
+                key={group.key}
+                aria-labelledby={`shop-${group.key}`}
+              >
+                <AisleHeading
+                  id={`shop-${group.key}`}
+                  title={group.title}
+                  category={group.category}
+                  kind={group.key === "other" ? "manual" : "recipe"}
+                  count={group.entries.length}
+                />
+                <ul className="shop-list">{group.entries.map(row)}</ul>
+              </section>
+            ))}
             {owned.length > 0 && (
-              <details className="shopping-completed">
-                <summary>Already have · {owned.length}</summary>
-                <ItemGroups items={owned} userId={userId} />
+              <details className="shop-done">
+                <summary>
+                  <ChevronDown size={18} aria-hidden="true" />
+                  Have it ({owned.length})
+                </summary>
+                <ul className="shop-list">{owned.map(row)}</ul>
               </details>
             )}
             {bought.length > 0 && (
-              <details className="shopping-completed">
-                <summary>Bought · {bought.length}</summary>
-                <ItemGroups items={bought} userId={userId} />
+              <details className="shop-done">
+                <summary>
+                  <ChevronDown size={18} aria-hidden="true" />
+                  Bought ({bought.length})
+                </summary>
+                <ul className="shop-list">{bought.map(row)}</ul>
                 <button
                   type="button"
-                  className="text-button"
-                  disabled={clear.isPending}
-                  onClick={() =>
-                    clear.mutate({ planningScope: scope, scope: "bought" })
-                  }
+                  className="button button-small button-ghost shop-clear"
+                  onClick={clearBought}
                 >
+                  <Eraser size={16} aria-hidden="true" />
                   Clear bought items
                 </button>
               </details>
@@ -524,41 +697,139 @@ function ScopedList({ userId }: { userId: string }) {
           </>
         )}
       </LoadingState>
-      <ErrorNotice
-        message={clear.error?.message}
-        retry={() => clear.variables && clear.mutate(clear.variables)}
-      />
-      {picker && <RecipePicker onClose={() => setPicker(false)} />}
-      {reset && (
-        <OrganiseDialog
-          title="Reset shopping list?"
-          onClose={() => {
-            if (!clear.isPending) setReset(false);
+      <form
+        className="shop-quick"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (text.trim()) add.mutate({ householdId, id: newId, text });
+        }}
+      >
+        <ErrorNotice
+          message={add.error?.message}
+          retry={() => add.variables && add.mutate(add.variables)}
+        />
+        <div className="shop-quick-bar">
+          <input
+            placeholder="Add an item… e.g. 2 L milk"
+            aria-label="Add an item"
+            value={text}
+            maxLength={2000}
+            enterKeyHint="done"
+            disabled={add.isPending}
+            onChange={(event) => setText(event.target.value)}
+          />
+          <button
+            type="submit"
+            aria-label="Add"
+            disabled={add.isPending || !text.trim()}
+          >
+            <Plus size={20} />
+          </button>
+        </div>
+      </form>
+      <Sheet open={more} onOpenChange={setMore} title="List options">
+        <div className="pantry-list">
+          <button
+            type="button"
+            className="pantry-row"
+            onClick={() => {
+              setMore(false);
+              openPicker();
+            }}
+          >
+            <span className="pantry-row-icon" aria-hidden="true">
+              <BookOpen size={20} />
+            </span>
+            <span className="pantry-row-text">
+              Add from recipes
+              <small className="shop-row-note">
+                Any recipe you can open, from any collection
+              </small>
+            </span>
+            <ChevronRight
+              size={18}
+              className="pantry-row-go"
+              aria-hidden="true"
+            />
+          </button>
+          {list.isSuccess && (
+            <ShoppingListAction
+              hasNeeded={needed.length > 0}
+              disabled={add.isPending}
+              onDone={() => setMore(false)}
+            />
+          )}
+          <button
+            type="button"
+            className="pantry-row"
+            disabled={!bought.length}
+            onClick={() => {
+              setMore(false);
+              clearBought();
+            }}
+          >
+            <span className="pantry-row-icon" aria-hidden="true">
+              <Eraser size={20} />
+            </span>
+            <span className="pantry-row-text">
+              Clear bought items
+              <small className="shop-row-note">
+                {bought.length
+                  ? `${bought.length} ticked off`
+                  : "Nothing ticked off yet"}
+              </small>
+            </span>
+          </button>
+          <button
+            type="button"
+            className="pantry-row shop-danger-row"
+            disabled={!items.length}
+            onClick={() => {
+              setMore(false);
+              clearAll();
+            }}
+          >
+            <span className="pantry-row-icon" aria-hidden="true">
+              <Trash2 size={20} />
+            </span>
+            <span className="pantry-row-text">
+              Clear the whole list
+              <small className="shop-row-note">
+                Removes everything, including bought and at-home items
+              </small>
+            </span>
+          </button>
+        </div>
+      </Sheet>
+      {pickerKey > 0 && (
+        <RecipePicker
+          key={pickerKey}
+          open={picker}
+          onClose={() => setPicker(false)}
+        />
+      )}
+      {editingItem && (
+        <ItemSheet
+          key={editingItem.id}
+          item={editingItem}
+          userId={userId}
+          open={editingOpen}
+          onClose={() => setEditingOpen(false)}
+          onStatus={(status) => {
+            setEditingOpen(false);
+            void changeStatus(
+              editingItem,
+              status,
+              status === "owned"
+                ? `${editingItem.text} · already have it`
+                : `${editingItem.text} back on the list`,
+            );
           }}
-        >
-          <p>Removes all items, including those bought or already at home.</p>
-          <ErrorNotice message={clear.error?.message} />
-          <div className="organise-dialog-footer shopping-row-actions">
-            <button
-              type="button"
-              className="button button-outline"
-              disabled={clear.isPending}
-              onClick={() => setReset(false)}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="button button-primary"
-              disabled={clear.isPending}
-              onClick={() =>
-                clear.mutate({ planningScope: scope, scope: "all" })
-              }
-            >
-              {clear.isPending ? "Resetting..." : "Reset list"}
-            </button>
-          </div>
-        </OrganiseDialog>
+          onRemove={() => {
+            setEditingOpen(false);
+            removeItem(editingItem);
+          }}
+        />
       )}
     </main>
   );

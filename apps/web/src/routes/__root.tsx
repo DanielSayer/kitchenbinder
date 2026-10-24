@@ -9,10 +9,11 @@ import {
 } from "@tanstack/react-router";
 import type { TRPCOptionsProxy } from "@trpc/tanstack-react-query";
 import { AccountQueryBoundary } from "../components/account-query-boundary";
-import { CollectionProvider } from "../components/groups/collection-context";
 import Header from "../components/header";
-import { HouseholdProvider } from "../components/households/planning-context";
+import { HouseholdProvider } from "../components/households/household-context";
+import { HouseholdChrome } from "../components/households/households-sheet";
 import { InstallAppProvider } from "../components/install-app";
+import { HeaderSlotProvider } from "../components/shell/header-slot";
 import { getSiteOrigin } from "../functions/get-site-origin";
 
 import appCss from "../index.css?url";
@@ -41,7 +42,7 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
         content:
           "Your recipes, ready to cook. Save and organise recipes with Kitchenbinder.",
       },
-      { name: "theme-color", content: "#faf7ef" },
+      { name: "theme-color", content: "#f7f0e3" },
       { property: "og:type", content: "website" },
       { property: "og:site_name", content: "Kitchenbinder" },
       {
@@ -86,6 +87,7 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
     ],
     links: [
       { rel: "icon", href: "/favicon.ico", sizes: "16x16 32x32 48x48" },
+      { rel: "icon", href: "/branding/mark.svg", type: "image/svg+xml" },
       {
         rel: "icon",
         href: "/branding/favicon-32.png",
@@ -132,12 +134,13 @@ function RootDocument() {
         <div className="app-shell">
           <InstallAppProvider>
             <AccountQueryBoundary>
-              <CollectionProvider>
-                <HouseholdProvider>
+              <HouseholdProvider>
+                <HeaderSlotProvider>
                   <Header />
+                  <HouseholdChrome />
                   <Outlet />
-                </HouseholdProvider>
-              </CollectionProvider>
+                </HeaderSlotProvider>
+              </HouseholdProvider>
             </AccountQueryBoundary>
           </InstallAppProvider>
         </div>

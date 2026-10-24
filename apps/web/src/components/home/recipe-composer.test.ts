@@ -2,6 +2,7 @@
 
 import { QueryClientProvider } from "@tanstack/react-query";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -21,15 +22,33 @@ import {
 } from "./import-draft";
 import { RecipeComposer } from "./recipe-composer";
 
-const { createImport, discardImport, readStatus, selectGroup } = vi.hoisted(
-  () => ({
-    createImport: vi.fn(),
-    discardImport: vi.fn(),
-    readStatus: vi.fn(),
-    selectGroup: vi.fn(),
-  }),
-);
-vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
+const {
+  createImport,
+  discardImport,
+  readStatus,
+  selectHousehold,
+  readRecipe,
+  deleteRecipe,
+  shareRecipe,
+  unshareRecipe,
+  addToCollection,
+  undo,
+} = vi.hoisted(() => ({
+  createImport: vi.fn(),
+  discardImport: vi.fn(),
+  readStatus: vi.fn(),
+  selectHousehold: vi.fn(),
+  readRecipe: vi.fn(),
+  deleteRecipe: vi.fn(),
+  shareRecipe: vi.fn(),
+  unshareRecipe: vi.fn(),
+  addToCollection: vi.fn(),
+  undo: vi.fn(),
+}));
+vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+vi.mock("@/components/pantry/undo-toast", () => ({ undoToast: undo }));
+const weeknights = "00000000-0000-4000-8000-000000000009";
+const family = "00000000-0000-4000-8000-000000000003";
 
 vi.mock("@/lib/auth-client", () => ({
   authClient: {
@@ -48,22 +67,51 @@ vi.mock("@/utils/trpc", () => ({
           ...options,
         }),
       },
+      get: {
+        queryOptions: ({ id }: { id: string }, options: object) => ({
+          queryKey: ["recipe", id],
+          queryFn: () => readRecipe(id),
+          ...options,
+        }),
+      },
+      delete: {
+        mutationOptions: (options: object) => ({
+          mutationFn: deleteRecipe,
+          ...options,
+        }),
+      },
+      share: { mutationOptions: () => ({ mutationFn: shareRecipe }) },
+      unshare: { mutationOptions: () => ({ mutationFn: unshareRecipe }) },
       list: { queryKey: () => ["recipes"] },
+    },
+    collections: {
+      list: {
+        queryKey: () => ["collections"],
+        queryOptions: () => ({
+          queryKey: ["collections"],
+          queryFn: () => [
+            { id: weeknights, name: "Weeknights", isOwner: true },
+            { id: "shared-collection", name: "Shared", isOwner: false },
+          ],
+        }),
+      },
+      create: { mutationOptions: () => ({ mutationFn: vi.fn() }) },
+      addRecipes: { mutationOptions: () => ({ mutationFn: addToCollection }) },
+      removeRecipes: { mutationOptions: () => ({ mutationFn: vi.fn() }) },
     },
   }),
 }));
-vi.mock("../groups/collection-context", () => ({
-  useCollection: () => ({
-    groupId: null,
+vi.mock("@/components/households/household-context", () => ({
+  useHousehold: () => ({
+    householdId: null,
     available: true,
-    selectGroup,
-    groups: {
+    selectHousehold,
+    households: {
       data: [
-        { id: "00000000-0000-4000-8000-000000000003", name: "Family recipes" },
+        { id: family, name: "Family recipes", personal: false, color: "plum" },
       ],
     },
   }),
-  CollectionSelect: () => null,
 }));
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => vi.fn(),
@@ -93,7 +141,7 @@ beforeEach(() => {
   writePendingImport(importDraftKey("viewer"), {
     id: "00000000-0000-4000-8000-000000000001",
     input: "Make lemon pasta",
-    groupId: null,
+    householdId: null,
   });
   readStatus.mockRejectedValue(
     Object.assign(new Error("Import not found."), {
@@ -101,6 +149,29 @@ beforeEach(() => {
     }),
   );
   discardImport.mockResolvedValue(undefined);
+  readRecipe.mockImplementation((id: string) =>
+    Promise.resolve({
+      id,
+      sourceUrl: "https://www.example.com/lemon-pasta",
+      sharedWith: [],
+      collectionIds: [],
+      tags: [{ id: "t1", name: "Vegetarian" }],
+      content: {
+        title: "Lemon pasta",
+        description: "",
+        servings: "2",
+        prepMinutes: 10,
+        cookMinutes: 15,
+        totalMinutes: null,
+        ingredients: ["Pasta", "Lemon", "Spinach", "Garlic", "Olive oil"],
+        steps: ["Cook."],
+        notes: "",
+      },
+    }),
+  );
+  shareRecipe.mockResolvedValue({ success: true });
+  addToCollection.mockResolvedValue({ added: 1 });
+  deleteRecipe.mockResolvedValue({ success: true });
 });
 
 afterEach(cleanup);
@@ -207,7 +278,10 @@ it("recovers a lost admission response without a not-found toast", async () => {
   await waitFor(() => expect(readStatus).toHaveBeenCalledOnce());
   expect(toast.error).not.toHaveBeenCalled();
   await waitFor(
-    () => expect(screen.getByText("Added to your collection!")).toBeTruthy(),
+    () =>
+      expect(
+        screen.getByRole("button", { name: "Open Lemon pasta" }),
+      ).toBeTruthy(),
     { timeout: 4000 },
   );
   expect(toast.error).not.toHaveBeenCalled();
@@ -305,17 +379,40 @@ it("keeps a new draft intact when an earlier request succeeds or is dismissed", 
     target: { value: "My next recipe draft" },
   });
   await waitFor(() =>
-    expect(screen.getByText("Added to your collection!")).toBeTruthy(),
+    expect(screen.getByText("Ready · 5 ingredients")).toBeTruthy(),
   );
   expect(screen.getByRole("textbox")).toHaveProperty(
     "value",
     "My next recipe draft",
   );
-  expect(
-    screen.getByRole("link", { name: "Open recipe" }).getAttribute("href"),
-  ).toBe("/recipes/00000000-0000-4000-8000-000000000004");
-  fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
-  expect(screen.queryByRole("article")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Open Lemon pasta" }));
+  const sheet = await screen.findByRole("dialog", {
+    name: "Ready to save: Lemon pasta",
+  });
+  expect(within(sheet).getByText("From example.com")).toBeTruthy();
+  expect(within(sheet).getByText("25 min")).toBeTruthy();
+  expect(within(sheet).getByText("Vegetarian")).toBeTruthy();
+  expect(within(sheet).getByText("+1 more")).toBeTruthy();
+  // Only my own collections are offered.
+  await within(sheet).findByRole("button", { name: "Weeknights" });
+  expect(within(sheet).queryByRole("button", { name: "Shared" })).toBeNull();
+  fireEvent.click(within(sheet).getByRole("button", { name: "Weeknights" }));
+  fireEvent.click(
+    within(sheet).getByRole("button", { name: "Family recipes" }),
+  );
+  fireEvent.click(within(sheet).getByRole("button", { name: "Save recipe" }));
+  await waitFor(() => expect(screen.queryByRole("article")).toBeNull());
+  expect(addToCollection.mock.calls[0]?.[0]).toEqual({
+    collectionId: weeknights,
+    recipeIds: ["00000000-0000-4000-8000-000000000004"],
+  });
+  expect(shareRecipe.mock.calls[0]?.[0]).toEqual({
+    id: "00000000-0000-4000-8000-000000000004",
+    householdId: family,
+  });
+  expect(toast.success).toHaveBeenCalledWith(
+    "Saved to Weeknights · shared with Family recipes",
+  );
   expect(readImportQueue(importDraftKey("viewer"))).toEqual([]);
   expect(screen.getByRole("textbox")).toHaveProperty(
     "value",
@@ -324,17 +421,57 @@ it("keeps a new draft intact when an earlier request succeeds or is dismissed", 
   expect(discardImport).not.toHaveBeenCalled();
 });
 
+it("discards a ready recipe with undo instead of a confirmation", async () => {
+  createImport.mockResolvedValue({
+    kind: "saved",
+    id: "00000000-0000-4000-8000-000000000001",
+    recipeId: "00000000-0000-4000-8000-000000000004",
+    title: "Lemon pasta",
+  });
+  readStatus.mockImplementation(() => createImport.mock.results[0]?.value);
+  showComposer();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Open Lemon pasta" }),
+  );
+  const sheet = await screen.findByRole("dialog");
+  await within(sheet).findByText("Lemon pasta");
+  fireEvent.click(within(sheet).getByRole("button", { name: "Discard" }));
+  expect(screen.queryByRole("article")).toBeNull();
+  expect(undo).toHaveBeenCalledOnce();
+  const [message, options] = undo.mock.calls[0] ?? [];
+  expect(message).toBe("Recipe discarded");
+  expect(deleteRecipe).not.toHaveBeenCalled();
+  act(() => options.onUndo());
+  expect(readImportQueue(importDraftKey("viewer"))).toHaveLength(1);
+  await screen.findByRole("article");
+  undo.mockClear();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Open Lemon pasta" }),
+  );
+  fireEvent.click(
+    within(await screen.findByRole("dialog")).getByRole("button", {
+      name: "Discard",
+    }),
+  );
+  act(() => undo.mock.calls[0]?.[1].onCommit());
+  await waitFor(() => expect(deleteRecipe).toHaveBeenCalledOnce());
+  expect(deleteRecipe.mock.calls[0]?.[0]).toEqual({
+    id: "00000000-0000-4000-8000-000000000004",
+  });
+  expect(readImportQueue(importDraftKey("viewer"))).toEqual([]);
+});
+
 it("recovers every request with the same ID and destination without consuming the next draft", async () => {
   const queue = [
     {
       id: "00000000-0000-4000-8000-000000000001",
       input: "Make lemon pasta",
-      groupId: null,
+      householdId: null,
     },
     {
       id: "00000000-0000-4000-8000-000000000002",
       input: "Make chickpea soup",
-      groupId: "00000000-0000-4000-8000-000000000003",
+      householdId: "00000000-0000-4000-8000-000000000003",
     },
   ];
   writeImportQueue(importDraftKey("viewer"), queue);
@@ -373,12 +510,12 @@ it("attaches a quota rejection to its card while another request keeps polling",
     {
       id: "00000000-0000-4000-8000-000000000001",
       input: "Make lemon pasta",
-      groupId: null,
+      householdId: null,
     },
     {
       id: "00000000-0000-4000-8000-000000000002",
       input: "Make chickpea soup",
-      groupId: "00000000-0000-4000-8000-000000000003",
+      householdId: "00000000-0000-4000-8000-000000000003",
     },
   ]);
   createImport.mockImplementation((request) =>
@@ -421,7 +558,7 @@ it("attaches a quota rejection to its card while another request keeps polling",
     ),
   );
   expect(readImportQueue(importDraftKey("viewer"))).toHaveLength(1);
-  expect(selectGroup).toHaveBeenCalledWith(
+  expect(selectHousehold).toHaveBeenCalledWith(
     "00000000-0000-4000-8000-000000000003",
   );
   expect(
@@ -470,7 +607,7 @@ it("does not overwrite text entered while returning a rejected request to the co
 it("shows the full submitted prompt in a dialog without changing the current draft", async () => {
   const input = `Make a soup.\n${"Use chickpeas and spinach. ".repeat(30)}`;
   writeImportQueue(importDraftKey("viewer"), [
-    { id: "00000000-0000-4000-8000-000000000001", input, groupId: null },
+    { id: "00000000-0000-4000-8000-000000000001", input, householdId: null },
   ]);
   createImport.mockResolvedValue({
     kind: "queued",

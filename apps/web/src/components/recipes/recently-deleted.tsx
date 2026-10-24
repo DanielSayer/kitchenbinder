@@ -2,37 +2,16 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft, RotateCcw, Trash2 } from "lucide-react";
 import { ErrorNotice, LoadingState } from "@/components/feedback";
-import {
-  CollectionSelect,
-  useCollection,
-} from "@/components/groups/collection-context";
 import { useTRPC } from "@/utils/trpc";
 import { useRestoreRecipe } from "./use-restore-recipe";
 
+// The caller's own deleted recipes; only owners delete and restore.
 export function RecentlyDeleted() {
-  const { groupId, name } = useCollection();
-  return (
-    <DeletedCollection
-      key={groupId ?? "personal"}
-      groupId={groupId}
-      name={name}
-    />
-  );
-}
-
-function DeletedCollection({
-  groupId,
-  name,
-}: {
-  groupId: string | null;
-  name: string;
-}) {
   const trpc = useTRPC();
   const query = useQuery(
-    trpc.recipes.recentlyDeleted.queryOptions(
-      { groupId },
-      { refetchInterval: 60_000 },
-    ),
+    trpc.recipes.recentlyDeleted.queryOptions(undefined, {
+      refetchInterval: 60_000,
+    }),
   );
   const restore = useRestoreRecipe();
   return (
@@ -46,14 +25,11 @@ function DeletedCollection({
             Recently deleted<span className="title-dot">.</span>
           </h1>
           <p>
-            Restore recipes within 30 days of deletion.
-            {groupId
-              ? " Restoring a recipe returns it to everyone in the group."
-              : ""}
+            Restore recipes within 30 days of deletion. Restored recipes keep
+            their sharing.
           </p>
         </div>
       </div>
-      <CollectionSelect />
       <LoadingState
         pending={query.isPending}
         label="Loading deleted recipes..."
@@ -75,14 +51,11 @@ function DeletedCollection({
               <Trash2 size={28} aria-hidden="true" />
             </span>
             <h2>No recently deleted recipes</h2>
-            <p>Recipes deleted from {name} will appear here for 30 days.</p>
+            <p>Recipes you delete will appear here for 30 days.</p>
           </div>
         )}
         {query.isSuccess && query.data.length > 0 && (
-          <ul
-            className="deleted-recipes"
-            aria-label={`Recently deleted from ${name}`}
-          >
+          <ul className="deleted-recipes" aria-label="Recently deleted recipes">
             {query.data.map((recipe) => {
               if (!recipe.deletedAt || !recipe.expiresAt) return null;
               const expiry = new Date(recipe.expiresAt);
@@ -99,9 +72,6 @@ function DeletedCollection({
                     <p>
                       Deleted{" "}
                       {new Date(recipe.deletedAt).toLocaleDateString("en-AU")}
-                      {groupId
-                        ? ` by ${recipe.deletedByName ?? "a former member"}`
-                        : ""}
                     </p>
                     <p
                       className="deleted-recipe-expiry"

@@ -1,4 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Groups } from "@/components/groups/groups";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
-export const Route = createFileRoute("/_auth/groups")({ component: Groups });
+// Groups became households; keep old links working.
+export const Route = createFileRoute("/_auth/groups")({
+  beforeLoad: () => {
+    throw redirect({ to: "/households", replace: true });
+  },
+});

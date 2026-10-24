@@ -1,17 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ShoppingBasket } from "lucide-react";
-import { useState } from "react";
+import { Check, Search, ShoppingBasket } from "lucide-react";
+import { useDeferredValue, useRef, useState } from "react";
 import { toast } from "sonner";
+import {
+  useHousehold,
+  useHouseholdScope,
+} from "@/components/households/household-context";
+import { Chip, ChipRow, RecipeCover, Sheet } from "@/components/pantry";
 import { useTRPC } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
-import { useCollection } from "../groups/collection-context";
-import { CollectionDropdown } from "../groups/collection-dropdown";
-import {
-  planningRefresh,
-  usePlanningScope,
-} from "../households/planning-context";
-import { OrganiseDialog } from "../recipes/organise-dialog";
 import {
   RecipePagination,
   recipePageSize,
@@ -27,15 +25,10 @@ export function AddRecipesButton({
   onAdded?: () => void;
   compact?: boolean;
 }) {
-  const { scope, ready, available, household } = usePlanningScope();
   const trpc = useTRPC();
+  const householdId = useHouseholdScope();
   const client = useQueryClient();
-  const list = useQuery(
-    trpc.shopping.list.queryOptions(scope, {
-      ...planningRefresh(scope),
-      enabled: ready && available,
-    }),
-  );
+  const list = useQuery(trpc.shopping.list.queryOptions({ householdId }));
   const existing = new Set(list.data?.map((item) => item.recipeId));
   const remaining = recipeIds.filter((id) => !existing.has(id));
   const add = useMutation(
@@ -55,22 +48,17 @@ export function AddRecipesButton({
   );
   return (
     <div className="shopping-add-action">
-      {scope.kind === "household" && household && (
-        <small className="muted">{household.name} shopping list</small>
-      )}
       <button
         type="button"
         className="button button-small button-outline"
         disabled={
-          !ready ||
-          !available ||
           list.isPending ||
           list.isError ||
           add.isPending ||
           remaining.length === 0 ||
           remaining.length > 100
         }
-        onClick={() => add.mutate({ scope, recipeIds: remaining })}
+        onClick={() => add.mutate({ householdId, recipeIds: remaining })}
       >
         <ShoppingBasket size={17} />
         {add.isPending
@@ -98,24 +86,28 @@ export function AddRecipesButton({
   );
 }
 
-export function RecipePicker({ onClose }: { onClose: () => void }) {
-  const { scope, ready, available, household } = usePlanningScope();
+/** Add-from-recipes sheet: tick any accessible recipes, add their ingredients. */
+export function RecipePicker({
+  open = true,
+  onClose,
+}: {
+  open?: boolean;
+  onClose: () => void;
+}) {
   const trpc = useTRPC();
   const client = useQueryClient();
-  const { groups } = useCollection();
-  const list = useQuery(
-    trpc.shopping.list.queryOptions(scope, {
-      ...planningRefresh(scope),
-      enabled: ready && available,
-    }),
-  );
-  const [search, setSearch] = useState("");
+  const householdId = useHousehold().householdId ?? undefined;
+  const collections = useQuery(trpc.collections.list.queryOptions());
+  const list = useQuery(trpc.shopping.list.queryOptions({ householdId }));
+  const [query, setQuery] = useState("");
+  const search = useDeferredValue(query);
+  const searchInput = useRef<HTMLInputElement>(null);
   const [collection, setCollection] = useState("all");
   const { page, setPage } = useRecipePage(JSON.stringify([search, collection]));
   const recipes = useQuery(
     trpc.shopping.recipes.queryOptions({
       search,
-      collection,
+      collectionId: collection === "all" ? undefined : collection,
       page,
       pageSize: recipePageSize,
     }),
@@ -126,75 +118,117 @@ export function RecipePicker({ onClose }: { onClose: () => void }) {
   const shown = recipes.isError ? [] : (recipes.data?.items ?? []);
   const add = useMutation(
     trpc.shopping.addRecipes.mutationOptions({
-      onSuccess: async () => {
+      onSuccess: async ({ addedRecipes }) => {
         await client.invalidateQueries({
           queryKey: trpc.shopping.pathKey(),
         });
+        toast.success(
+          `Added ingredients from ${addedRecipes} ${addedRecipes === 1 ? "recipe" : "recipes"}`,
+        );
+        setSelected([]);
         onClose();
       },
     }),
   );
   return (
-    <OrganiseDialog
-      title="Add recipes"
-      className="shopping-picker"
-      onClose={() => {
-        if (!add.isPending) onClose();
+    <Sheet
+      open={open}
+      onOpenChange={(next) => {
+        if (!next && !add.isPending) onClose();
       }}
-    >
-      {scope.kind === "household" && household && (
-        <p className="shopping-picker-target">
-          Add ingredients to {household.name}'s shopping list.
-        </p>
-      )}
-      <div className="shopping-picker-filters">
-        <label className="shopping-field">
-          Search recipes
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Recipe name"
-          />
-        </label>
-        <CollectionDropdown
-          label="Collection"
-          value={collection}
-          onValueChange={setCollection}
-          options={[
-            { label: "All collections", value: "all" },
-            { label: "Personal collection", value: "personal" },
-            ...(groups.data?.map((group) => ({
-              label: group.name,
-              value: group.id,
-            })) ?? []),
-          ]}
-        />
-      </div>
-      <div className="shopping-picker-results">
-        <LoadingState pending={recipes.isPending || list.isPending}>
-          <ErrorNotice
-            message={
-              recipes.error?.message ||
-              list.error?.message ||
-              groups.error?.message
+      title="Add from recipes"
+      initialFocus={searchInput}
+      className="shop-picker"
+      footer={
+        <>
+          <div className="shop-picker-status">
+            <span role="status">
+              {validSelection.length} selected
+              {validSelection.length > 100 ? ". Choose up to 100." : ""}
+            </span>
+            {selected.length > 0 && (
+              <button
+                type="button"
+                className="text-button"
+                disabled={add.isPending}
+                onClick={() => setSelected([])}
+              >
+                Clear selection
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            className="button button-primary button-block"
+            disabled={
+              add.isPending ||
+              recipes.isError ||
+              list.isError ||
+              !validSelection.length ||
+              validSelection.length > 100
             }
-            retry={() => {
-              void recipes.refetch();
-              void list.refetch();
-              void groups.refetch();
-            }}
-          />
-          {recipes.isSuccess && list.isSuccess && (
-            <div className="shopping-recipe-choices">
-              {shown.map((recipe) => (
-                <label key={recipe.id} className="shopping-recipe-choice">
+            onClick={() =>
+              add.mutate({ householdId, recipeIds: validSelection })
+            }
+          >
+            {add.isPending ? "Adding..." : "Add ingredients"}
+          </button>
+        </>
+      }
+    >
+      <label className="pick-search">
+        <Search size={20} aria-hidden="true" />
+        <input
+          ref={searchInput}
+          value={query}
+          aria-label="Search recipes"
+          placeholder="Search recipes"
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </label>
+      {!!collections.data?.length && (
+        <ChipRow className="pick-chips" role="group" aria-label="Collection">
+          <Chip
+            pressed={collection === "all"}
+            onClick={() => setCollection("all")}
+          >
+            All recipes
+          </Chip>
+          {collections.data.map((item) => (
+            <Chip
+              key={item.id}
+              pressed={collection === item.id}
+              onClick={() => setCollection(item.id)}
+            >
+              {item.name}
+            </Chip>
+          ))}
+        </ChipRow>
+      )}
+      <LoadingState pending={recipes.isPending || list.isPending}>
+        <ErrorNotice
+          message={
+            recipes.error?.message ||
+            list.error?.message ||
+            collections.error?.message
+          }
+          retry={() => {
+            void recipes.refetch();
+            void list.refetch();
+            void collections.refetch();
+          }}
+        />
+        {recipes.isSuccess && list.isSuccess && (
+          <div className="pick-list">
+            {shown.map((recipe) => {
+              const onList = existing.has(recipe.id);
+              return (
+                <label key={recipe.id} className="pick-row" data-check>
                   <input
                     type="checkbox"
-                    disabled={add.isPending || existing.has(recipe.id)}
-                    checked={
-                      existing.has(recipe.id) ||
-                      validSelection.includes(recipe.id)
-                    }
+                    className="pick-input"
+                    disabled={add.isPending || onList}
+                    checked={onList || validSelection.includes(recipe.id)}
                     onChange={() =>
                       setSelected((current) =>
                         current.includes(recipe.id)
@@ -203,73 +237,48 @@ export function RecipePicker({ onClose }: { onClose: () => void }) {
                       )
                     }
                   />
-                  <span>
-                    <strong>{recipe.title}</strong>
-                    <small>
-                      {recipe.groupId
-                        ? (groups.data?.find(
-                            (group) => group.id === recipe.groupId,
-                          )?.name ?? "Shared collection")
-                        : "Personal collection"}
-                    </small>
-                    {existing.has(recipe.id) && <small>On your list</small>}
+                  <RecipeCover
+                    id={recipe.id}
+                    title={recipe.title}
+                    size="thumb"
+                  />
+                  <span className="pick-text">
+                    <b className="pick-title">{recipe.title}</b>{" "}
+                    {onList ? (
+                      <small>On your list</small>
+                    ) : recipe.servings ? (
+                      <small>{recipe.servings}</small>
+                    ) : null}
+                  </span>
+                  <span className="pick-mark" aria-hidden="true">
+                    <Check size={14} />
                   </span>
                 </label>
-              ))}
-              {!shown.length && (
-                <p className="muted">
-                  No recipes found. Try another collection or search.
-                </p>
-              )}
-            </div>
-          )}
-          {recipes.isSuccess && (
-            <RecipePagination
-              page={page}
-              total={recipes.data.total}
-              setPage={setPage}
-              disabled={add.isPending}
-            />
-          )}
-        </LoadingState>
-        <ErrorNotice
-          message={add.error?.message}
-          retry={() => {
-            void recipes.refetch();
-            void list.refetch();
-          }}
-        />
-      </div>
-      <div className="organise-dialog-footer shopping-picker-footer">
-        <span role="status">
-          {validSelection.length} selected
-          {validSelection.length > 100 ? ". Choose up to 100." : ""}
-        </span>
-        {selected.length > 0 && (
-          <button
-            type="button"
-            className="text-button"
-            disabled={add.isPending}
-            onClick={() => setSelected([])}
-          >
-            Clear selection
-          </button>
+              );
+            })}
+            {!shown.length && (
+              <p className="pick-empty">
+                No recipes found. Try another collection or search.
+              </p>
+            )}
+          </div>
         )}
-        <button
-          type="button"
-          className="button button-primary"
-          disabled={
-            add.isPending ||
-            recipes.isError ||
-            list.isError ||
-            !validSelection.length ||
-            validSelection.length > 100
-          }
-          onClick={() => add.mutate({ scope, recipeIds: validSelection })}
-        >
-          {add.isPending ? "Adding..." : "Add ingredients"}
-        </button>
-      </div>
-    </OrganiseDialog>
+        {recipes.isSuccess && (
+          <RecipePagination
+            page={page}
+            total={recipes.data.total}
+            setPage={setPage}
+            disabled={add.isPending}
+          />
+        )}
+      </LoadingState>
+      <ErrorNotice
+        message={add.error?.message}
+        retry={() => {
+          void recipes.refetch();
+          void list.refetch();
+        }}
+      />
+    </Sheet>
   );
 }

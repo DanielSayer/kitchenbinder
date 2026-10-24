@@ -47,17 +47,9 @@ export function PrivacyPolicy({ embedded = false }: { embedded?: boolean }) {
           Personal recipes are available to your account. Recipes saved to a
           group are available to its members. Group members can see member
           names. Recipe tags and custom tag definitions are shared within the
-          collection. Favourites, ratings and cooking history belong to your
-          account, including when you use a shared recipe. Personal shopping
-          lists and meal plans are private.
-        </p>
-        <p>
-          Household members can see each other's names and share their household
-          meal planner and shopping list. Scheduling a recipe shares a saved
-          copy of its ingredients and method with the household. Recipe notes,
-          ratings, cooking history and access to its source collection are not
-          included. Leaving a household ends your access; meals and groceries
-          already shared stay with the household.
+          collection. Favourites, ratings, cooking notes, shopping lists and
+          meal plans belong to your account, including when you use a shared
+          recipe.
         </p>
         <p>
           Kitchenbinder uses browser storage for preferences, recipe drafts and
@@ -94,13 +86,6 @@ export function PrivacyPolicy({ embedded = false }: { embedded?: boolean }) {
           another member or explicitly delete those groups. Deleting a group
           removes its shared recipes for everyone. We do not automatically
           choose a new owner or delete a group for you.
-        </p>
-        <p>
-          Transfer or explicitly delete any household you own before account
-          deletion. Deleting a household removes its shared planner, shopping
-          list and invitations for everyone. Meals and groceries in surviving
-          households, and copies other people kept, remain available to their
-          members.
         </p>
         <p>
           Account deletion removes your personal recipes, preferences, private

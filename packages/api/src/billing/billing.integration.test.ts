@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { db } from "@prep-sheet/db";
 import { user } from "@prep-sheet/db/schema/auth";
 import { aiSpend, billingAccount } from "@prep-sheet/db/schema/billing";
-import { group } from "@prep-sheet/db/schema/group";
+import { household } from "@prep-sheet/db/schema/household";
 import { recipeImport } from "@prep-sheet/db/schema/import";
 import { recipe } from "@prep-sheet/db/schema/recipe";
 import { providerConfiguration } from "@prep-sheet/env/server";
@@ -46,12 +46,12 @@ function caller(userId: string) {
 const manual = () => ({
   id: randomUUID(),
   content: sampleRecipe,
-  groupId: null,
+  householdId: null,
 });
 const ai = () => ({
   id: randomUUID(),
   input: "Make a soup with onions and lentils",
-  groupId: null,
+  householdId: null,
 });
 async function pro(userId: string, status = "active") {
   await db
@@ -72,7 +72,7 @@ describe("billing enforcement with PostgreSQL", () => {
       .values({ id, name: "Billing test", email: `${id}@example.test` });
   });
   afterAll(async () => {
-    await db.delete(group).where(inArray(group.ownerId, ids));
+    await db.delete(household).where(inArray(household.ownerId, ids));
     await db.delete(recipe).where(inArray(recipe.userId, ids));
     await db.delete(user).where(inArray(user.id, ids));
     if (spendIds.length)
@@ -135,7 +135,7 @@ describe("billing enforcement with PostgreSQL", () => {
       .where(eq(recipe.userId, id));
     if (!source) throw new Error("Missing test recipe");
     await expect(
-      api.recipes.copy({ id: source.id, newId: randomUUID(), groupId: null }),
+      api.recipes.copy({ id: source.id, newId: randomUUID() }),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(api.recipes.createManual(manual())).rejects.toMatchObject({
       code: "FORBIDDEN",
@@ -247,11 +247,11 @@ describe("billing enforcement with PostgreSQL", () => {
   it("requires Pro for household creation while Free members can join", async () => {
     const api = caller(id);
     await expect(
-      api.groups.create({ name: "Test household" }),
+      api.households.create({ name: "Test household" }),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
     await pro(id);
-    const household = await api.groups.create({ name: "Test household" });
-    const invite = await api.groups.invite({ groupId: household.id });
+    const household = await api.households.create({ name: "Test household" });
+    const invite = await api.households.invite({ householdId: household.id });
     const member = randomUUID();
     ids.push(member);
     await db.insert(user).values({
@@ -260,10 +260,13 @@ describe("billing enforcement with PostgreSQL", () => {
       email: `${member}@example.test`,
     });
     await expect(
-      caller(member).groups.acceptInvite({ token: invite.token }),
+      caller(member).households.acceptInvite({ token: invite.token }),
     ).resolves.toBeDefined();
     await expect(
-      api.groups.transferOwnership({ groupId: household.id, userId: member }),
+      api.households.transferOwnership({
+        householdId: household.id,
+        userId: member,
+      }),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
   it("keeps the service cutoff atomic and rejects repeated provider calls", async () => {

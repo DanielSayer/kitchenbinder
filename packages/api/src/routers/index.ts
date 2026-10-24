@@ -1,7 +1,7 @@
 import { providerConfiguration } from "@prep-sheet/env/server";
 import { publicProcedure, router } from "../index";
 import { billingRouter } from "./billing";
-import { groupsRouter } from "./groups";
+import { collectionsRouter } from "./collections";
 import { householdsRouter } from "./households";
 import { plannerRouter } from "./planner";
 import { recipesRouter } from "./recipes";
@@ -18,8 +18,8 @@ export const appRouter = router({
   tags: tagsRouter,
   shopping: shoppingRouter,
   planner: plannerRouter,
-  groups: groupsRouter,
   households: householdsRouter,
+  collections: collectionsRouter,
   support: supportRouter,
   healthCheck: publicProcedure.query(() => {
     return "OK";

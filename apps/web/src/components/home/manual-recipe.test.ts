@@ -18,6 +18,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { createElement } from "react";
 import {
@@ -43,7 +44,7 @@ import { readManualSubmission } from "./manual-submission";
 const { ownerId, createManual, navigate, collection } = vi.hoisted(() => {
   // The wrapper validates the isolated DB URL. Allow the real server router inside jsdom.
   vi.stubEnv("SKIP_ENV_VALIDATION", "true");
-  const collection: { groupId: string | null } = { groupId: null };
+  const collection: { householdId: string | null } = { householdId: null };
   return {
     ownerId: crypto.randomUUID(),
     createManual: vi.fn(),
@@ -65,13 +66,33 @@ vi.mock("@/utils/trpc", () => ({
           ...options,
         }),
       },
+      share: { mutationOptions: () => ({ mutationFn: vi.fn() }) },
       list: { queryKey: () => ["recipes"] },
+    },
+    collections: {
+      list: {
+        queryKey: () => ["collections"],
+        queryOptions: () => ({ queryKey: ["collections"], queryFn: () => [] }),
+      },
+      create: { mutationOptions: () => ({ mutationFn: vi.fn() }) },
     },
   }),
 }));
-vi.mock("../groups/collection-context", () => ({
-  useCollection: () => ({ ...collection, available: true }),
-  CollectionSelect: () => null,
+vi.mock("@/components/households/household-context", () => ({
+  useHousehold: () => ({
+    ...collection,
+    available: true,
+    households: {
+      data: [
+        {
+          id: "00000000-0000-4000-8000-00000000000f",
+          name: "Family",
+          personal: false,
+          color: "plum",
+        },
+      ],
+    },
+  }),
 }));
 vi.mock("@tanstack/react-router", async (original) => ({
   ...(await original<typeof import("@tanstack/react-router")>()),
@@ -112,7 +133,7 @@ beforeAll(async () => {
 });
 beforeEach(() => {
   sessionStorage.clear();
-  collection.groupId = null;
+  collection.householdId = null;
   createManual
     .mockReset()
     .mockImplementation((input) => api.recipes.createManual(input));
@@ -156,8 +177,13 @@ async function mount(expectedTitle = sampleRecipe.title) {
     ),
   );
 }
-function submit() {
-  fireEvent.click(screen.getByRole("button", { name: "Save recipe" }));
+// The editor opens the ready-to-save sheet; its one button saves.
+function openSheet() {
+  fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+  return screen.getByRole("dialog", { name: /Ready to save/ });
+}
+function submit(sheet = openSheet()) {
+  fireEvent.click(within(sheet).getByRole("button", { name: "Save recipe" }));
 }
 async function loseResponse() {
   createManual.mockImplementationOnce(async (input) => {
@@ -284,14 +310,40 @@ it("treats a destination change as a changed retry and retains the draft during 
   await mount();
   const pending = await loseResponse();
   cleanup();
-  collection.groupId = crypto.randomUUID();
+  // A changed default does not move a pending save.
+  collection.householdId = crypto.randomUUID();
   await mount();
-  submit();
+  const sheet = openSheet();
+  const family = within(sheet).getByRole("button", { name: "Family" });
+  expect(family.getAttribute("aria-pressed")).toBe("false");
+  fireEvent.click(family);
+  submit(sheet);
   await screen.findByText(/An earlier save may have completed/);
   expect(createManual).toHaveBeenCalledTimes(1);
   fireEvent.click(screen.getByRole("button", { name: "Recover earlier save" }));
-  await screen.findByText(/saved to its original collection/);
+  await screen.findByText(/saved with its original sharing/);
   expect(createManual.mock.calls[1]?.[0]).toEqual(pending);
   expect(readRecipeDraft(key)?.title).toBe(sampleRecipe.title);
   expect(navigate).not.toHaveBeenCalled();
+});
+
+it("saves with the chosen share target and collection from the ready sheet", async () => {
+  collection.householdId = "00000000-0000-4000-8000-00000000000f";
+  await mount();
+  createManual.mockResolvedValueOnce({ id: "saved-recipe" });
+  const sheet = openSheet();
+  expect(within(sheet).getByText(sampleRecipe.title)).toBeTruthy();
+  // The selected household is preselected.
+  expect(
+    within(sheet)
+      .getByRole("button", { name: "Family" })
+      .getAttribute("aria-pressed"),
+  ).toBe("true");
+  submit(sheet);
+  await waitFor(() => expect(navigate).toHaveBeenCalled());
+  expect(createManual.mock.calls[0]?.[0]).toMatchObject({
+    householdId: "00000000-0000-4000-8000-00000000000f",
+    collectionId: null,
+    content: expect.objectContaining({ title: sampleRecipe.title }),
+  });
 });

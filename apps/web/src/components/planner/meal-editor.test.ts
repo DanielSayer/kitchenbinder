@@ -31,7 +31,6 @@ import {
   it,
   vi,
 } from "vitest";
-import { HouseholdProvider } from "../households/planning-context";
 import { initialMealDraft, readMealDraft } from "./meal-draft";
 import { MealEditor } from "./meal-editor";
 
@@ -48,16 +47,16 @@ const { ownerId, getPlanner, saveMeal, close } = vi.hoisted(() => {
 vi.mock("@/lib/auth-client", () => ({
   authClient: { useSession: () => ({ data: { user: { id: ownerId } } }) },
 }));
-vi.mock("../groups/collection-context", () => ({
-  useCollection: () => ({ groups: { data: [] } }),
+vi.mock("@/components/households/household-context", () => ({
+  useHousehold: () => ({ householdId: null }),
 }));
 vi.mock("@/utils/trpc", () => ({
   useTRPC: () => ({
-    households: {
-      current: {
+    collections: {
+      list: {
         queryOptions: () => ({
-          queryKey: ["households", "current"],
-          queryFn: async () => null,
+          queryKey: ["collections", "list"],
+          queryFn: async () => [],
         }),
       },
     },
@@ -135,16 +134,16 @@ beforeAll(async () => {
   });
   await api.recipes.createManual({
     id: recipeId,
-    groupId: null,
     content: sampleRecipe,
   });
 });
 beforeEach(async () => {
   localStorage.clear();
   sessionStorage.clear();
-  await db.$client.query("DELETE FROM meal_planner WHERE user_id = $1", [
-    ownerId,
-  ]);
+  await db.$client.query(
+    "DELETE FROM meal_planner WHERE household_id IN (SELECT id FROM household WHERE owner_id = $1)",
+    [ownerId],
+  );
   await api.planner.save({ revision: 0, meal });
   getPlanner.mockReset().mockImplementation(() => api.planner.get());
   saveMeal.mockReset().mockImplementation((input) => api.planner.save(input));
@@ -164,6 +163,9 @@ afterEach(() => {
 });
 afterAll(async () => {
   await db.$client.query("DELETE FROM recipe WHERE user_id = $1", [ownerId]);
+  await db.$client.query("DELETE FROM household WHERE owner_id = $1", [
+    ownerId,
+  ]);
   await db.$client.query('DELETE FROM "user" WHERE id = $1', [ownerId]);
   await db.$client.end();
 });
@@ -190,15 +192,11 @@ async function mount(options: { cached?: boolean; meal?: Meal } = {}) {
       createElement(
         QueryClientProvider,
         { client },
-        createElement(
-          HouseholdProvider,
-          null,
-          createElement(MealEditor, {
-            date: currentMeal.date,
-            meal: currentMeal,
-            onClose: close,
-          }),
-        ),
+        createElement(MealEditor, {
+          date: currentMeal.date,
+          meal: currentMeal,
+          onClose: close,
+        }),
       ),
   });
   render(
@@ -209,11 +207,11 @@ async function mount(options: { cached?: boolean; meal?: Meal } = {}) {
       }),
     }),
   );
-  await screen.findByRole("heading", { name: "Meal details" });
+  await screen.findByRole("heading", { name: "Edit meal" });
   return client;
 }
 function changeDescription(value: string) {
-  fireEvent.change(screen.getByLabelText("Description, optional"), {
+  fireEvent.change(screen.getByLabelText("Note"), {
     target: { value },
   });
 }
@@ -238,12 +236,12 @@ it("keeps the original base through close and restore, requiring review of anoth
     revision: 1,
     meal,
   });
-  fireEvent.click(screen.getByRole("button", { name: "Close edit meal" }));
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
   expect(close).toHaveBeenCalledOnce();
   cleanup();
   await otherTab({ description: "Other tab", date: "2026-10-16" });
   await mount();
-  expect(screen.getByLabelText("Description, optional")).toHaveProperty(
+  expect(screen.getByLabelText("Note")).toHaveProperty(
     "value",
     "My older draft",
   );
@@ -471,7 +469,7 @@ it("reviews conflicting meal types as one choice and shows recipe names", async 
 it("keeps the older draft when a different tab edits and clears its own draft", async () => {
   await mount();
   changeDescription("Tab A unfinished dinner");
-  fireEvent.click(screen.getByRole("button", { name: "Close edit meal" }));
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
   const tabA = sessionStorage.getItem(key);
   if (!tabA) throw new Error("Tab A draft was not stored");
   cleanup();
@@ -487,7 +485,7 @@ it("keeps the older draft when a different tab edits and clears its own draft", 
   sessionStorage.setItem(key, tabA);
   close.mockClear();
   await mount();
-  expect(screen.getByLabelText("Description, optional")).toHaveProperty(
+  expect(screen.getByLabelText("Note")).toHaveProperty(
     "value",
     "Tab A unfinished dinner",
   );

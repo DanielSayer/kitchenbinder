@@ -1,6 +1,6 @@
 import {
   collectionsSchema,
-  importInputSchema,
+  importRequestSchema,
   importStatusSchema,
 } from "@prep-sheet/api/import-contract";
 import {
@@ -34,13 +34,13 @@ const commandSchema = z.discriminatedUnion("kind", [
   }),
   z.strictObject({
     kind: z.literal("save-import"),
-    input: importInputSchema.omit({ id: true }),
+    input: importRequestSchema.omit({ id: true }),
     title: z.string().max(300).optional(),
     accountId: z.string().optional(),
   }),
   z.strictObject({
     kind: z.literal("select-collection"),
-    groupId: z.uuid().nullable(),
+    householdId: z.uuid().nullable(),
     accountId: z.string().optional(),
   }),
   z.strictObject({
@@ -63,9 +63,9 @@ function requestInput({
   id,
   content,
   sourceUrl,
-  groupId,
+  householdId,
 }: z.infer<typeof pendingSchema>) {
-  return { id, content, sourceUrl, groupId };
+  return { id, content, sourceUrl, householdId };
 }
 class ReconnectError extends Error {}
 
@@ -138,7 +138,7 @@ export default defineBackground(() => {
         );
       const wanted =
         command.kind === "select-collection"
-          ? command.groupId
+          ? command.householdId
           : previous.success
             ? previous.data
             : null;
@@ -147,12 +147,12 @@ export default defineBackground(() => {
         throw new Error(
           "That collection is no longer available. Reload collections and choose another.",
         );
-      const groupId = valid ? wanted : null;
+      const householdId = valid ? wanted : null;
       await browser.storage.local.set({
-        [preferenceKey]: groupId,
+        [preferenceKey]: householdId,
         [collectionsKey]: collections,
       });
-      return { collections, groupId, changed: !valid && wanted !== null };
+      return { collections, householdId, changed: !valid && wanted !== null };
     }
     const pending = pendingSchema.safeParse(
       (await browser.storage.local.get(key))[key],
@@ -185,7 +185,7 @@ export default defineBackground(() => {
       // A new attempt always requires the explicit, race-safe reset command.
       return status;
     }
-    const input = importInputSchema.parse({
+    const input = importRequestSchema.parse({
       ...command.input,
       id: crypto.randomUUID(),
     });
@@ -194,7 +194,7 @@ export default defineBackground(() => {
       (await browser.storage.local.get(collectionsKey))[collectionsKey],
     );
     const collection = cached.success
-      ? cached.data.find((item) => item.id === input.groupId)
+      ? cached.data.find((item) => item.id === input.householdId)
       : undefined;
     await browser.storage.local.set({
       [key]: {

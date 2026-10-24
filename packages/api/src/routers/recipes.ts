@@ -2,11 +2,14 @@ import { createHash } from "node:crypto";
 import { db } from "@prep-sheet/db";
 import { recipeContentSchema } from "@prep-sheet/db/recipe-content";
 import { user } from "@prep-sheet/db/schema/auth";
+import { collection, collectionRecipe } from "@prep-sheet/db/schema/collection";
+import { household, householdMember } from "@prep-sheet/db/schema/household";
 import {
   recipe,
   recipeCooking,
   recipeFavourite,
   recipeRating,
+  recipeShare,
 } from "@prep-sheet/db/schema/recipe";
 import { TRPCError } from "@trpc/server";
 import {
@@ -17,17 +20,17 @@ import {
   getTableColumns,
   gt,
   isNotNull,
-  isNull,
   sql,
 } from "drizzle-orm";
 import { z } from "zod";
 import { checkRecipeCapacity, lockAccount } from "../billing/usage";
 import {
   accessibleRecipe,
-  lockGroup,
-  recipePermission,
-  requireGroup,
-} from "../groups/access";
+  lockHousehold,
+  ownedRecipe,
+  requireHousehold,
+} from "../households/access";
+import { applyPlacement, preparePlacement } from "../households/placement";
 import { websiteImportSchema } from "../import-contract";
 import {
   discardWebsiteImport,
@@ -40,8 +43,10 @@ import {
   collectionInput,
   cookingSummary,
   favouriteOf,
+  isOwnerOf,
   listRecipes,
   ratingOf,
+  tagDetailsOf,
   taggingInput,
   taggingRecipePage,
   tagsOf,
@@ -49,54 +54,99 @@ import {
 import { copyRecipeTags, setRecipeTags } from "../tags/recipes";
 
 const idInput = z.object({ id: z.uuid() });
-const owned = (id: string, userId: string) =>
+const placementInput = {
+  // Share with this household on save. "Just me" means no share.
+  householdId: z.uuid().nullable().optional(),
+  // Add to this collection (owned by the caller) on save.
+  collectionId: z.uuid().nullable().optional(),
+};
+const accessible = (id: string, userId: string) =>
   and(eq(recipe.id, id), accessibleRecipe(userId));
+const owned = (id: string, userId: string) =>
+  and(eq(recipe.id, id), ownedRecipe(userId));
 const missing = () =>
   new TRPCError({ code: "NOT_FOUND", message: "Recipe not found." });
+const ownerOnly = () =>
+  new TRPCError({
+    code: "FORBIDDEN",
+    message: "Only the recipe's owner can do this.",
+  });
+
+// Households the recipe is shared with: all for the owner, otherwise the viewer's.
+const sharedWithOf = (userId: string) => sql<
+  { id: string; name: string; color: string; personal: boolean }[]
+>`coalesce((
+  select json_agg(json_build_object('id', ${household.id}, 'name', ${household.name}, 'color', ${household.color}, 'personal', ${household.personal}) order by ${household.createdAt}, ${household.id})
+  from ${recipeShare} join ${household} on ${household.id} = ${recipeShare.householdId}
+  where ${recipeShare.recipeId} = ${recipe.id} and (${recipe.userId} = ${userId} or exists (
+    select 1 from ${householdMember}
+    where ${householdMember.householdId} = ${household.id} and ${householdMember.userId} = ${userId}
+  ))
+), '[]'::json)`;
+// The viewer's own collections containing this recipe.
+const collectionIdsOf = (userId: string) => sql<string[]>`coalesce((
+  select json_agg(${collectionRecipe.collectionId})
+  from ${collectionRecipe} join ${collection} on ${collection.id} = ${collectionRecipe.collectionId}
+  where ${collectionRecipe.recipeId} = ${recipe.id} and ${collection.userId} = ${userId}
+), '[]'::json)`;
 
 export async function getRecipe(id: string, userId: string) {
   const [result] = await db
     .select({
       ...getTableColumns(recipe),
+      ownerName: user.name,
+      isOwner: isOwnerOf(userId),
+      sharedWith: sharedWithOf(userId),
+      collectionIds: collectionIdsOf(userId),
       isFavourite: favouriteOf(userId),
       rating: ratingOf(userId),
       ...cookingSummary(userId),
       tagIds: tagsOf(),
+      tags: tagDetailsOf(),
     })
     .from(recipe)
-    .where(owned(id, userId));
+    .leftJoin(user, eq(user.id, recipe.userId))
+    .where(accessible(id, userId));
   if (!result) throw missing();
-  return result;
+  const { ownerName, ...rest } = result;
+  return {
+    ...rest,
+    owner:
+      result.userId && ownerName !== null
+        ? { id: result.userId, name: ownerName }
+        : null,
+  };
+}
+
+async function requireOwnedRecipe(id: string, userId: string) {
+  const saved = await getRecipe(id, userId);
+  if (!saved.isOwner) throw ownerOnly();
+  return saved;
 }
 
 export const recipesRouter = router({
-  recentlyDeleted: protectedProcedure
-    .input(z.object({ groupId: z.uuid().nullable() }))
-    .query(async ({ input, ctx }) => {
-      const userId = ctx.session.user.id;
-      if (input.groupId) await requireGroup(db, input.groupId, userId);
-      return db
-        .select({
-          id: recipe.id,
-          title: recipe.title,
-          deletedAt: recipe.deletedAt,
-          expiresAt: recipe.expiresAt,
-          deletedByName: user.name,
-        })
-        .from(recipe)
-        .leftJoin(user, eq(user.id, recipe.deletedBy))
-        .where(
-          and(
-            recipePermission(userId),
-            input.groupId
-              ? eq(recipe.groupId, input.groupId)
-              : isNull(recipe.groupId),
-            isNotNull(recipe.deletedAt),
-            gt(recipe.expiresAt, sql`now()`),
-          ),
-        )
-        .orderBy(desc(recipe.deletedAt), asc(recipe.id));
-    }),
+  // The caller's own recipes in their 30-day recovery period.
+  recentlyDeleted: protectedProcedure.query(async ({ ctx }) => {
+    const userId = ctx.session.user.id;
+    return db
+      .select({
+        id: recipe.id,
+        title: recipe.title,
+        deletedAt: recipe.deletedAt,
+        expiresAt: recipe.expiresAt,
+        deletedByName: user.name,
+      })
+      .from(recipe)
+      .leftJoin(user, eq(user.id, recipe.deletedBy))
+      .where(
+        and(
+          eq(recipe.userId, userId),
+          isNotNull(recipe.deletedAt),
+          gt(recipe.expiresAt, sql`now()`),
+        ),
+      )
+      .orderBy(desc(recipe.deletedAt), asc(recipe.id));
+  }),
   restore: protectedProcedure.input(idInput).mutation(async ({ input, ctx }) =>
     db.transaction(async (tx) => {
       const [candidate] = await tx
@@ -105,7 +155,7 @@ export const recipesRouter = router({
         .where(
           and(
             eq(recipe.id, input.id),
-            recipePermission(ctx.session.user.id),
+            eq(recipe.userId, ctx.session.user.id),
             isNotNull(recipe.deletedAt),
           ),
         );
@@ -117,7 +167,7 @@ export const recipesRouter = router({
         .where(
           and(
             eq(recipe.id, input.id),
-            recipePermission(ctx.session.user.id),
+            eq(recipe.userId, ctx.session.user.id),
             isNotNull(recipe.deletedAt),
             gt(recipe.expiresAt, sql`now()`),
           ),
@@ -310,18 +360,70 @@ export const recipesRouter = router({
     .mutation(({ input, ctx }) =>
       discardWebsiteImport(ctx.session.user.id, input),
     ),
+  share: protectedProcedure
+    .input(idInput.extend({ householdId: z.uuid() }))
+    .mutation(({ input, ctx }) =>
+      db.transaction(async (tx) => {
+        const userId = ctx.session.user.id;
+        await lockHousehold(tx, input.householdId);
+        await requireHousehold(tx, input.householdId, userId, {
+          allowPersonal: false,
+        });
+        const [found] = await tx
+          .select({ id: recipe.id })
+          .from(recipe)
+          .where(owned(input.id, userId));
+        if (!found) throw missing();
+        await tx
+          .insert(recipeShare)
+          .values({ recipeId: input.id, householdId: input.householdId })
+          .onConflictDoNothing();
+        return { success: true };
+      }),
+    ),
+  unshare: protectedProcedure
+    .input(idInput.extend({ householdId: z.uuid() }))
+    .mutation(async ({ input, ctx }) => {
+      const [found] = await db
+        .select({ id: recipe.id })
+        .from(recipe)
+        .where(
+          and(eq(recipe.id, input.id), eq(recipe.userId, ctx.session.user.id)),
+        );
+      if (!found) throw missing();
+      await db
+        .delete(recipeShare)
+        .where(
+          and(
+            eq(recipeShare.recipeId, input.id),
+            eq(recipeShare.householdId, input.householdId),
+          ),
+        );
+      return { success: true };
+    }),
   createManual: protectedProcedure
     .input(
       idInput.extend({
         content: recipeContentSchema,
-        groupId: z.uuid().nullable(),
+        ...placementInput,
       }),
     )
     .mutation(async ({ input, ctx }) => {
       const userId = ctx.session.user.id;
+      const placement = {
+        householdId: input.householdId ?? null,
+        collectionId: input.collectionId ?? null,
+      };
+      // "groupId" keeps identities of saves submitted before households stable.
       const manualRequestHash = createHash("sha256")
         .update(
-          JSON.stringify({ groupId: input.groupId, content: input.content }),
+          JSON.stringify({
+            groupId: placement.householdId,
+            ...(placement.collectionId
+              ? { collectionId: placement.collectionId }
+              : {}),
+            content: input.content,
+          }),
         )
         .digest("hex");
       await db.transaction(async (tx) => {
@@ -343,23 +445,21 @@ export const recipesRouter = router({
           });
         if (existing) return;
         await checkRecipeCapacity(tx, userId);
-        if (input.groupId) {
-          await lockGroup(tx, input.groupId);
-          await requireGroup(tx, input.groupId, userId);
-        }
-        await tx
+        const prepared = await preparePlacement(tx, userId, placement);
+        const inserted = await tx
           .insert(recipe)
           .values({
             id: input.id,
             userId,
-            groupId: input.groupId,
             title: input.content.title,
             content: input.content,
             manualRequestHash,
             origin: "manual",
             sourceUrl: null,
           })
-          .onConflictDoNothing();
+          .onConflictDoNothing()
+          .returning({ id: recipe.id });
+        if (inserted.length) await applyPlacement(tx, input.id, prepared);
       });
       const saved = await getRecipe(input.id, userId);
       if (
@@ -374,26 +474,25 @@ export const recipesRouter = router({
       return saved;
     }),
   copy: protectedProcedure
-    .input(idInput.extend({ newId: z.uuid(), groupId: z.uuid().nullable() }))
+    .input(idInput.extend({ newId: z.uuid(), ...placementInput }))
     .mutation(({ input, ctx }) =>
       db.transaction(async (tx) => {
         const userId = ctx.session.user.id;
         await checkRecipeCapacity(tx, userId);
-        if (input.groupId) {
-          await lockGroup(tx, input.groupId);
-          await requireGroup(tx, input.groupId, userId);
-        }
+        const prepared = await preparePlacement(tx, userId, {
+          householdId: input.householdId ?? null,
+          collectionId: input.collectionId ?? null,
+        });
         const [source] = await tx
           .select()
           .from(recipe)
-          .where(owned(input.id, userId));
+          .where(accessible(input.id, userId));
         if (!source) throw missing();
         const [saved] = await tx
           .insert(recipe)
           .values({
             id: input.newId,
             userId,
-            groupId: input.groupId,
             title: source.title,
             content: source.content,
             sourceUrl: source.sourceUrl,
@@ -407,7 +506,8 @@ export const recipesRouter = router({
             message:
               "This copy has already been saved. Refresh your collection.",
           });
-        await copyRecipeTags(tx, userId, input.id, saved.id, input.groupId);
+        await copyRecipeTags(tx, userId, input.id, saved.id);
+        await applyPlacement(tx, saved.id, prepared);
         return saved;
       }),
     ),
@@ -435,7 +535,7 @@ export const recipesRouter = router({
         )
         .returning();
       if (!result) {
-        await getRecipe(input.id, ctx.session.user.id);
+        await requireOwnedRecipe(input.id, ctx.session.user.id);
         throw new TRPCError({
           code: "CONFLICT",
           message:
@@ -454,7 +554,10 @@ export const recipesRouter = router({
       })
       .where(owned(input.id, ctx.session.user.id))
       .returning({ id: recipe.id });
-    if (!deleted.length) throw missing();
+    if (!deleted.length) {
+      await requireOwnedRecipe(input.id, ctx.session.user.id);
+      throw missing();
+    }
     return { success: true };
   }),
 });

@@ -13,13 +13,11 @@ export function TagChoices({
   return (
     <div className="tag-choices">
       {tags.map((tag) => {
-        const tone =
-          [...tag.id].reduce((hash, char) => hash + char.charCodeAt(0), 0) % 4;
         return (
           <button
             type="button"
             key={tag.id}
-            className={`tag-choice tag-tone-${tone}`}
+            className="tag-choice"
             aria-pressed={selected.includes(tag.id)}
             disabled={disabled}
             title={tag.description}

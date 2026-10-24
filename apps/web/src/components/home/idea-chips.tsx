@@ -1,3 +1,30 @@
+import { Chip, ChipRow, type PantryTone } from "@/components/pantry";
+
+const ideas: { label: string; prompt: string; tone: PantryTone }[] = [
+  {
+    label: "Cosy dal",
+    prompt: "A cosy vegetarian dal for four",
+    tone: "olive",
+  },
+  {
+    label: "Salmon traybake",
+    prompt: "Quick salmon traybake, under 30 minutes",
+    tone: "sage",
+  },
+  {
+    label: "Lemon pasta",
+    prompt:
+      "Lemon and chickpea pasta with spinach for two people, ready in 25 minutes",
+    tone: "butter",
+  },
+  {
+    label: "Leftover chicken",
+    prompt: "Something with leftover roast chicken",
+    tone: "tomato",
+  },
+];
+
+/** Tap an idea to fill the composer; we generate a recipe from it. */
 export function IdeaChips({
   disabled,
   onSelect,
@@ -6,19 +33,20 @@ export function IdeaChips({
   onSelect: (value: string) => void;
 }) {
   return (
-    <div className="idea-chips">
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => {
-          onSelect(
-            "Generate a recipe: lemon and chickpea pasta with spinach for two people, ready in 25 minutes.",
-          );
-          document.getElementById("recipe-input")?.focus();
-        }}
-      >
-        Try a lemon pasta idea <span aria-hidden="true">↗</span>
-      </button>
-    </div>
+    <ChipRow className="add-ideas" aria-label="Recipe ideas">
+      {ideas.map((idea) => (
+        <Chip
+          key={idea.label}
+          dot={idea.tone}
+          disabled={disabled}
+          onClick={() => {
+            onSelect(idea.prompt);
+            document.getElementById("recipe-input")?.focus();
+          }}
+        >
+          {idea.label}
+        </Chip>
+      ))}
+    </ChipRow>
   );
 }

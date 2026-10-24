@@ -6,7 +6,7 @@
 }
 .help-section h2 {
   font-size: 24px;
-  font-weight: 800;
+  font-weight: 700;
   margin-bottom: 12px;
 }
 .help-section h3 {
@@ -45,7 +45,7 @@
   margin: 20px 0;
 }
 .help-form label {
-  font-weight: 800;
+  font-weight: 700;
 }
 .help-form input,
 .help-form textarea {
@@ -68,13 +68,13 @@
 }
 .help-form :focus-visible,
 .help-section summary:focus-visible {
-  outline: 2px solid var(--ink);
+  outline: 1px solid var(--line);
   outline-offset: 3px;
 }
 .help-section summary {
   cursor: pointer;
   padding: 14px 0;
-  font-weight: 800;
+  font-weight: 700;
   min-height: 48px;
 }
 .account-deletion,
@@ -86,7 +86,7 @@
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #f2f3e9;
+  background: var(--oat);
   margin-bottom: 20px;
 }
 .help-history li {

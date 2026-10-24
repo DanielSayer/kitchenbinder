@@ -1,4 +1,3 @@
-import { DropdownMenuItem } from "@prep-sheet/ui/components/dropdown-menu";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Heart } from "lucide-react";
 import { useState } from "react";
@@ -10,13 +9,13 @@ export function FavouriteButton({
   title,
   isFavourite,
   showLabel = false,
-  menuItem = false,
+  className,
 }: {
   id: string;
   title: string;
   isFavourite: boolean;
   showLabel?: boolean;
-  menuItem?: boolean;
+  className?: string;
 }) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
@@ -42,11 +41,16 @@ export function FavouriteButton({
   const selected = mutation.isPending
     ? mutation.variables.isFavourite
     : isFavourite;
-  const Control = menuItem ? DropdownMenuItem : "button";
   return (
-    <Control
+    <button
       type="button"
-      className={`${menuItem ? "collection-select-manage recipe-mobile-action" : showLabel ? "organise-action" : "icon-button"} favourite-button`}
+      className={[
+        showLabel ? "organise-action" : "icon-button",
+        "favourite-button",
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
       aria-label={`${selected ? "Remove" : "Add"} ${title} ${selected ? "from" : "to"} favourites`}
       title={selected ? "Remove from favourites" : "Add to favourites"}
       aria-pressed={selected}
@@ -83,6 +87,6 @@ export function FavouriteButton({
         )}
       </span>
       {showLabel && <span>{selected ? "Favourited" : "Favourite"}</span>}
-    </Control>
+    </button>
   );
 }
