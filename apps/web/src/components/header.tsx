@@ -1,14 +1,14 @@
 import { Link } from "@tanstack/react-router";
+import { HouseholdMenu } from "./households/household-menu";
 import { InstallSuggestion } from "./install-app";
 import { BrandMark, Wordmark } from "./pantry/brand-mark";
 import { mainDestinations } from "./shell/destinations";
-import { HeaderSlotOutlet } from "./shell/header-slot";
 import { TabBar } from "./shell/tab-bar";
 import UserMenu from "./user-menu";
 
 /**
- * App chrome. Desktop: mark + wordmark, top nav, header slot, account menu.
- * Mobile: slim bar with the mark and header slot; navigation in the tab bar.
+ * App chrome. Desktop: mark + wordmark, household menu, top nav, account menu.
+ * Mobile: slim bar with the mark; navigation in the tab bar.
  */
 export default function Header() {
   return (
@@ -18,6 +18,7 @@ export default function Header() {
           <BrandMark className="brand-icon" size={30} />
           <Wordmark />
         </Link>
+        <HouseholdMenu />
 
         <nav className="top-nav" aria-label="Main navigation">
           {mainDestinations.map(
@@ -38,7 +39,6 @@ export default function Header() {
         </nav>
 
         <div className="site-header-end">
-          <HeaderSlotOutlet />
           <div className="nav-account">
             <UserMenu />
           </div>

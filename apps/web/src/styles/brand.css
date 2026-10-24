@@ -93,11 +93,23 @@
   color: var(--tomato);
 }
 .brand-wordmark {
-  font: 800 24px / 1 var(--sans);
-  letter-spacing: -0.6px;
+  font: 850 24px / 1 var(--sans);
+  letter-spacing: -0.025em;
   color: var(--ink);
 }
-.brand-wordmark i {
-  font-weight: 700;
-  color: var(--tomato);
+/* Dotless ı topped with a tomato punch ring, sized in em to scale. */
+.brand-punch {
+  position: relative;
+}
+.brand-punch::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0.15em;
+  width: 0.2em;
+  height: 0.2em;
+  border: 0.052em solid var(--tomato);
+  border-radius: 50%;
+  box-sizing: border-box;
+  transform: translateX(-50%);
 }

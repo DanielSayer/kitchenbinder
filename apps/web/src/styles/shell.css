@@ -61,14 +61,89 @@
   margin-left: auto;
   min-width: 0;
 }
-.header-slot {
-  display: flex;
+/* Household menu: "kitchenbinder / Family", desktop only. */
+.household-menu {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-left: -12px;
+  flex-shrink: 0;
+}
+.household-menu-slash {
+  color: var(--line);
+  font: 300 26px / 1 var(--sans);
+}
+.household-menu-trigger {
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-width: 0;
+  min-height: 40px;
+  padding: 0 8px 0 6px;
+  border: 0;
+  border-radius: var(--r-s);
+  background: transparent;
+  color: var(--ink);
+  font: 700 14px / 1 var(--sans);
+  cursor: pointer;
 }
-.header-slot:empty {
-  display: none;
+.household-menu-trigger:hover,
+.household-menu-trigger[data-popup-open] {
+  background: var(--oat);
+}
+.household-menu-trigger > svg {
+  flex: none;
+  color: var(--ink-3);
+}
+.household-menu-badge {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--hc);
+  color: #fff;
+  font: 800 11px / 1 var(--sans);
+}
+.household-menu-name {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Wide enough that names and actions sit on one line. */
+.household-menu-content {
+  width: max-content;
+  min-width: 260px;
+  max-width: min(360px, calc(100vw - 32px));
+}
+.household-menu-content .collection-select-option,
+.household-menu-content .collection-select-manage {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+.household-menu-label {
+  padding: 8px 12px 6px;
+  color: var(--ink-3);
+  font: 700 11px / 1 var(--sans);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.household-menu-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--hc);
+}
+.household-menu-option {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .account-trigger {
   display: inline-flex;
@@ -101,6 +176,12 @@
   .brand-wordmark,
   .account-name {
     display: none;
+  }
+  .household-menu {
+    margin-left: 0;
+  }
+  .household-menu-name {
+    max-width: 120px;
   }
   .top-nav a {
     padding: 0 10px;
@@ -144,6 +225,7 @@
   }
   /* The app shows the mark; the wordmark is for desktop and welcome. */
   .site-header .brand-wordmark,
+  .household-menu,
   .top-nav,
   .nav-account {
     display: none;

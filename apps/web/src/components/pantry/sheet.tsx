@@ -41,6 +41,22 @@ const focusableSelector = [
 /** Keep in sync with --t-sheet; exit animation duration. */
 export const SHEET_EXIT_MS = 260;
 const DRAG_CLOSE_PX = 90;
+/** Visual viewport this much shorter than the layout viewport = keyboard up. */
+const KEYBOARD_PX = 120;
+const FOCUS_GAP_PX = 16;
+
+/** Scroll `body` (only) so the focused field clears its edges. */
+function revealFocused(body: HTMLElement) {
+  const field = document.activeElement;
+  if (!(field instanceof HTMLElement) || !body.contains(field)) return;
+  const fieldBox = field.getBoundingClientRect();
+  const bodyBox = body.getBoundingClientRect();
+  if (fieldBox.bottom > bodyBox.bottom - FOCUS_GAP_PX) {
+    body.scrollTop += fieldBox.bottom - bodyBox.bottom + FOCUS_GAP_PX;
+  } else if (fieldBox.top < bodyBox.top + FOCUS_GAP_PX) {
+    body.scrollTop -= bodyBox.top - fieldBox.top + FOCUS_GAP_PX;
+  }
+}
 
 function focusables(root: HTMLElement) {
   return Array.from(
@@ -66,6 +82,7 @@ export function Sheet({
 }: SheetProps) {
   const [mounted, setMounted] = useState(open);
   const [dragY, setDragY] = useState(0);
+  const root = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
   const dragStart = useRef<number | null>(null);
@@ -103,6 +120,37 @@ export function Sheet({
       restoreFocus.current?.focus?.({ preventScroll: true });
     };
   }, [open, mounted, initialFocus]);
+
+  // Mobile keyboards shrink the visual viewport but not the layout viewport
+  // fixed elements use, so a bottom sheet ends up under the keyboard. Pin the
+  // root to the visual viewport and keep the focused field in view.
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const element = root.current;
+    if (!open || !mounted || !viewport || !element) return;
+    let frame = 0;
+    const sync = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const keyboard =
+          document.documentElement.clientHeight - viewport.height > KEYBOARD_PX;
+        element.style.setProperty("--vv-top", `${viewport.offsetTop}px`);
+        element.style.setProperty("--vv-height", `${viewport.height}px`);
+        element.toggleAttribute("data-keyboard", keyboard);
+        if (keyboard && body.current) revealFocused(body.current);
+      });
+    };
+    sync();
+    viewport.addEventListener("resize", sync);
+    viewport.addEventListener("scroll", sync);
+    element.addEventListener("focusin", sync);
+    return () => {
+      cancelAnimationFrame(frame);
+      viewport.removeEventListener("resize", sync);
+      viewport.removeEventListener("scroll", sync);
+      element.removeEventListener("focusin", sync);
+    };
+  }, [open, mounted]);
 
   if (!mounted || typeof document === "undefined") return null;
 
@@ -148,6 +196,7 @@ export function Sheet({
 
   return createPortal(
     <div
+      ref={root}
       className="pantry-sheet-root"
       data-state={open ? "open" : "closed"}
       data-desktop={desktop}

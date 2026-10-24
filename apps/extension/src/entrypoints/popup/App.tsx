@@ -57,7 +57,10 @@ export function App() {
           width={40}
           height={40}
         />
-        <span className="brand-wordmark">kitchenbinder</span>
+        <span className="brand-wordmark" role="img" aria-label="kitchenbinder">
+          k<span className="brand-punch">ı</span>tchenb
+          <span className="brand-punch">ı</span>nder
+        </span>
       </p>
       {connection?.kind === "connected" ? (
         <>

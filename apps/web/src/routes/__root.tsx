@@ -13,7 +13,6 @@ import Header from "../components/header";
 import { HouseholdProvider } from "../components/households/household-context";
 import { HouseholdChrome } from "../components/households/households-sheet";
 import { InstallAppProvider } from "../components/install-app";
-import { HeaderSlotProvider } from "../components/shell/header-slot";
 import { getSiteOrigin } from "../functions/get-site-origin";
 
 import appCss from "../index.css?url";
@@ -135,11 +134,9 @@ function RootDocument() {
           <InstallAppProvider>
             <AccountQueryBoundary>
               <HouseholdProvider>
-                <HeaderSlotProvider>
-                  <Header />
-                  <HouseholdChrome />
-                  <Outlet />
-                </HeaderSlotProvider>
+                <Header />
+                <HouseholdChrome />
+                <Outlet />
               </HouseholdProvider>
             </AccountQueryBoundary>
           </InstallAppProvider>

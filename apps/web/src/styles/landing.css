@@ -60,9 +60,9 @@ body .home-page .add-composer-section {
   margin-bottom: 22px;
   color: var(--ink);
 }
-.sample-sheet-brand > span {
-  font: 800 20px / 1 var(--sans);
-  letter-spacing: -0.5px;
+.sample-sheet-brand > .sample-sheet-wordmark {
+  font: 850 20px / 1 var(--sans);
+  letter-spacing: -0.025em;
 }
 .sample-sheet-brand small {
   margin-left: auto;
@@ -205,7 +205,7 @@ body .home-page .add-composer-section {
   .sample-sheet h2 {
     font-size: 26px;
   }
-  .sample-sheet-brand > span {
+  .sample-sheet-brand > .sample-sheet-wordmark {
     font-size: 18px;
   }
   .sample-sheet-brand small {
