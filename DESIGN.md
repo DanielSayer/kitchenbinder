@@ -1,8 +1,8 @@
 # Kitchenbinder design system: Pantry
 
 Warm, paper-and-pantry look that behaves like a native app. Tokens live in
-`apps/web/src/styles/brand.css` (also imported by the extension popup). The live
-visual reference is `docs/design/pantry.html` (mock only, not production code).
+`apps/web/src/styles/brand.css`. The live visual reference is
+`docs/design/pantry.html` (mock only, not production code).
 Where the mock and this doc differ, this doc wins.
 
 ## Principles

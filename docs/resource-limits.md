@@ -10,15 +10,13 @@ actual TLS proxy and host against the same budgets before public traffic.
 | --- | ---: |
 | `/api/trpc/*` | 1,572,864, or 1.5 MiB |
 | `/api/polar/webhooks` | 262,144, or 256 KiB |
-| `/api/extensions/*` | 200,000 |
 | Auth and all other routes | 16,384, or 16 KiB |
 
 The listener rejects an excessive declared `Content-Length` before dispatch.
 The Fetch entry counts actual streamed bytes before any application parser or
 authentication handler runs, including when a length is absent or misleading.
 It returns 413 on overflow and 408 if the complete body has not arrived within
-15 seconds. It cancels reading on rejection. The existing extension handlers
-retain their smaller action-specific limits. These are byte budgets, so JSON
+15 seconds. It cancels reading on rejection. These are byte budgets, so JSON
 escaping and multi-byte characters count towards the total.
 GET and HEAD requests with a declared or chunked body are rejected by the
 listener with 413, including requests for static assets.

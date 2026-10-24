@@ -53,6 +53,4 @@ downtime; mixed releases need an explicit compatibility review.
 The separate P2 audit work remains outside these PRs: expired recipe cleanup and
 retention policy, billing lock contention and dependency-advisory remediation.
 Active setup documentation now directs operators to versioned migrations;
-dated verification notes remain historical evidence. Production browser-extension
-identity, installed Chrome/Edge acceptance and store release also remain separate if the
-extension is included in launch.
+dated verification notes remain historical evidence.

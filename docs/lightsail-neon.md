@@ -9,8 +9,8 @@ contract remains [deployment.md](deployment.md). Read [auth-proxy.md](auth-proxy
 For Kitchenbinder production, replace `PUBLIC_HOST` in all three nginx templates
 with `kitchenbinder.app` and use `BETTER_AUTH_URL=https://kitchenbinder.app`.
 Certificate paths must refer to that hostname. See the
-[domain cutover checklist](kitchenbinder-rebrand.md) for provider callbacks,
-extension releases and existing browser drafts. Use the staging hostname instead
+[domain cutover checklist](kitchenbinder-rebrand.md) for provider callbacks
+and existing browser drafts. Use the staging hostname instead
 when preparing a separate private staging installation.
 
 ## Record the inputs
@@ -284,7 +284,7 @@ nginx sends nosniff, DENY framing, strict-origin-when-cross-origin referrers and
 camera/microphone/geolocation restrictions. CSP initially restricts base URI,
 objects and framing. Full script/style/connect CSP needs built-app/provider testing.
 No COOP/COEP policy is imposed on OAuth flows. Review headers with actual browser
-login and extension acceptance. Access logs are off and errors critical-only to
+login. Access logs are off and errors critical-only to
 avoid routine private URLs/codes. Use app request IDs and private aggregate metrics.
 Audit host-wide logging separately for unparsed requests and secret retention.
 
@@ -300,7 +300,7 @@ capacity and attacks that do not complete headers also need host/firewall
 monitoring. These admission limits are not a DDoS guarantee.
 
 Bodies match the app byte limits: tRPC prefix 1,572,864, exact Polar webhook
-262,144, extension prefix 200,000, all remaining routes 16,384. nginx normalises
+262,144, all remaining routes 16,384. nginx normalises
 paths before location selection; the app independently enforces its own path
 budgets. Trailing/encoded variants cannot enlarge the app allowance. Reject
 request Content-Encoding except absent/identity. No rewriting/decompression,
@@ -409,7 +409,7 @@ results. All remain pending live acceptance:
 - Off-host/PITR restore with measured RPO/RTO, backup alerts and real external
   incident/recovery delivery including complete host loss.
 - Real Google OAuth and attended support. Keep AI/billing disabled until their
-  separate provider acceptance. Extension acceptance is independent.
+  separate provider acceptance.
 
 Local verification on 17 October 2026 passed the nginx/Compose validation command,
 the one disposable database-role test, and three packaged-image tests covering

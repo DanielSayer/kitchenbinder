@@ -23,8 +23,7 @@ GitHub concurrency group. Intermediate queued commits may be superseded.
 The deployment workflow reuses all release checks, including the tests against
 the Linux image. It publishes that same image to `ghcr.io/danielsayer/kitchenbinder`,
 then passes its digest and full commit to Lightsail. The server verifies the
-image's revision label. Web, worker and migrations use that digest. Development
-extension ZIPs are checked separately and are not store releases.
+image's revision label. Web, worker and migrations use that digest.
 
 During the repository rename, the publisher also pushes the exact same image to
 `ghcr.io/danielsayer/prep-sheet` and verifies both registry digests match. This is
