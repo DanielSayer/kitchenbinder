@@ -37,9 +37,13 @@
 }
 
 /* Sheet */
+/* --vv-*: visual viewport, set by Sheet so it rides above the keyboard. */
 .pantry-sheet-root {
   position: fixed;
-  inset: 0;
+  top: var(--vv-top, 0);
+  left: 0;
+  right: 0;
+  height: var(--vv-height, 100%);
   z-index: 60;
   display: flex;
   align-items: flex-end;
@@ -60,7 +64,7 @@ body:has(.pantry-sheet-root) {
 .pantry-sheet {
   position: relative;
   width: 100%;
-  max-height: 88dvh;
+  max-height: min(88dvh, calc(var(--vv-height, 100dvh) - 16px));
   display: flex;
   flex-direction: column;
   background: var(--card);
@@ -71,6 +75,10 @@ body:has(.pantry-sheet-root) {
   transition: transform var(--t-sheet) var(--spring);
   animation: pantry-sheet-up var(--t-sheet) var(--spring);
   outline: none;
+}
+/* Keyboard covers the home indicator; no safe-area gap above it. */
+.pantry-sheet-root[data-keyboard] .pantry-sheet {
+  padding-bottom: 12px;
 }
 .pantry-sheet-root[data-state="closed"] .pantry-sheet {
   animation: pantry-sheet-down 260ms var(--ease) forwards;
@@ -169,7 +177,7 @@ body:has(.pantry-sheet-root) {
   }
   .pantry-sheet {
     width: min(520px, 100%);
-    max-height: min(720px, 90dvh);
+    max-height: min(720px, 90dvh, calc(var(--vv-height, 100dvh) - 48px));
     border-radius: var(--r-xl);
     box-shadow:
       var(--e2),

@@ -74,6 +74,38 @@ describe("Sheet", () => {
     expect(document.activeElement).toBe(screen.getByText("Last"));
   });
 
+  it("pins to the visual viewport when the keyboard opens", () => {
+    vi.useFakeTimers();
+    const viewport = Object.assign(new EventTarget(), {
+      height: 800,
+      offsetTop: 0,
+    });
+    vi.stubGlobal("visualViewport", viewport);
+    vi.spyOn(document.documentElement, "clientHeight", "get").mockReturnValue(
+      800,
+    );
+    renderSheet();
+    const root = document.querySelector<HTMLElement>(".pantry-sheet-root");
+    if (!root) throw new Error("missing root");
+    act(() => {
+      vi.runAllTimers();
+    });
+    expect(root.hasAttribute("data-keyboard")).toBe(false);
+
+    viewport.height = 450;
+    viewport.offsetTop = 30;
+    act(() => {
+      viewport.dispatchEvent(new Event("resize"));
+      vi.runAllTimers();
+    });
+    expect(root.style.getPropertyValue("--vv-height")).toBe("450px");
+    expect(root.style.getPropertyValue("--vv-top")).toBe("30px");
+    expect(root.hasAttribute("data-keyboard")).toBe(true);
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
   it("unmounts after closing and restores focus", () => {
     vi.useFakeTimers();
     const trigger = document.createElement("button");
