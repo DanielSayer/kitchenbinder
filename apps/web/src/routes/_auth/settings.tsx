@@ -6,6 +6,7 @@ import {
   Download,
   KeyRound,
   LifeBuoy,
+  LogOut,
   Plus,
   Puzzle,
   Shield,
@@ -92,6 +93,13 @@ function You() {
               {providers ? ` · ${providers}` : ""}
             </small>
           </div>
+          <button
+            type="button"
+            className="button button-ghost button-small you-sign-out you-sign-out-desktop"
+            onClick={() => void signOut()}
+          >
+            <LogOut size={16} aria-hidden="true" /> Sign out
+          </button>
         </div>
       )}
 
@@ -157,7 +165,7 @@ function You() {
 
       <button
         type="button"
-        className="button button-ghost button-block you-sign-out"
+        className="button button-ghost button-block you-sign-out you-sign-out-mobile"
         onClick={() => void signOut()}
       >
         Sign out
