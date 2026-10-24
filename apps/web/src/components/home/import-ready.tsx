@@ -109,6 +109,7 @@ export function ImportReadySheet({
               id: saved.id,
               content: saved.content,
               sourceUrl: saved.sourceUrl,
+              photo: saved.photo,
               tags: saved.tags,
             }
           : null

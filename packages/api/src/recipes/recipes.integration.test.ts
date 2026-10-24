@@ -320,6 +320,7 @@ describe("recipes API with PostgreSQL", () => {
       content: sampleRecipe,
       origin: "generated",
       sourceUrl: null,
+      imageUrl: null,
       tagIds: [custom.id, foreign.id, randomUUID()],
     });
     await createAndWait(owner, { id, input: "Make lunch" });
@@ -333,6 +334,7 @@ describe("recipes API with PostgreSQL", () => {
         }),
       ]),
       undefined,
+      [],
     );
     expect((await owner.recipes.get({ id })).tagIds).toEqual([custom.id]);
     expect(
@@ -417,6 +419,7 @@ describe("recipes API with PostgreSQL", () => {
       content: sampleRecipe,
       origin: "generated",
       sourceUrl: null,
+      imageUrl: null,
       tagIds: [memberTag.id, ownerTag.id],
     });
     const imported = await createAndWait(member, {
@@ -520,6 +523,7 @@ describe("recipes API with PostgreSQL", () => {
       content: sampleRecipe,
       origin: "generated",
       sourceUrl: null,
+      imageUrl: null,
       tagIds: [],
     });
     const saved = await createAndWait(owner, { id, input: "Make lemon pasta" });
@@ -781,6 +785,7 @@ describe("recipes API with PostgreSQL", () => {
       content: sampleRecipe,
       origin: "generated",
       sourceUrl: null,
+      imageUrl: null,
       tagIds: [],
     });
     const owner = caller(ids[0]);
@@ -1070,6 +1075,7 @@ describe("recipes API with PostgreSQL", () => {
       content: sampleRecipe,
       origin: "generated",
       sourceUrl: null,
+      imageUrl: null,
       tagIds: [],
     });
     const saved = await createAndWait(member, {
@@ -1086,6 +1092,7 @@ describe("recipes API with PostgreSQL", () => {
         content: sampleRecipe,
         origin: "generated",
         sourceUrl: null,
+        imageUrl: null,
         tagIds: [],
       };
     });
@@ -1173,6 +1180,7 @@ describe("recipes API with PostgreSQL", () => {
       content: sampleRecipe,
       origin: "generated",
       sourceUrl: null,
+      imageUrl: null,
       tagIds: [],
     });
     const shared = await createAndWait(member, {

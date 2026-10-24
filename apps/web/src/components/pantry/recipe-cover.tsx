@@ -1,3 +1,7 @@
+import {
+  type RecipePhoto,
+  recipePhotoWidths,
+} from "@prep-sheet/db/recipe-photo";
 import { type CSSProperties, useState } from "react";
 import { type PantryTone, toneFor } from "./tones";
 
@@ -7,7 +11,7 @@ export type RecipeCoverProps = {
   /** Stable seed for the tint. Falls back to the title. */
   id?: string;
   title: string;
-  photoUrl?: string | null;
+  photo?: RecipePhoto | null;
   /** Override the hashed tint, e.g. from the recipe's main tag. */
   tone?: PantryTone;
   /** Override the word picked from the title. */
@@ -18,6 +22,18 @@ export type RecipeCoverProps = {
 };
 
 const smallSizes = new Set<RecipeCoverSize>(["thumb", "list"]);
+// Rendered widths for srcset selection; small covers always use the 480 file.
+const photoSizes: Record<RecipeCoverSize, string> = {
+  thumb: "56px",
+  list: "56px",
+  grid: "(min-width: 851px) 33vw, 50vw",
+  hero: "(min-width: 851px) 640px, 100vw",
+  detail: "(min-width: 851px) 960px, 100vw",
+};
+
+export function photoSource(photo: RecipePhoto, width: number) {
+  return `${photo.url}-${width}.webp`;
+}
 const splitters =
   /\s(?:with|in|on|for|from|over|served|topped)\s|[,:;(–—|]|\s-\s/i;
 const filler = new Set([
@@ -67,7 +83,7 @@ export function toneForTags(tags: readonly string[]): PantryTone | undefined {
 export function RecipeCover({
   id,
   title,
-  photoUrl,
+  photo,
   tone,
   word,
   size = "grid",
@@ -75,7 +91,7 @@ export function RecipeCover({
   style,
 }: RecipeCoverProps) {
   const [failed, setFailed] = useState(false);
-  const showPhoto = Boolean(photoUrl) && !failed;
+  const showPhoto = Boolean(photo) && !failed;
   const resolvedTone = tone ?? toneFor(id ?? title);
   const label = word ?? coverWord(title);
   const text = smallSizes.has(size) ? label.charAt(0) : label;
@@ -86,11 +102,21 @@ export function RecipeCover({
       data-size={size}
       data-tone={showPhoto ? undefined : resolvedTone}
       data-photo={showPhoto || undefined}
-      style={style}
+      style={
+        showPhoto && photo
+          ? ({ ...style, "--c": photo.color } as CSSProperties)
+          : style
+      }
     >
-      {showPhoto ? (
+      {showPhoto && photo ? (
         <img
-          src={photoUrl ?? undefined}
+          src={photoSource(photo, recipePhotoWidths[0])}
+          srcSet={recipePhotoWidths
+            .map((width) => `${photoSource(photo, width)} ${width}w`)
+            .join(", ")}
+          sizes={photoSizes[size]}
+          width={photo.width}
+          height={photo.height}
           alt=""
           loading="lazy"
           decoding="async"

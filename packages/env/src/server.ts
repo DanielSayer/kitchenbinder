@@ -26,6 +26,15 @@ export const env = createEnv({
     POLAR_PRO_PRODUCT_ID: z.uuid().optional(),
     POLAR_SERVER: z.enum(["sandbox", "production"]).optional(),
     OPENAI_MODEL: z.string().trim().default(providerConfiguration.model),
+    // S3-compatible bucket for recipe photos. Unset skips photo copying.
+    MEDIA_BUCKET: z.string().trim().optional(),
+    MEDIA_REGION: z.string().trim().optional(),
+    // Only for non-AWS endpoints such as a local MinIO.
+    MEDIA_ENDPOINT: z.url().optional(),
+    MEDIA_ACCESS_KEY_ID: z.string().trim().optional(),
+    MEDIA_SECRET_ACCESS_KEY: z.string().trim().optional(),
+    // Public origin serving the bucket, e.g. the CDN distribution.
+    MEDIA_PUBLIC_URL: z.url().optional(),
     NODE_ENV: z
       .enum(["development", "production", "test"])
       .default("development"),

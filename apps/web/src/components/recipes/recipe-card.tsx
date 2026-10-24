@@ -81,6 +81,7 @@ export function RecipeCard({
       <RecipeCover
         id={recipe.id}
         title={recipe.title}
+        photo={recipe.photo}
         tone={tone}
         size={view === "list" ? "list" : "grid"}
       />

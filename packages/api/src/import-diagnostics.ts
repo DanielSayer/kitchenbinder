@@ -49,6 +49,19 @@ type ImportEvent =
       saveFailure: Failure;
     }
   | {
+      event: "import_photo_saved" | "import_photo_skipped";
+      importId: string;
+      elapsedMs: number;
+    }
+  | {
+      event: "import_photo_failed";
+      importId: string;
+      elapsedMs: number;
+      failure: Failure;
+    }
+  | { event: "media_sweep_completed"; scanned: number; deleted: number }
+  | { event: "media_sweep_failed"; failure: Failure }
+  | {
       event: "import_page_response";
       importId: string;
       hostname: string;

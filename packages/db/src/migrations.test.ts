@@ -116,13 +116,14 @@ async function seed(client: pg.Client) {
     INSERT INTO ai_spend(import_id,reserved_cents) VALUES ('00000000-0000-4000-8000-000000000002',25);
   `);
 }
-// Stable projections across 0008, which moves personal plans/lists to households.
+// Stable projections across 0008, which moves personal plans/lists to households,
+// and 0009, which adds empty photo columns.
 const projections: [string, string][] = [
   ["user", "row_to_json(t)::jsonb"],
-  ["recipe", "row_to_json(t)::jsonb - 'group_id'"],
+  ["recipe", "row_to_json(t)::jsonb - 'group_id' - 'photo'"],
   [
     "recipe_import",
-    "row_to_json(t)::jsonb - 'group_id' - 'household_id' - 'collection_id'",
+    "row_to_json(t)::jsonb - 'group_id' - 'household_id' - 'collection_id' - 'image_candidates'",
   ],
   ["meal_planner", "row_to_json(t)::jsonb - 'user_id' - 'household_id' - 'id'"],
   [
@@ -157,7 +158,7 @@ it("provisions a clean database with ICU and preserves all data on repeated migr
           "SELECT count(*)::int AS total FROM prep_sheet_migration",
         )
       ).rows[0].total,
-    ).toBe(9);
+    ).toBe(10);
     expect(
       (
         await client.query(

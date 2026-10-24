@@ -16,10 +16,31 @@ export const importSourceSchema = z
       (!url.port || ["80", "443"].includes(url.port))
     );
   }, "Use a public HTTP source link without credentials, query or fragment.");
+// Photos found on the source page. "recipe" comes from the recipe's own
+// metadata and is used as-is; "page" and "content" images are chosen by the AI.
+export const imageCandidateSchema = z.strictObject({
+  url: z
+    .string()
+    .max(2048)
+    .url()
+    .refine((value) => {
+      const url = new URL(value);
+      return (
+        ["http:", "https:"].includes(url.protocol) &&
+        !url.username &&
+        !url.password
+      );
+    }),
+  alt: z.string().max(200),
+  source: z.enum(["recipe", "page", "content"]),
+});
+export type ImageCandidate = z.infer<typeof imageCandidateSchema>;
+export const imageCandidatesSchema = z.array(imageCandidateSchema).max(10);
 const importFields = {
   id: z.uuid(),
   content: z.string().trim().min(80).max(32_000),
   sourceUrl: importSourceSchema,
+  images: imageCandidatesSchema.optional(),
 };
 // What the extension sends. householdId shares the saved recipe (null = keep personal).
 export const importRequestSchema = z.strictObject({

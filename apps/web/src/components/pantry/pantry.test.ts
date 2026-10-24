@@ -133,11 +133,21 @@ describe("RecipeCover", () => {
     const { container } = render(
       createElement(RecipeCover, {
         title: "Pie",
-        photoUrl: "https://example.com/pie.jpg",
+        photo: {
+          key: "recipes/1/a",
+          url: "https://media.example.com/recipes/1/a",
+          width: 1200,
+          height: 800,
+          color: "#a05030",
+        },
       }),
     );
-    expect(container.querySelector("img")?.getAttribute("src")).toBe(
-      "https://example.com/pie.jpg",
+    const image = container.querySelector("img");
+    expect(image?.getAttribute("src")).toBe(
+      "https://media.example.com/recipes/1/a-480.webp",
+    );
+    expect(image?.getAttribute("srcset")).toBe(
+      "https://media.example.com/recipes/1/a-480.webp 480w, https://media.example.com/recipes/1/a-1200.webp 1200w",
     );
     expect(container.firstElementChild?.hasAttribute("data-tone")).toBe(false);
     cleanup();

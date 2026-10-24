@@ -285,6 +285,7 @@ describe("durable extension imports with PostgreSQL", () => {
       item.content,
       expect.any(Array),
       item.sourceUrl,
+      [],
     );
     const [saved] = await db
       .select()

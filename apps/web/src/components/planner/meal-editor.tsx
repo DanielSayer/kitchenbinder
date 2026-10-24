@@ -693,6 +693,7 @@ export function MealEditor({
                       <RecipeCover
                         id={entry.id}
                         title={entry.title}
+                        photo={entry.photo}
                         size="thumb"
                       />
                       <span className="pick-text">

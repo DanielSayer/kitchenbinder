@@ -466,7 +466,13 @@ describe("paginated recipe lists with PostgreSQL", () => {
     expect(
       (await owner.shopping.recipes({ collectionId: sharedCollection })).items,
     ).toEqual([
-      { id: sharedId, ownerId: memberId, title: "Shared soup", servings: "2" },
+      {
+        id: sharedId,
+        ownerId: memberId,
+        title: "Shared soup",
+        servings: "2",
+        photo: null,
+      },
     ]);
     expect(await member.shopping.recipe({ id: rows[0]?.id ?? "" })).toBeNull();
     expect(await owner.shopping.recipe({ id: deletedId })).toBeNull();

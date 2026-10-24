@@ -1,3 +1,4 @@
+import { imageCandidatesSchema } from "@prep-sheet/api/import-contract";
 import { z } from "zod";
 
 const sourceUrlSchema = z
@@ -18,6 +19,7 @@ const capturedRecipeSchema = z.strictObject({
   title: z.string().trim().min(1).max(300),
   content: z.string().trim().min(1).max(32_000),
   format: z.enum(["json-ld", "text"]),
+  images: imageCandidatesSchema.optional(),
 });
 export const captureResultSchema = z
   .discriminatedUnion("kind", [

@@ -301,6 +301,7 @@ export function RecipeDetail({ id }: { id: string }) {
                 <RecipeCover
                   id={data.id}
                   title={data.title}
+                  photo={data.photo}
                   tone={toneForTags(data.tags.map((tag) => tag.name))}
                   size="detail"
                 />

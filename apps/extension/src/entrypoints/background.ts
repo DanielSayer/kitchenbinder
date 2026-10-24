@@ -64,8 +64,9 @@ function requestInput({
   content,
   sourceUrl,
   householdId,
+  images,
 }: z.infer<typeof pendingSchema>) {
-  return { id, content, sourceUrl, householdId };
+  return { id, content, sourceUrl, householdId, images };
 }
 class ReconnectError extends Error {}
 

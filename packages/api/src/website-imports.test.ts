@@ -30,7 +30,12 @@ import {
 import { PAGE_ERROR } from "./recipes/fetch-page";
 import { sampleRecipe } from "./recipes/fixtures";
 import { requireRecipeProvider } from "./recipes/generate";
+import { attachRecipePhoto } from "./recipes/media";
 import { checkRecipeUsage } from "./recipes/usage";
+
+vi.mock("./recipes/media", () => ({
+  attachRecipePhoto: vi.fn(async () => false),
+}));
 
 const account = randomUUID();
 const input = () => ({
@@ -43,6 +48,7 @@ const output = {
   tagIds: [],
   origin: "generated" as const,
   sourceUrl: null,
+  imageUrl: null,
 };
 
 describe("website durable imports", () => {
@@ -257,6 +263,40 @@ describe("website durable imports", () => {
       db.transaction((tx) => checkRecipeUsage(tx, account)),
     ).rejects.toMatchObject({ code: "TOO_MANY_REQUESTS" });
   });
+  it("saves the recipe even when copying its photo fails", async () => {
+    const item = input();
+    await submitWebsiteImport(account, item);
+    vi.mocked(attachRecipePhoto).mockRejectedValueOnce(new Error("timeout"));
+    const generate = vi.fn(async () => ({
+      ...output,
+      imageUrl: "https://cdn.test/dish.jpg",
+    }));
+    expect(await processNextImport(generate)).toBe(true);
+    expect(generate).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(Array),
+      undefined,
+      [],
+    );
+    expect(attachRecipePhoto).toHaveBeenCalledWith(
+      item.id,
+      "https://cdn.test/dish.jpg",
+      undefined,
+    );
+    expect(await importStatus(account, item.id)).toMatchObject({
+      kind: "saved",
+    });
+    const [saved] = await db
+      .select({ photo: recipe.photo })
+      .from(recipe)
+      .where(eq(recipe.id, item.id));
+    expect(saved).toEqual({ photo: null });
+    const [job] = await db
+      .select({ imageCandidates: recipeImport.imageCandidates })
+      .from(recipeImport)
+      .where(eq(recipeImport.id, item.id));
+    expect(job).toEqual({ imageCandidates: null });
+  });
   it("limits pending jobs and concurrent claims across workers", async () => {
     const outcomes = await Promise.allSettled(
       Array.from({ length: 7 }, () => submitWebsiteImport(account, input())),
@@ -437,6 +477,7 @@ describe("website durable imports", () => {
         expect.stringContaining("Boil 200 g pasta"),
         expect.any(Array),
         healthy.input,
+        [],
       );
       expect(await importStatus(account, healthy.id)).toMatchObject({
         kind: "saved",

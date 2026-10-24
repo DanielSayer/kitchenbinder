@@ -162,6 +162,7 @@ export function Capture({
           onBusy={setBusy}
           title={recipe?.title}
           content={recipe?.content}
+          images={recipe?.images}
           sourceUrl={state.kind === "captured" ? state.sourceUrl : undefined}
         />
       )}

@@ -35,6 +35,7 @@ import {
   preparePlacement,
 } from "./households/placement";
 import {
+  type ImageCandidate,
   type ImportStatus,
   importInputSchema,
   websiteImportSchema,
@@ -45,6 +46,7 @@ import {
   prepareRecipeInput,
   recipeSystemPrompt,
   requireRecipeProvider,
+  withImageChoices,
 } from "./recipes/generate";
 import { persistRecipe } from "./recipes/persist";
 import { checkRecipeUsage } from "./recipes/usage";
@@ -74,6 +76,7 @@ export async function recentImports(userId: string) {
       error: recipeImport.error,
       recipeId: recipe.id,
       title: recipe.title,
+      photo: recipe.photo,
     })
     .from(recipeImport)
     .leftJoin(
@@ -154,6 +157,7 @@ type JobInput = Placement & {
   content: string;
   sourceUrl: string | null;
   sourceKind: "captured" | "website";
+  images: ImageCandidate[];
 };
 
 function fingerprintOf(input: JobInput) {
@@ -168,14 +172,15 @@ function fingerprintOf(input: JobInput) {
         ...(input.sourceKind === "website"
           ? { sourceKind: input.sourceKind }
           : {}),
+        ...(input.images.length ? { images: input.images } : {}),
       }),
     )
     .digest("hex");
 }
 
 export async function discardImport(userId: string, value: unknown) {
-  const input = importInputSchema.parse(value);
-  return discardJob(userId, { ...input, sourceKind: "captured" });
+  const { images = [], ...input } = importInputSchema.parse(value);
+  return discardJob(userId, { ...input, images, sourceKind: "captured" });
 }
 
 async function discardJob(userId: string, input: JobInput) {
@@ -236,10 +241,8 @@ async function discardJob(userId: string, input: JobInput) {
 }
 
 export async function submitImport(userId: string, value: unknown) {
-  return submitJob(userId, {
-    ...importInputSchema.parse(value),
-    sourceKind: "captured",
-  });
+  const { images = [], ...input } = importInputSchema.parse(value);
+  return submitJob(userId, { ...input, images, sourceKind: "captured" });
 }
 
 function websiteInput(value: unknown): JobInput {
@@ -251,6 +254,7 @@ function websiteInput(value: unknown): JobInput {
     collectionId: input.collectionId ?? null,
     sourceUrl: null,
     sourceKind: "website",
+    images: [],
   };
 }
 
@@ -344,6 +348,7 @@ async function submitJob(userId: string, input: JobInput) {
       input: input.content,
       sourceKind: input.sourceKind,
       sourceUrl: input.sourceUrl,
+      imageCandidates: input.images.length ? input.images : null,
       fingerprint,
       usageBucket,
     });
@@ -364,6 +369,7 @@ const checkpointSchema = z.object({
   content: recipeContentSchema,
   tagIds: z.array(z.string().uuid()),
   origin: z.enum(["imported", "generated"]).optional(),
+  imageUrl: z.string().url().nullable().optional(),
 });
 
 type SaveClaim = Pick<
@@ -432,9 +438,14 @@ async function retrySave(
     });
 }
 
+type Generated = Awaited<ReturnType<typeof generateRecipe>>;
+type Generate = (
+  ...args: Parameters<typeof generateRecipe>
+) => Promise<Omit<Generated, "imageUrl"> & { imageUrl?: string | null }>;
+
 // A dedicated process awaits this function. No work is launched by HTTP handlers.
 export async function processNextImport(
-  generate = generateRecipe,
+  generate: Generate = generateRecipe,
   ensureProviderReady: () => void = generate === generateRecipe
     ? requireRecipeProvider
     : () => {},
@@ -445,6 +456,7 @@ export async function processNextImport(
     .set({
       state: "failed",
       input: "",
+      imageCandidates: null,
       error:
         "Processing was interrupted. Start a new attempt to try again; this import will not run twice.",
     })
@@ -571,11 +583,19 @@ export async function processNextImport(
             job.sourceUrl ?? undefined,
             job.id,
           )
-        : { content: job.input, sourceUrl: job.sourceUrl };
+        : {
+            content: job.input,
+            sourceUrl: job.sourceUrl,
+            images: job.imageCandidates ?? [],
+          };
     const tags = await availableTags(job.userId);
     // A missing provider key must fail before reserving spend or consuming AI usage.
     ensureProviderReady();
-    recipeSystemPrompt(prepared.content, tags, prepared.sourceUrl);
+    recipeSystemPrompt(
+      withImageChoices(prepared.content, prepared.images),
+      tags,
+      prepared.sourceUrl,
+    );
     // Persist the exact input before crossing the AI boundary.
     const claimed = await db.transaction(async (tx) => {
       const claimed = await tx
@@ -584,6 +604,7 @@ export async function processNextImport(
           state: "processing",
           input: prepared.content,
           sourceUrl: prepared.sourceUrl,
+          imageCandidates: prepared.images.length ? prepared.images : null,
           startedAt: new Date(),
         })
         .where(
@@ -612,6 +633,7 @@ export async function processNextImport(
       prepared.content,
       tags,
       prepared.sourceUrl ?? undefined,
+      prepared.images,
     );
     logImport({
       event: "import_stage_completed",
@@ -629,10 +651,12 @@ export async function processNextImport(
         nextSaveAttemptAt: new Date(),
         input: "",
         sourceUrl: result.sourceUrl,
+        imageCandidates: null,
         generated: {
           content: result.content,
           tagIds: result.tagIds,
           origin: result.origin,
+          imageUrl: result.imageUrl ?? null,
         },
       })
       .where(
@@ -672,6 +696,7 @@ async function failImport(
     .set({
       state: "failed",
       input: "",
+      imageCandidates: null,
       usageReleased: release,
       error:
         error instanceof TRPCError
@@ -785,20 +810,26 @@ async function saveReady(claim: SaveClaim) {
         })
         .where(eq(recipeImport.id, id));
       return inserted
-        ? ({ kind: "saved" } as const)
+        ? ({
+            kind: "saved",
+            imageUrl: checkpoint.data.imageUrl ?? null,
+            sourceUrl: job.sourceUrl,
+          } as const)
         : ({ kind: "failed", failure: { type: "RecipeIdConflict" } } as const);
     })
     .catch(async (error: unknown) => {
       // The failed recipe transaction rolled back; release only our durable claim.
       await retrySave(db, claim, error, started);
     });
-  if (saved?.kind === "saved")
+  if (saved?.kind === "saved") {
     logImport({
       event: "import_saved",
       importId: id,
       elapsedMs: Date.now() - started,
     });
-  else if (saved?.kind === "failed")
+    if (saved.imageUrl)
+      await savePhoto(id, saved.imageUrl, saved.sourceUrl ?? undefined);
+  } else if (saved?.kind === "failed")
     logImport({
       event: "import_failed",
       importId: id,
@@ -807,4 +838,26 @@ async function saveReady(claim: SaveClaim) {
       usageReleased: false,
       failure: saved.failure,
     });
+}
+
+// Best effort: a missing or broken photo never fails the saved import.
+async function savePhoto(id: string, imageUrl: string, sourceUrl?: string) {
+  const started = Date.now();
+  try {
+    // Loaded lazily: sharp's native binary must stay out of the web server bundle.
+    const { attachRecipePhoto } = await import("./recipes/media");
+    const attached = await attachRecipePhoto(id, imageUrl, sourceUrl);
+    logImport({
+      event: attached ? "import_photo_saved" : "import_photo_skipped",
+      importId: id,
+      elapsedMs: Date.now() - started,
+    });
+  } catch (error) {
+    logImport({
+      event: "import_photo_failed",
+      importId: id,
+      elapsedMs: Date.now() - started,
+      failure: importFailure(error),
+    });
+  }
 }

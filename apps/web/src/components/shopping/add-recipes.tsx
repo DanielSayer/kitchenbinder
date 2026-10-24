@@ -241,6 +241,7 @@ export function RecipePicker({
                   <RecipeCover
                     id={recipe.id}
                     title={recipe.title}
+                    photo={recipe.photo}
                     size="thumb"
                   />
                   <span className="pick-text">
