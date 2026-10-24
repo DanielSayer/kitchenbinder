@@ -62,91 +62,89 @@ export function BillingPlan({
       : null;
 
   return (
-    <>
-      <div className="billing-overview">
-        <div className="billing-overview-header">
-          <div className="billing-plan-identity">
-            <h3>{plan.tier === "pro" ? "Pro" : "Free"}</h3>
-            {plan.bucket === "trial" && (
-              <span className="billing-plan-badge">Trial</span>
-            )}
-          </div>
-          {action}
+    <div className="billing-overview">
+      <div className="billing-overview-header">
+        <div className="billing-plan-identity">
+          <h3>{plan.tier === "pro" ? "Pro" : "Free"}</h3>
+          {plan.bucket === "trial" && (
+            <span className="billing-plan-badge">Trial</span>
+          )}
         </div>
-        {plan.bucket === "trial" && !ending && plan.resetsAt && (
-          <p className="billing-plan-note">
-            Trial ends {formatDate(plan.resetsAt)}
-            <span aria-hidden="true"> · </span>Pro A$4.99/month
-          </p>
-        )}
-        <div className="billing-usage">
-          <div className="billing-usage-item">
-            {plan.recipes === null ? (
-              <>
-                <div className="billing-meter-label">
-                  <span>Recipes</span>
-                  <span>
-                    <strong>{plan.saved}</strong> saved
-                  </span>
-                </div>
-                <p className="billing-usage-note">Unlimited recipe storage</p>
-              </>
-            ) : (
-              <UsageMeter
-                label="Recipes"
-                value={plan.saved}
-                limit={plan.recipes}
-              />
-            )}
-          </div>
-          <div className="billing-usage-item">
-            <UsageMeter
-              label="AI credits"
-              value={remaining}
-              limit={plan.credits}
-              remaining
-            />
-            <p className="billing-usage-note">
-              {plan.bucket === "free"
-                ? "One-time allowance"
-                : plan.bucket === "trial"
-                  ? "Trial allowance"
-                  : creditsResetAt
-                    ? `Resets ${formatDate(creditsResetAt)}`
-                    : "Monthly allowance"}
-            </p>
-          </div>
-        </div>
-        {(atRecipeLimit || remaining === 0 || ending) && (
-          <div className="billing-notices">
-            {atRecipeLimit && (
-              <p>
-                Recipe limit reached. Upgrade or remove recipes to save more.
-                Your existing recipes are safe.
-              </p>
-            )}
-            {remaining === 0 && (
-              <p>
-                {plan.bucket === "pro"
-                  ? "Monthly AI credits used up. You can still add recipes manually."
-                  : plan.bucket === "trial"
-                    ? "Trial AI credits used up. Paid Pro includes monthly credits."
-                    : atRecipeLimit
-                      ? "Free AI credits used up. Pro includes monthly credits."
-                      : "Free AI credits used up. Upgrade for monthly credits or add recipes manually."}
-              </p>
-            )}
-            {ending && (
-              <p>
-                {plan.bucket === "trial" ? "Trial" : "Pro"} ends{" "}
-                {formatDate(ending)}. Your recipes stay readable, editable and
-                exportable.
-              </p>
-            )}
-          </div>
-        )}
-        <div className="billing-overview-footer">{secondaryActions}</div>
+        {action}
       </div>
+      {plan.bucket === "trial" && !ending && plan.resetsAt && (
+        <p className="billing-plan-note">
+          Trial ends {formatDate(plan.resetsAt)}
+          <span aria-hidden="true"> · </span>Pro A$4.99/month
+        </p>
+      )}
+      <div className="billing-usage">
+        <div className="billing-usage-item">
+          {plan.recipes === null ? (
+            <>
+              <div className="billing-meter-label">
+                <span>Recipes</span>
+                <span>
+                  <strong>{plan.saved}</strong> saved
+                </span>
+              </div>
+              <p className="billing-usage-note">Unlimited recipe storage</p>
+            </>
+          ) : (
+            <UsageMeter
+              label="Recipes"
+              value={plan.saved}
+              limit={plan.recipes}
+            />
+          )}
+        </div>
+        <div className="billing-usage-item">
+          <UsageMeter
+            label="AI credits"
+            value={remaining}
+            limit={plan.credits}
+            remaining
+          />
+          <p className="billing-usage-note">
+            {plan.bucket === "free"
+              ? "One-time allowance"
+              : plan.bucket === "trial"
+                ? "Trial allowance"
+                : creditsResetAt
+                  ? `Resets ${formatDate(creditsResetAt)}`
+                  : "Monthly allowance"}
+          </p>
+        </div>
+      </div>
+      {(atRecipeLimit || remaining === 0 || ending) && (
+        <div className="billing-notices">
+          {atRecipeLimit && (
+            <p>
+              Recipe limit reached. Upgrade or remove recipes to save more. Your
+              existing recipes are safe.
+            </p>
+          )}
+          {remaining === 0 && (
+            <p>
+              {plan.bucket === "pro"
+                ? "Monthly AI credits used up. You can still add recipes manually."
+                : plan.bucket === "trial"
+                  ? "Trial AI credits used up. Paid Pro includes monthly credits."
+                  : atRecipeLimit
+                    ? "Free AI credits used up. Pro includes monthly credits."
+                    : "Free AI credits used up. Upgrade for monthly credits or add recipes manually."}
+            </p>
+          )}
+          {ending && (
+            <p>
+              {plan.bucket === "trial" ? "Trial" : "Pro"} ends{" "}
+              {formatDate(ending)}. Your recipes stay readable, editable and
+              exportable.
+            </p>
+          )}
+        </div>
+      )}
+      <div className="billing-overview-footer">{secondaryActions}</div>
       <details className="billing-comparison">
         <summary>
           Compare plans <ChevronDown size={18} aria-hidden="true" />
@@ -189,6 +187,6 @@ export function BillingPlan({
           </p>
         )}
       </details>
-    </>
+    </div>
   );
 }
