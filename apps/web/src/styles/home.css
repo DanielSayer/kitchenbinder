@@ -122,7 +122,7 @@
 .add-manual:hover:not(:disabled) {
   color: var(--ink);
 }
-.add-ideas {
+.pantry-chips.add-ideas {
   margin: 6px calc(var(--page-gutter) * -1) 0;
   padding: 2px var(--page-gutter);
 }
