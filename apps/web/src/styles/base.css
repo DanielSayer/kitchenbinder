@@ -106,8 +106,8 @@ h3 {
 h1 i,
 h2 i,
 .title-accent {
-  font-style: italic;
-  font-weight: 700;
+  font-style: normal;
+  font-weight: inherit;
   color: var(--tomato);
 }
 input::placeholder,
