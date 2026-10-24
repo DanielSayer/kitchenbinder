@@ -1,25 +1,13 @@
 import { ArrowLeft } from "lucide-react";
 import { Sheet } from "@/components/pantry";
-import { HeaderSlot } from "@/components/shell/header-slot";
 import { useHousehold, useHouseholdSheet } from "./household-context";
 import { HouseholdManage } from "./household-manage";
 import { HouseholdPicker } from "./household-picker";
-import { HouseholdSwitch } from "./household-switch";
 import { JoinWithInvite, NewHousehold } from "./new-household";
 
-/**
- * Global household chrome, rendered once in the root: the header chip
- * (only when there's more than one household) and the Households sheet.
- */
+/** Global Households sheet, rendered once in the root. */
 export function HouseholdChrome() {
-  return (
-    <>
-      <HeaderSlot>
-        <HouseholdSwitch />
-      </HeaderSlot>
-      <HouseholdsSheet />
-    </>
-  );
+  return <HouseholdsSheet />;
 }
 
 function HouseholdsSheet() {
