@@ -1,7 +1,0 @@
-{
-  "extends": ["@prep-sheet/config/tsconfig.base.json", "./.wxt/tsconfig.json"],
-  "compilerOptions": {
-    "jsx": "react-jsx",
-    "noEmit": true
-  }
-}
