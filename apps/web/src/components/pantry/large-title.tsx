@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 type LargeTitleProps = {
   children: ReactNode;
-  /** Italic tomato tail, e.g. "cooking?" in "What are we cooking?". */
+  /** Tomato tail, e.g. "cooking?" in "What are we cooking?". */
   accent?: ReactNode;
   /** Small line under the title. */
   sub?: ReactNode;
@@ -14,7 +14,7 @@ type LargeTitleProps = {
   className?: string;
 };
 
-/** Page title in Nunito 36/800 with an optional italic accent. */
+/** Page title in Nunito 36/800 with an optional tomato accent. */
 export function LargeTitle({
   children,
   accent,

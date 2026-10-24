@@ -46,10 +46,10 @@ type Editor = {
 const slotOrder = ["Breakfast", "Lunch", "Dinner", ""];
 
 function weekTitle(offset: number, start: string) {
-  if (offset === 0) return ["This", "week"];
-  if (offset === 1) return ["Next", "week"];
-  if (offset === -1) return ["Last", "week"];
-  return ["Week of", shortDate(start)];
+  if (offset === 0) return "This week";
+  if (offset === 1) return "Next week";
+  if (offset === -1) return "Last week";
+  return `Week of ${shortDate(start)}`;
 }
 
 export function MealPlanner({ recipeId }: { recipeId?: string }) {
@@ -137,7 +137,7 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
   const earlier = currentWeek
     ? days.filter((day) => day < today && mealsOn(day).length)
     : [];
-  const [lead, accent] = weekTitle(offset, week);
+  const title = weekTitle(offset, week);
   const issuesFor = (id: string) =>
     query.data?.issues.filter((issue) => issue.id === id) ?? [];
 
@@ -300,7 +300,7 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
             </button>
           </span>
         </div>
-        <LargeTitle accent={accent}>{lead}</LargeTitle>
+        <LargeTitle>{title}</LargeTitle>
         <ol className="plan-strip" aria-label="Days this week">
           {days.map((day) => (
             <li key={day}>
