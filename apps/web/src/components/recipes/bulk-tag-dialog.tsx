@@ -106,9 +106,6 @@ export function ApplyTagDialog({
   );
   const [selected, setSelected] = useState<string[]>([]);
   const shown = recipes.isError ? [] : (recipes.data?.items ?? []);
-  const shownIds = shown.map((recipe) => recipe.id);
-  const everyShownSelected =
-    shownIds.length > 0 && shownIds.every((id) => selected.includes(id));
   const update = useMutation(
     trpc.recipes.setTags.mutationOptions({
       onSuccess: async ({ recipeCount }) => {
@@ -146,20 +143,6 @@ export function ApplyTagDialog({
                 {selected.length} {selected.length === 1 ? "recipe" : "recipes"}{" "}
                 selected
               </span>
-              <button
-                type="button"
-                className="text-button"
-                disabled={update.isPending || shownIds.length === 0}
-                onClick={() =>
-                  setSelected((current) =>
-                    everyShownSelected
-                      ? current.filter((id) => !shownIds.includes(id))
-                      : [...new Set([...current, ...shownIds])],
-                  )
-                }
-              >
-                {everyShownSelected ? "Deselect page" : "Select page"}
-              </button>
               {selected.length > 0 && (
                 <button
                   type="button"

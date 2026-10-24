@@ -223,9 +223,6 @@ export function Collection() {
 
   const recipes = query.isError ? [] : (query.data?.items ?? []);
   const total = query.data?.total ?? 0;
-  const visibleIds = recipes.map((recipe) => recipe.id);
-  const allVisibleSelected =
-    visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
 
   const updateFilters = (
     next: LibraryFilters & { q?: string; sort?: LibrarySort },
@@ -583,20 +580,6 @@ export function Collection() {
           <section className="library-bulk-bar" aria-label="Selected recipes">
             <div className="library-bulk-summary">
               <strong aria-live="polite">{selectedIds.length} selected</strong>
-              <button
-                type="button"
-                className="library-text-button"
-                disabled={visibleIds.length === 0}
-                onClick={() =>
-                  setSelectedIds((ids) =>
-                    allVisibleSelected
-                      ? ids.filter((id) => !visibleIds.includes(id))
-                      : [...new Set([...ids, ...visibleIds])],
-                  )
-                }
-              >
-                {allVisibleSelected ? "Deselect page" : "Select page"}
-              </button>
               <button
                 type="button"
                 className="icon-button"
