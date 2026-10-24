@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Puzzle } from "lucide-react";
 import { z } from "zod";
 import { extensionRequest } from "@/lib/extension-api";
 import { ErrorNotice, LoadingState } from "./feedback";
@@ -24,13 +25,10 @@ export function ConnectedExtensions() {
     onSuccess: () => client.invalidateQueries({ queryKey }),
   });
   return (
-    <section
-      className="connected-extensions"
-      aria-labelledby="extensions-heading"
-    >
-      <h2 id="extensions-heading">Connected extensions</h2>
+    <section className="connected-extensions" aria-label="Connected extensions">
       <p className="settings-intro">
-        Manage browser access to your Kitchenbinder account.
+        Browsers where the Kitchenbinder extension can save recipes to your
+        account. Revoke any you no longer use.
       </p>
       <ErrorNotice
         message={revoke.error?.message || connections.error?.message}
@@ -39,33 +37,46 @@ export function ConnectedExtensions() {
         }
       />
       <LoadingState pending={connections.isPending}>
-        {connections.data?.length === 0 && (
+        {connections.data?.length === 0 ? (
           <p className="muted">No extensions connected.</p>
+        ) : (
+          <ul className="pantry-list">
+            {connections.data?.map((connection) => (
+              <li key={connection.id} className="pantry-row">
+                <span className="pantry-row-icon">
+                  <Puzzle size={20} aria-hidden="true" />
+                </span>
+                <span className="pantry-row-text">
+                  <b>Kitchenbinder extension</b>
+                  <small>
+                    Connected {formatDate(connection.createdAt)} · expires{" "}
+                    {formatDate(connection.expiresAt)}
+                  </small>
+                  <small className="extension-id">
+                    {connection.extensionId}
+                  </small>
+                </span>
+                <button
+                  className="button button-small button-ghost"
+                  type="button"
+                  disabled={revoke.isPending}
+                  onClick={() => revoke.mutate(connection.id)}
+                >
+                  Revoke
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
-        <ul className="settings-tags">
-          {connections.data?.map((connection) => (
-            <li key={connection.id}>
-              <div>
-                <strong>Kitchenbinder extension</strong>
-                <p>
-                  Connected {new Date(connection.createdAt).toLocaleString()}.
-                  <br />
-                  Expires {new Date(connection.expiresAt).toLocaleDateString()}.
-                </p>
-                <small className="extension-id">{connection.extensionId}</small>
-              </div>
-              <button
-                className="text-button"
-                type="button"
-                disabled={revoke.isPending}
-                onClick={() => revoke.mutate(connection.id)}
-              >
-                Revoke
-              </button>
-            </li>
-          ))}
-        </ul>
       </LoadingState>
     </section>
   );
+}
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }

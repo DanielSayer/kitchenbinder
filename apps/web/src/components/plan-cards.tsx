@@ -151,7 +151,7 @@ export function PricingFaq({
         <p>
           No. Pro lets you create a household and invite others. Free members
           can join and contribute within their own recipe and AI allowances.
-          Meal plans and shopping lists stay personal to each account.
+          Everyone in a household shares its meal plan and shopping list.
         </p>
       </details>
     </section>

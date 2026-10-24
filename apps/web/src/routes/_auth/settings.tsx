@@ -1,30 +1,43 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
-  CreditCard,
-  MessageSquare,
-  Pencil,
+  ChevronRight,
+  CircleUserRound,
+  Download,
+  KeyRound,
+  LifeBuoy,
+  Plus,
   Puzzle,
   Shield,
   Tag,
-  Tags,
   Trash2,
-  UserRound,
 } from "lucide-react";
-import { useState, useSyncExternalStore } from "react";
-import { AccountControls } from "@/components/account-controls";
+import { type ReactNode, useState } from "react";
 import { Billing } from "@/components/billing";
 import { ConnectedExtensions } from "@/components/connected-extensions";
 import { ErrorNotice, LoadingState } from "@/components/feedback";
 import {
-  CollectionSelect,
-  useCollection,
-} from "@/components/groups/collection-context";
-import { PrivacyPolicy } from "@/components/privacy-policy";
-import { ApplyTagDialog } from "@/components/recipes/bulk-tag-dialog";
+  useHousehold,
+  useHouseholdSheet,
+} from "@/components/households/household-context";
+import {
+  HouseholdMark,
+  MemberAvatars,
+  memberCount,
+} from "@/components/households/household-ui";
+import { InstallButton } from "@/components/install-app";
+import {
+  LinkedAccounts,
+  linkedProviderNames,
+  useLinkedAccounts,
+} from "@/components/linked-accounts";
+import { LargeTitle, Sheet } from "@/components/pantry";
 import { ReportForm } from "@/components/report-form";
+import { initialsOf } from "@/components/shell/destinations";
 import { SupportContact } from "@/components/support-contact";
+import { useSignOut } from "@/components/user-menu";
 import { getSupportContact } from "@/functions/get-support-contact";
+import { authClient } from "@/lib/auth-client";
 import { useTRPC } from "@/utils/trpc";
 
 export const Route = createFileRoute("/_auth/settings")({
@@ -33,421 +46,291 @@ export const Route = createFileRoute("/_auth/settings")({
     billing: search.billing === "1" || search.billing === 1 ? "1" : undefined,
   }),
   ssr: false,
-  component: Settings,
+  component: You,
 });
 
-const settingsTabs = [
-  { id: "account", label: "Account", icon: UserRound },
-  { id: "billing", label: "Plan & billing", icon: CreditCard },
-  { id: "tags", label: "Tags", icon: Tag },
-  { id: "extensions", label: "Extensions", icon: Puzzle },
-  { id: "privacy", label: "Privacy policy", icon: Shield },
-  { id: "report", label: "Report a problem", icon: MessageSquare },
-];
+type YouSheet = "plan" | "extensions" | "accounts" | "help";
 
-function subscribeToMobileSettings(onChange: () => void) {
-  const media = window.matchMedia("(max-width: 650px)");
-  media.addEventListener("change", onChange);
-  return () => media.removeEventListener("change", onChange);
-}
+const sheetTitles: Record<YouSheet, string> = {
+  plan: "Plan & billing",
+  extensions: "Browser extension",
+  accounts: "Linked accounts",
+  help: "Help & feedback",
+};
 
-function Settings() {
+/** "You": everything that isn't cooking, in grouped lists. */
+function You() {
   const { email: supportEmail } = Route.useLoaderData();
-  const isMobile = useSyncExternalStore(
-    subscribeToMobileSettings,
-    () => window.matchMedia("(max-width: 650px)").matches,
-    () => false,
-  );
   const search = Route.useSearch();
-  const [activeTab, setActiveTab] = useState(
-    search.billing ? "billing" : "account",
+  const navigate = useNavigate();
+  const { data: session } = authClient.useSession();
+  const signOut = useSignOut();
+  const accounts = useLinkedAccounts();
+  const [sheet, setSheet] = useState<YouSheet | null>(
+    search.billing ? "plan" : null,
   );
+  const providers = linkedProviderNames(accounts.data);
+
+  function close() {
+    setSheet(null);
+    if (search.billing)
+      void navigate({ to: "/settings", search: {}, replace: true });
+  }
+
   return (
-    <main id="main-content" className="page-width settings-page">
-      <div className="page-heading">
-        <div>
-          <h1>
-            Settings<span className="title-dot">.</span>
-          </h1>
+    <main id="main-content" className="page-width you-page">
+      <LargeTitle>You</LargeTitle>
+      {session && (
+        <div className="you-me">
+          <span className="avatar" aria-hidden="true">
+            {initialsOf(session.user.name)}
+          </span>
+          <div>
+            <b>{session.user.name}</b>
+            <small>
+              {session.user.email}
+              {providers ? ` · ${providers}` : ""}
+            </small>
+          </div>
         </div>
+      )}
+
+      <PlanCard onOpen={() => setSheet("plan")} />
+
+      <YouHouseholds />
+
+      <p className="grouped-label">Recipes</p>
+      <div className="pantry-list">
+        <YouRow icon={<Tag size={20} />} to="/settings/tags">
+          Tags
+        </YouRow>
+        <YouRow icon={<Trash2 size={20} />} to="/recipes/deleted">
+          Recently deleted
+        </YouRow>
       </div>
-      <div className="settings-layout">
-        <div
-          className="settings-tabs"
-          role="tablist"
-          aria-label="Settings"
-          aria-orientation={isMobile ? "horizontal" : "vertical"}
+
+      <p className="grouped-label">App</p>
+      <div className="pantry-list">
+        <InstallButton className="pantry-row">
+          <span className="pantry-row-icon">
+            <Download size={20} aria-hidden="true" />
+          </span>
+          <span className="pantry-row-text">
+            <b>Install on home screen</b>
+          </span>
+          <ChevronRight
+            size={18}
+            className="pantry-row-go"
+            aria-hidden="true"
+          />
+        </InstallButton>
+        <YouRow
+          icon={<Puzzle size={20} />}
+          onClick={() => setSheet("extensions")}
         >
-          {settingsTabs.map(({ id, label, icon: Icon }, index) => (
-            <button
-              key={id}
-              id={`settings-tab-${id}`}
-              type="button"
-              role="tab"
-              aria-selected={activeTab === id}
-              aria-controls={`settings-panel-${id}`}
-              tabIndex={activeTab === id ? 0 : -1}
-              onClick={() => setActiveTab(id)}
-              onKeyDown={(event) => {
-                let nextIndex = index;
-                if (event.key === (isMobile ? "ArrowRight" : "ArrowDown"))
-                  nextIndex = (index + 1) % settingsTabs.length;
-                else if (event.key === (isMobile ? "ArrowLeft" : "ArrowUp"))
-                  nextIndex =
-                    (index + settingsTabs.length - 1) % settingsTabs.length;
-                else if (event.key === "Home") nextIndex = 0;
-                else if (event.key === "End")
-                  nextIndex = settingsTabs.length - 1;
-                else return;
-                event.preventDefault();
-                const next = settingsTabs[nextIndex];
-                if (next) {
-                  setActiveTab(next.id);
-                  document.getElementById(`settings-tab-${next.id}`)?.focus();
-                }
-              }}
-            >
-              <Icon size={17} aria-hidden="true" /> {label}
-            </button>
-          ))}
-        </div>
-        <div className="settings-panels">
-          <div
-            id="settings-panel-billing"
-            role="tabpanel"
-            aria-label="Plan & billing"
-            hidden={activeTab !== "billing"}
-          >
-            <Billing />
-          </div>
-          <div
-            id="settings-panel-account"
-            role="tabpanel"
-            aria-label="Account"
-            // biome-ignore lint/a11y/noNoninteractiveTabindex: Tab panels need a keyboard focus target.
-            tabIndex={0}
-            hidden={activeTab !== "account"}
-          >
-            <AccountControls />
-          </div>
-          <div
-            id="settings-panel-tags"
-            role="tabpanel"
-            aria-label="Tags"
-            // biome-ignore lint/a11y/noNoninteractiveTabindex: Tab panels need a keyboard focus target.
-            tabIndex={0}
-            hidden={activeTab !== "tags"}
-          >
-            <CollectionTags />
-          </div>
-          <div
-            id="settings-panel-extensions"
-            role="tabpanel"
-            aria-label="Extensions"
-            // biome-ignore lint/a11y/noNoninteractiveTabindex: Tab panels need a keyboard focus target.
-            tabIndex={0}
-            hidden={activeTab !== "extensions"}
-          >
-            <ConnectedExtensions />
-          </div>
-          <div
-            id="settings-panel-privacy"
-            role="tabpanel"
-            aria-label="Privacy policy"
-            // biome-ignore lint/a11y/noNoninteractiveTabindex: Tab panels need a keyboard focus target.
-            tabIndex={0}
-            hidden={activeTab !== "privacy"}
-          >
-            <h2 className="settings-policy-heading">Privacy policy</h2>
-            <PrivacyPolicy embedded />
-          </div>
-          <div
-            id="settings-panel-report"
-            role="tabpanel"
-            aria-label="Report a problem"
-            // biome-ignore lint/a11y/noNoninteractiveTabindex: Tab panels need a keyboard focus target.
-            tabIndex={0}
-            hidden={activeTab !== "report"}
-          >
+          Browser extension
+        </YouRow>
+        <YouRow
+          icon={<KeyRound size={20} />}
+          sub={providers || undefined}
+          onClick={() => setSheet("accounts")}
+        >
+          Linked accounts
+        </YouRow>
+      </div>
+
+      <p className="grouped-label">Help &amp; privacy</p>
+      <div className="pantry-list">
+        <YouRow icon={<LifeBuoy size={20} />} onClick={() => setSheet("help")}>
+          Help &amp; feedback
+        </YouRow>
+        <YouRow icon={<Shield size={20} />} to="/privacy">
+          Privacy
+        </YouRow>
+        <YouRow
+          icon={<CircleUserRound size={20} />}
+          to="/settings/delete-account"
+        >
+          Delete account
+        </YouRow>
+      </div>
+
+      <button
+        type="button"
+        className="button button-ghost button-block you-sign-out"
+        onClick={() => void signOut()}
+      >
+        Sign out
+      </button>
+
+      <Sheet
+        open={sheet !== null}
+        onOpenChange={(open) => {
+          if (!open) close();
+        }}
+        title={sheet ? sheetTitles[sheet] : ""}
+        className="you-sheet"
+      >
+        {sheet === "plan" && <Billing />}
+        {sheet === "extensions" && <ConnectedExtensions />}
+        {sheet === "accounts" && <LinkedAccounts />}
+        {sheet === "help" && (
+          <div className="you-help">
             <ReportForm />
             <SupportContact email={supportEmail} />
+            <Link to="/support" className="text-button">
+              More help
+            </Link>
           </div>
-        </div>
-      </div>
+        )}
+      </Sheet>
     </main>
   );
 }
 
-function CollectionTags() {
-  const { groupId } = useCollection();
-  return <TagSettings key={groupId ?? "personal"} groupId={groupId} />;
+function YouRow({
+  icon,
+  children,
+  sub,
+  to,
+  onClick,
+}: {
+  icon: ReactNode;
+  children: ReactNode;
+  sub?: ReactNode;
+  to?:
+    | "/recipes/deleted"
+    | "/privacy"
+    | "/settings/tags"
+    | "/settings/delete-account";
+  onClick?: () => void;
+}) {
+  const content = (
+    <>
+      <span className="pantry-row-icon" aria-hidden="true">
+        {icon}
+      </span>
+      <span className="pantry-row-text">
+        <b>{children}</b>
+        {sub ? <small>{sub}</small> : null}
+      </span>
+      <ChevronRight size={18} className="pantry-row-go" aria-hidden="true" />
+    </>
+  );
+  return to ? (
+    <Link to={to} className="pantry-row">
+      {content}
+    </Link>
+  ) : (
+    <button type="button" className="pantry-row" onClick={onClick}>
+      {content}
+    </button>
+  );
 }
 
-function TagSettings({ groupId }: { groupId: string | null }) {
+function PlanCard({ onOpen }: { onOpen: () => void }) {
   const trpc = useTRPC();
-  const client = useQueryClient();
-  const tags = useQuery(trpc.tags.list.queryOptions({ groupId }));
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  type TagDetails = Pick<
-    NonNullable<typeof tags.data>[number],
-    "id" | "name" | "description"
-  >;
-  const [editing, setEditing] = useState<TagDetails>();
-  const [applyTag, setApplyTag] = useState<TagDetails>();
-  const [createdTag, setCreatedTag] = useState<TagDetails>();
-  const refresh = async () => {
-    await Promise.all([
-      client.invalidateQueries({ queryKey: trpc.tags.list.queryKey() }),
-      client.invalidateQueries({ queryKey: trpc.recipes.pathKey() }),
-    ]);
-  };
-  const create = useMutation(
-    trpc.tags.create.mutationOptions({
-      onSuccess: async (saved) => {
-        setName("");
-        setDescription("");
-        setCreatedTag(saved);
-        await refresh();
-      },
-    }),
+  const status = useQuery(trpc.billing.status.queryOptions());
+  const plan = status.data;
+  if (status.isError)
+    return (
+      <ErrorNotice
+        message="Couldn't load your plan."
+        retry={() => void status.refetch()}
+      />
+    );
+  if (!plan) return <div className="you-plan" aria-busy="true" />;
+  const remaining = Math.max(0, plan.credits - plan.used);
+  const limit = plan.recipes;
+  const value = limit === null ? remaining : plan.saved;
+  const max = Math.max(1, limit === null ? plan.credits : limit);
+  const label =
+    limit === null
+      ? `${remaining} of ${plan.credits} AI credits left`
+      : `${plan.saved} of ${limit} recipes saved`;
+  return (
+    <section className="you-plan" aria-label="Your plan">
+      <small>
+        {plan.tier === "pro"
+          ? plan.bucket === "trial"
+            ? "Pro trial"
+            : "Pro plan"
+          : "Free plan"}
+      </small>
+      <b>{label}</b>
+      <meter
+        min={0}
+        max={max}
+        value={Math.min(value, max)}
+        aria-label={label}
+      />
+      <p>
+        {plan.tier === "pro"
+          ? "Unlimited recipes. Create households and invite people."
+          : "Unlimited recipes and shared households with Pro."}
+      </p>
+      <button type="button" className="button you-plan-button" onClick={onOpen}>
+        {plan.tier === "pro" ? "Manage plan" : "See Pro"}
+      </button>
+    </section>
   );
-  const update = useMutation(
-    trpc.tags.update.mutationOptions({
-      onSuccess: async (saved) => {
-        if (createdTag?.id === saved.id) setCreatedTag(saved);
-        setEditing(undefined);
-        await refresh();
-      },
-    }),
-  );
-  const remove = useMutation(
-    trpc.tags.delete.mutationOptions({
-      onSuccess: async (_result, variables) => {
-        if (createdTag?.id === variables.id) setCreatedTag(undefined);
-        await refresh();
-      },
-    }),
-  );
+}
+
+function YouHouseholds() {
+  const { households } = useHousehold();
+  const { openHouseholds } = useHouseholdSheet();
   return (
     <>
-      <section aria-labelledby="tags-heading">
-        <h2 id="tags-heading">Collection tags</h2>
-        <p className="settings-intro">
-          New recipes use this collection's tags automatically. Everyone in a
-          shared collection can see and edit its tags.
-        </p>
-        <CollectionSelect
-          disabled={
-            create.isPending ||
-            update.isPending ||
-            remove.isPending ||
-            !!editing ||
-            !!applyTag ||
-            !!name ||
-            !!description
-          }
+      <p className="grouped-label">Households</p>
+      <LoadingState
+        pending={households.isPending}
+        label="Loading households..."
+      >
+        <ErrorNotice
+          message={households.error ? "Couldn't load households." : undefined}
+          retry={() => void households.refetch()}
         />
-        <form
-          className="tag-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            create.mutate({ name, description, groupId });
-          }}
-        >
-          <label>
-            Tag name
-            <input
-              required
-              maxLength={40}
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="e.g. Lunchbox"
-            />
-          </label>
-          <label>
-            When to use it <span className="muted">optional</span>
-            <input
-              maxLength={300}
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="e.g. Easy to pack and eat cold"
-            />
-          </label>
+        <div className="pantry-list">
+          {households.data?.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className="pantry-row"
+              onClick={() =>
+                openHouseholds({ name: "manage", householdId: item.id })
+              }
+            >
+              <HouseholdMark color={item.color} />
+              <span className="pantry-row-text">
+                <b>{item.name}</b>
+                <small>
+                  {item.personal
+                    ? "Only you · private"
+                    : memberCount(item.members.length)}
+                </small>
+              </span>
+              <MemberAvatars members={item.members} />
+              <ChevronRight
+                size={18}
+                className="pantry-row-go"
+                aria-hidden="true"
+              />
+            </button>
+          ))}
           <button
-            className="button button-primary"
-            type="submit"
-            disabled={create.isPending || !name.trim()}
+            type="button"
+            className="pantry-row household-new"
+            onClick={() => openHouseholds({ name: "new" })}
           >
-            {create.isPending ? "Adding..." : "Add tag"}
+            <span className="pantry-row-icon">
+              <Plus size={20} aria-hidden="true" />
+            </span>
+            <span className="pantry-row-text">
+              <b>New household</b>
+            </span>
           </button>
-        </form>
-        {createdTag && (
-          <div className="tag-created-callout" role="status">
-            <div>
-              <strong>{createdTag.name} created.</strong>
-              <p>Add it to recipes you already have.</p>
-            </div>
-            <div className="tag-row-actions">
-              <button
-                type="button"
-                className="button button-small button-primary"
-                onClick={() => setApplyTag(createdTag)}
-              >
-                <Tags size={16} aria-hidden="true" /> Add to recipes
-              </button>
-              <button
-                type="button"
-                className="text-button"
-                onClick={() => setCreatedTag(undefined)}
-              >
-                Not now
-              </button>
-            </div>
-          </div>
-        )}
-        <ErrorNotice message={create.error?.message || remove.error?.message} />
-        <LoadingState pending={tags.isPending}>
-          <ErrorNotice
-            message={tags.error?.message}
-            retry={() => void tags.refetch()}
-          />
-          <ul className="settings-tags">
-            {tags.data?.map((tag) => (
-              <li key={tag.id}>
-                {editing?.id === tag.id ? (
-                  <form
-                    className="tag-edit-form"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      update.mutate({ ...editing, groupId });
-                    }}
-                  >
-                    <label>
-                      Tag name
-                      <input
-                        required
-                        maxLength={40}
-                        value={editing.name}
-                        disabled={update.isPending}
-                        onChange={(event) =>
-                          setEditing({
-                            ...editing,
-                            name: event.target.value,
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span>
-                        When to use it <span className="muted">optional</span>
-                      </span>
-                      <input
-                        maxLength={300}
-                        value={editing.description}
-                        disabled={update.isPending}
-                        onChange={(event) =>
-                          setEditing({
-                            ...editing,
-                            description: event.target.value,
-                          })
-                        }
-                      />
-                    </label>
-                    <ErrorNotice message={update.error?.message} />
-                    <div className="tag-row-actions">
-                      <button
-                        type="submit"
-                        className="button button-small button-primary"
-                        disabled={update.isPending || !editing.name.trim()}
-                      >
-                        {update.isPending ? "Saving..." : "Save changes"}
-                      </button>
-                      <button
-                        type="button"
-                        className="text-button"
-                        disabled={update.isPending}
-                        onClick={() => {
-                          update.reset();
-                          setEditing(undefined);
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </form>
-                ) : (
-                  <>
-                    <div>
-                      <div className="tag-row-heading">
-                        <strong>{tag.name}</strong>
-                        {!tag.userId && !tag.groupId && (
-                          <span className="built-in">Built in</span>
-                        )}
-                      </div>
-                      <p>{tag.description}</p>
-                    </div>
-                    <div className="tag-row-actions">
-                      <button
-                        type="button"
-                        className="button button-small button-outline"
-                        onClick={() => setApplyTag(tag)}
-                      >
-                        <Tags size={16} aria-hidden="true" /> Add to recipes
-                      </button>
-                      {tag.userId || tag.groupId ? (
-                        <>
-                          <button
-                            type="button"
-                            className="icon-button"
-                            aria-label={`Edit ${tag.name} tag`}
-                            disabled={editing !== undefined}
-                            onClick={() => {
-                              update.reset();
-                              setEditing({
-                                id: tag.id,
-                                name: tag.name,
-                                description: tag.description,
-                              });
-                            }}
-                          >
-                            <Pencil size={17} />
-                          </button>
-                          <button
-                            type="button"
-                            className="icon-button"
-                            aria-label={`Delete ${tag.name} tag`}
-                            disabled={remove.isPending}
-                            onClick={() =>
-                              remove.mutate({ id: tag.id, groupId })
-                            }
-                          >
-                            <Trash2 size={17} />
-                          </button>
-                        </>
-                      ) : null}
-                    </div>
-                  </>
-                )}
-              </li>
-            ))}
-          </ul>
-        </LoadingState>
-        <p className="muted">
-          Deleting a tag removes it from this collection's recipes. Adding a tag
-          won't change existing recipes.
-        </p>
-      </section>
-      {applyTag && (
-        <ApplyTagDialog
-          tag={applyTag}
-          groupId={groupId}
-          onClose={() => setApplyTag(undefined)}
-          onApplied={() => {
-            if (createdTag?.id === applyTag.id) setCreatedTag(undefined);
-          }}
-        />
-      )}
+        </div>
+      </LoadingState>
     </>
   );
 }

@@ -1,10 +1,20 @@
 import { z } from "zod";
 
-const pendingImportSchema = z.object({
-  id: z.uuid(),
-  input: z.string().trim().min(3).max(20000),
-  groupId: z.uuid().nullable(),
-});
+// Drafts saved before households stored the share target as groupId.
+const withHousehold = (value: unknown) => {
+  if (!value || typeof value !== "object" || !("groupId" in value))
+    return value;
+  const { groupId, ...rest } = value as Record<string, unknown>;
+  return { householdId: groupId, ...rest };
+};
+const pendingImportSchema = z.preprocess(
+  withHousehold,
+  z.object({
+    id: z.uuid(),
+    input: z.string().trim().min(3).max(20000),
+    householdId: z.uuid().nullable(),
+  }),
+);
 export type PendingImport = z.infer<typeof pendingImportSchema>;
 export const importDraftKey = (userId: string) =>
   `prep-sheet-import:v1:${userId}`;

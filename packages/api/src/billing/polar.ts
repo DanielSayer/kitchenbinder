@@ -7,7 +7,7 @@ import { billingAccount } from "@prep-sheet/db/schema/billing";
 import { env, providerConfiguration } from "@prep-sheet/env/server";
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
-import type { Database } from "../groups/access";
+import type { Database } from "../households/access";
 import { allowance, pricing } from "./policy";
 import { lockAccount } from "./usage";
 import { validatePolarEvent as validateEvent } from "./webhook";

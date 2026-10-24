@@ -4,19 +4,11 @@ import { tag } from "@prep-sheet/db/schema/tag";
 import { TRPCError } from "@trpc/server";
 import { and, asc, count, DrizzleQueryError, eq, ne, sql } from "drizzle-orm";
 import { z } from "zod";
-import { type Database, requireGroup } from "../groups/access";
+import type { Database } from "../households/access";
 import { protectedProcedure, router } from "../index";
-import {
-  collectionTagScope,
-  customTagScope,
-  lockTagCollection,
-} from "../tags/access";
+import { availableTagScope, customTagScope, lockTags } from "../tags/access";
 
-const collectionScope = z.object({
-  groupId: z.uuid().nullable().default(null),
-});
-
-const tagDetailsInput = collectionScope.extend({
+const tagDetailsInput = z.object({
   name: z.string().trim().min(1).max(40),
   description: z.string().trim().max(300).default(""),
 });
@@ -80,8 +72,7 @@ function handleTagWriteError(error: unknown): never {
     "code" in cause &&
     cause.code === "23505" &&
     "constraint" in cause &&
-    (cause.constraint === "tag_user_name_idx" ||
-      cause.constraint === "tag_group_name_idx")
+    cause.constraint === "tag_user_name_idx"
   ) {
     throw nameConflict();
   }
@@ -92,7 +83,6 @@ async function checkTagName(
   tx: Database,
   userId: string,
   name: string,
-  groupId: string | null,
   excludingId?: string,
 ) {
   const [existing] = await tx
@@ -100,7 +90,7 @@ async function checkTagName(
     .from(tag)
     .where(
       and(
-        collectionTagScope(userId, groupId),
+        availableTagScope(userId),
         eq(sql`lower(${tag.name})`, sql`lower(${name})`),
         excludingId ? ne(tag.id, excludingId) : undefined,
       ),
@@ -109,25 +99,20 @@ async function checkTagName(
   if (existing) throw nameConflict();
 }
 
-export async function availableTags(
-  userId: string,
-  groupId: string | null = null,
-) {
-  if (groupId) await requireGroup(db, groupId, userId);
+// Built-in tags and the user's own tags.
+export async function availableTags(userId: string) {
   await initializeDefaultTags();
   return db
     .select()
     .from(tag)
-    .where(collectionTagScope(userId, groupId))
+    .where(availableTagScope(userId))
     .orderBy(asc(tag.name));
 }
 
 export const tagsRouter = router({
-  list: protectedProcedure
-    .input(collectionScope.prefault({}))
-    .query(({ ctx, input }) =>
-      availableTags(ctx.session.user.id, input.groupId),
-    ),
+  list: protectedProcedure.query(({ ctx }) =>
+    availableTags(ctx.session.user.id),
+  ),
   create: protectedProcedure
     .input(tagDetailsInput)
     .mutation(async ({ ctx, input }) => {
@@ -135,23 +120,23 @@ export const tagsRouter = router({
       const userId = ctx.session.user.id;
       return db
         .transaction(async (tx) => {
-          await lockTagCollection(tx, userId, input.groupId);
-          await checkTagName(tx, userId, input.name, input.groupId);
+          await lockTags(tx, userId);
+          await checkTagName(tx, userId, input.name);
           const [custom] = await tx
             .select({ total: count() })
             .from(tag)
-            .where(customTagScope(userId, input.groupId));
+            .where(customTagScope(userId));
           if ((custom?.total ?? 0) >= 100)
             throw new TRPCError({
               code: "BAD_REQUEST",
-              message: "You can create up to 100 custom tags per collection.",
+              message: "You can create up to 100 custom tags.",
             });
           const [saved] = await tx
             .insert(tag)
             .values({
               id: randomUUID(),
               ...input,
-              userId: input.groupId ? null : userId,
+              userId,
             })
             .returning();
           if (!saved) throw new Error("Tag insert returned no row.");
@@ -166,18 +151,15 @@ export const tagsRouter = router({
       const userId = ctx.session.user.id;
       return db
         .transaction(async (tx) => {
-          await lockTagCollection(tx, userId, input.groupId);
-          const ownedTag = and(
-            eq(tag.id, input.id),
-            customTagScope(userId, input.groupId),
-          );
+          await lockTags(tx, userId);
+          const ownedTag = and(eq(tag.id, input.id), customTagScope(userId));
           const [existing] = await tx.select().from(tag).where(ownedTag);
           if (!existing)
             throw new TRPCError({
               code: "NOT_FOUND",
               message: "Custom tag not found.",
             });
-          await checkTagName(tx, userId, input.name, input.groupId, input.id);
+          await checkTagName(tx, userId, input.name, input.id);
           const [saved] = await tx
             .update(tag)
             .set({ name: input.name, description: input.description })
@@ -189,16 +171,14 @@ export const tagsRouter = router({
         .catch(handleTagWriteError);
     }),
   delete: protectedProcedure
-    .input(collectionScope.extend({ id: z.uuid() }))
+    .input(z.object({ id: z.uuid() }))
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user.id;
       return db.transaction(async (tx) => {
-        await lockTagCollection(tx, userId, input.groupId);
+        await lockTags(tx, userId);
         const deleted = await tx
           .delete(tag)
-          .where(
-            and(eq(tag.id, input.id), customTagScope(userId, input.groupId)),
-          )
+          .where(and(eq(tag.id, input.id), customTagScope(userId)))
           .returning();
         if (!deleted.length)
           throw new TRPCError({

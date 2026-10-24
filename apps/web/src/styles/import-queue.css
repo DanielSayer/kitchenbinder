@@ -1,150 +1,232 @@
-.import-queue {
-  margin-top: 24px;
+/* Add screen: "In the oven" import queue cards. */
+.add-queue {
+  margin-top: 26px;
 }
-.import-queue-heading {
-  margin-bottom: 12px;
+.add-queue-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: 0 2px 10px;
 }
-.import-queue-heading h2 {
-  font-size: 16px;
-  font-weight: 900;
+.add-queue-heading h2 {
+  font: 800 20px / 1.2 var(--sans);
 }
-.import-queue-heading p {
-  margin-top: 4px;
+.add-queue-heading span {
   font-size: 13px;
-  color: var(--muted-ink);
+  color: var(--ink-2);
 }
-.import-queue-list {
-  display: grid;
-  gap: 12px;
+.add-queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   list-style: none;
   padding: 0;
   margin: 0;
 }
-.import-queue-heading .text-button {
-  min-height: 44px;
+.add-queue-foot {
+  margin: 12px 2px 0;
   font-size: 13px;
+  color: var(--ink-2);
 }
-.import-queue-card {
+.add-queue-foot a {
+  color: var(--tomato);
+  font-weight: 600;
+}
+
+.qcard {
   min-width: 0;
-  padding: 16px;
-  border: 1px solid var(--control-line);
-  border-radius: 14px;
-  background: #fffef9;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-m);
+  padding: 10px 12px 10px 10px;
+  animation: qcard-pop var(--t-sheet) var(--spring);
 }
-.import-queue-card-saved {
-  background: var(--success-background);
-  border-color: #8d9f70;
+.qcard[data-state="failed"] {
+  border-color: var(--error-line);
 }
-.import-card-heading {
+@keyframes qcard-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+.qcard-main {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items: center;
   gap: 12px;
 }
-.import-card-heading h3 {
+.qcard .qcard-cover {
+  width: 52px;
+  height: 52px;
+  border-radius: 13px;
+  --fs: 20px;
+}
+.qcard-thumb {
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border-radius: 13px;
+  background:
+    linear-gradient(100deg, var(--oat) 30%, var(--card) 50%, var(--oat) 70%) 0 0
+    / 300% 100%;
+  animation: qcard-shimmer 1.6s linear infinite;
+}
+.qcard-thumb-failed {
+  display: grid;
+  place-items: center;
+  background: var(--tomato-soft);
+  color: var(--tomato-press);
+  animation: none;
+}
+@keyframes qcard-shimmer {
+  to {
+    background-position: -150% 0;
+  }
+}
+.qcard-body {
+  flex: 1;
   min-width: 0;
-  font-size: 15px;
-  line-height: 1.5;
-  font-weight: 800;
-  overflow-wrap: anywhere;
 }
-.import-card-state {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  flex-shrink: 0;
-  padding: 4px 8px;
-  border-radius: 7px;
-  background: #e8ecd9;
-  font-size: 11px;
-  font-weight: 800;
+.qcard-body h3 {
+  font: 800 16px / 1.25 var(--sans);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.import-card-source,
-.import-card-destination,
-.import-card-note,
-.import-card-reference {
-  font-size: 12px;
-  color: var(--muted-ink);
-  overflow-wrap: anywhere;
-}
-.import-card-destination,
-.import-card-source {
-  margin-top: 6px;
-}
-.import-card-progress {
-  margin-top: 16px;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--muted-ink);
-}
-.import-card-progress .progress-track {
-  margin-bottom: 10px;
-}
-.import-card-success {
-  margin-top: 12px;
-  font-size: 13px;
-  font-weight: 700;
-}
-.import-card-actions {
+.qcard-state {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 8px 12px;
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--line);
-}
-.import-card-next-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: flex-end;
   gap: 6px;
-  margin-left: auto;
+  margin-top: 3px;
+  font-size: 13px;
+  color: var(--ink-2);
+  min-width: 0;
 }
-.import-card-action {
+.qcard-destination::before {
+  content: "· ";
+}
+.qcard-destination {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.qcard-pulse {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--tomato);
+  animation: qcard-blink 1.2s infinite;
+}
+@keyframes qcard-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+.qcard-ready {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--olive);
+  color: #fff;
+  display: grid;
+  place-items: center;
+}
+.qcard-bar {
+  display: block;
+  height: 4px;
+  margin-top: 8px;
+  border-radius: 2px;
+  background: var(--oat);
+  overflow: hidden;
+}
+.qcard-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--tomato);
+  transition: width 1s var(--ease);
+}
+.qcard-open {
+  flex: none;
+  min-height: var(--tap);
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--tomato-soft);
+  color: var(--tomato);
+  font: 700 14px / 1 var(--sans);
+  transition: transform var(--t-press) var(--ease);
+}
+.qcard-open:active {
+  transform: scale(0.95);
+}
+.qcard-hint {
+  margin: 8px 2px 0 64px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+.qcard > .error-notice,
+.qcard > [role="alert"] {
+  margin-top: 10px;
+}
+.qcard-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 0 62px;
+}
+.qcard-link,
+.qcard-action {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 5px;
-  min-height: 34px;
-  padding: 6px 9px;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-pill);
   background: transparent;
-  color: var(--muted-ink);
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.4;
-  text-decoration: none;
+  color: var(--ink-2);
+  font: 600 13px / 1 var(--sans);
 }
-.import-card-action:hover:not(:disabled) {
-  background: #e8ecd9;
+.qcard-link {
+  margin-left: -10px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.qcard-action {
+  background: var(--oat);
   color: var(--ink);
 }
-.import-card-input {
-  padding-inline: 4px;
+.qcard-action:disabled {
+  opacity: 0.55;
 }
-.import-card-open {
-  background: #fffef9;
-  border-color: #b9c5a9;
-  color: var(--green-dark);
+.qcard-dismiss {
+  margin-left: auto;
+  min-width: 36px;
+  justify-content: center;
 }
-.import-card-dismiss {
-  width: 34px;
-  padding: 6px;
-}
-@media (max-width: 850px), (pointer: coarse) {
-  .import-card-action {
-    min-height: 44px;
+@media (max-width: 420px) {
+  .qcard-hint,
+  .qcard-actions {
+    margin-left: 0;
   }
-  .import-card-dismiss {
-    width: 44px;
+  .qcard-link {
+    margin-left: 0;
   }
 }
-.import-card-note {
-  margin-top: 8px;
+
+/* "Submitted input" dialog */
+.import-card-destination,
+.import-card-reference {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
 }
 .import-input-dialog .import-input-content {
   white-space: pre-wrap;
@@ -155,17 +237,15 @@
 }
 .import-input-dialog .import-card-reference {
   margin-top: 12px;
-  font-size: 12px;
 }
-@media (max-width: 500px) {
-  .import-card-heading {
-    flex-direction: column-reverse;
-    gap: 8px;
-  }
-}
+
 @media (prefers-reduced-motion: reduce) {
-  .import-queue-card .spin,
-  .import-queue-card .progress-track > span {
+  .qcard,
+  .qcard-thumb,
+  .qcard-pulse {
     animation: none;
+  }
+  .qcard-bar i {
+    transition: none;
   }
 }

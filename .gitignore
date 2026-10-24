@@ -58,3 +58,4 @@ reports
 .cache
 tmp
 temp
+.claude/worktrees

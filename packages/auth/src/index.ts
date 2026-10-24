@@ -1,4 +1,5 @@
 import { createDb } from "@prep-sheet/db";
+import { ensurePersonalHousehold } from "@prep-sheet/db/households";
 import * as schema from "@prep-sheet/db/schema/auth";
 import { env } from "@prep-sheet/env/server";
 import { betterAuth } from "better-auth";
@@ -31,6 +32,21 @@ export function createAuth() {
       }),
     },
     session: { freshAge: 10 * 60 },
+    databaseHooks: {
+      user: {
+        create: {
+          // Every user owns a personal "Just me" household. The API also
+          // ensures it lazily, so a failure here never blocks sign-up.
+          after: async (created) => {
+            await ensurePersonalHousehold(db, created.id).catch(() => {
+              console.error(
+                JSON.stringify({ event: "personal_household_create_failed" }),
+              );
+            });
+          },
+        },
+      },
+    },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
         if (ctx.path === "/link-social") await freshSessionMiddleware(ctx);

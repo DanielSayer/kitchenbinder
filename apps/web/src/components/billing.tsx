@@ -42,11 +42,7 @@ export function Billing() {
     </button>
   ) : null;
   return (
-    <section
-      className="help-section billing-section"
-      aria-labelledby="billing-heading"
-    >
-      <h2 id="billing-heading">Plan &amp; usage</h2>
+    <section className="billing-section" aria-label="Plan and usage">
       {status.isPending && <p role="status">Loading your plan...</p>}
       <ErrorNotice
         message={status.error?.message}

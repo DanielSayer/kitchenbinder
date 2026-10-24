@@ -1,80 +1,133 @@
 import type { RecipeContent } from "@prep-sheet/db/recipe-content";
+import { Check, Minus, Plus } from "lucide-react";
+import { useState } from "react";
+import { Segmented } from "@/components/pantry";
 import { ingredientKeys, useIngredientProgress } from "./ingredient-progress";
+import { parseServings, splitQuantity } from "./scale-ingredients";
 
+type Pane = "ingredients" | "method";
+const panes = [
+  { value: "ingredients", label: "Ingredients" },
+  { value: "method", label: "Method" },
+] as const;
+
+export function ServingsStepper({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div className="servings-stepper">
+      <button
+        type="button"
+        aria-label="Fewer servings"
+        disabled={value <= 1}
+        onClick={() => onChange(Math.max(1, value - 1))}
+      >
+        <Minus size={18} aria-hidden="true" />
+      </button>
+      <span className="servings-value" aria-live="polite">
+        {value} {value === 1 ? "serve" : "serves"}
+      </span>
+      <button
+        type="button"
+        aria-label="More servings"
+        disabled={value >= 99}
+        onClick={() => onChange(Math.min(99, value + 1))}
+      >
+        <Plus size={18} aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Ingredients (tickable, scaled to the chosen servings) and method. Mobile
+ * switches between them with a segmented control; desktop shows both.
+ */
 export function RecipeBody({
   content,
   progressKey,
+  servings: controlledServings,
+  onServingsChange,
+  progress,
 }: {
   content: RecipeContent;
   progressKey?: string;
+  servings?: number | null;
+  onServingsChange?: (servings: number) => void;
+  /** Shared ingredient progress (e.g. with cook mode); else kept here. */
+  progress?: ReturnType<typeof useIngredientProgress>;
 }) {
-  const { checked, update, storageFailed } = useIngredientProgress(progressKey);
+  const own = useIngredientProgress(progress ? undefined : progressKey);
+  const { checked, update, storageFailed } = progress ?? own;
+  const [pane, setPane] = useState<Pane>("ingredients");
+  const base = parseServings(content.servings);
+  const [ownServings, setOwnServings] = useState(base);
+  const servings = controlledServings ?? ownServings ?? base;
+  const setServings = onServingsChange ?? setOwnServings;
+  const factor = base && servings ? servings / base : 1;
   const keys = ingredientKeys(content.ingredients);
   const currentChecks = new Set(keys.filter((key) => checked.has(key)));
+
   return (
-    <div className="recipe-body">
-      <dl className="recipe-meta">
-        {content.servings && (
-          <div>
-            <dt>Servings</dt>
-            <dd>{content.servings}</dd>
-          </div>
-        )}
-        {content.prepMinutes !== null && (
-          <div>
-            <dt>Prep</dt>
-            <dd>{content.prepMinutes} min</dd>
-          </div>
-        )}
-        {content.cookMinutes !== null && (
-          <div>
-            <dt>Cook</dt>
-            <dd>{content.cookMinutes} min</dd>
-          </div>
-        )}
-        {content.totalMinutes != null && (
-          <div>
-            <dt>Elapsed</dt>
-            <dd>{content.totalMinutes} min</dd>
-          </div>
-        )}
-      </dl>
-      {content.description && (
-        <p className="recipe-description">{content.description}</p>
-      )}
-      <div className="recipe-columns">
-        <section aria-labelledby="ingredients-heading">
+    <div className="recipe-body" data-pane={pane}>
+      <Segmented
+        className="recipe-panes"
+        options={panes}
+        value={pane}
+        onChange={setPane}
+        label="Show"
+      />
+      <section
+        className="recipe-pane recipe-pane-ingredients"
+        aria-labelledby="ingredients-heading"
+      >
+        <div className="recipe-pane-head">
           <h2 id="ingredients-heading" tabIndex={-1}>
-            Ingredients
+            {base && servings ? `For ${servings}` : "Ingredients"}
           </h2>
-          <div className="ingredient-progress">
-            <span>
-              {currentChecks.size} of {content.ingredients.length} checked
+          {base && servings ? (
+            <ServingsStepper value={servings} onChange={setServings} />
+          ) : content.servings ? (
+            <span className="recipe-servings-note">
+              Serves {content.servings}
             </span>
-            <button
-              type="button"
-              className="text-button"
-              disabled={currentChecks.size === 0}
-              onClick={() => update(new Set())}
-            >
-              Reset
-            </button>
-          </div>
-          {storageFailed && (
-            <p className="muted" role="status">
-              Progress cannot be saved on this device. Keep this recipe open to
-              retain your checks.
-            </p>
-          )}
-          <ul className="recipe-ingredients">
-            {content.ingredients.map((ingredient, index) => (
-              <li key={index}>
-                <label className="ingredient-check">
+          ) : null}
+        </div>
+        <div className="ingredient-progress">
+          <span>
+            {currentChecks.size} of {content.ingredients.length} checked
+          </span>
+          <button
+            type="button"
+            className="text-button"
+            disabled={currentChecks.size === 0}
+            onClick={() => update(new Set())}
+          >
+            Reset
+          </button>
+        </div>
+        {storageFailed && (
+          <p className="muted" role="status">
+            Progress cannot be saved on this device. Keep this recipe open to
+            retain your checks.
+          </p>
+        )}
+        <ul className="recipe-ingredients">
+          {content.ingredients.map((ingredient, index) => {
+            const key = keys[index] ?? "";
+            const { quantity, rest } = splitQuantity(ingredient, factor);
+            return (
+              <li key={key}>
+                <label className="ingredient-row">
                   <input
                     type="checkbox"
-                    checked={currentChecks.has(keys[index] ?? "")}
+                    className="ingredient-input"
+                    checked={currentChecks.has(key)}
                     onChange={() => {
-                      const key = keys[index];
                       if (!key) return;
                       const next = new Set(currentChecks);
                       if (next.has(key)) next.delete(key);
@@ -82,29 +135,40 @@ export function RecipeBody({
                       update(next);
                     }}
                   />
-                  <span>{ingredient}</span>
+                  <span className="ingredient-check" aria-hidden="true">
+                    <Check size={16} />
+                  </span>
+                  <span className="ingredient-text">
+                    {quantity ? <b>{quantity}</b> : null}
+                    {rest}
+                  </span>
                 </label>
               </li>
-            ))}
-          </ul>
-        </section>
-        <section aria-labelledby="method-heading">
+            );
+          })}
+        </ul>
+      </section>
+      <section
+        className="recipe-pane recipe-pane-method"
+        aria-labelledby="method-heading"
+      >
+        <div className="recipe-pane-head">
           <h2 id="method-heading" tabIndex={-1}>
             Method
           </h2>
-          <ol className="recipe-method">
-            {content.steps.map((step, index) => (
-              <li key={index}>{step}</li>
-            ))}
-          </ol>
-        </section>
-      </div>
-      {content.notes && (
-        <section className="recipe-notes" aria-labelledby="notes-heading">
-          <h2 id="notes-heading">Kitchen notes</h2>
-          <p>{content.notes}</p>
-        </section>
-      )}
+        </div>
+        <ol className="recipe-method">
+          {content.steps.map((step, index) => (
+            <li key={index}>{step}</li>
+          ))}
+        </ol>
+        {content.notes && (
+          <section className="recipe-notes" aria-labelledby="notes-heading">
+            <h3 id="notes-heading">Kitchen notes</h3>
+            <p>{content.notes}</p>
+          </section>
+        )}
+      </section>
     </div>
   );
 }

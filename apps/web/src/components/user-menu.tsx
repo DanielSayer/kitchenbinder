@@ -22,20 +22,32 @@ import {
 import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client";
 import { InstallMenuItem } from "./install-app";
+import { initialsOf, isYouPath } from "./shell/destinations";
+
+/** Sign out, clear cached queries and return home. */
+export function useSignOut() {
+  const queryClient = useQueryClient();
+  const router = useRouter();
+  return async function signOut() {
+    const result = await authClient.signOut();
+
+    if (result.error) {
+      toast.error("Couldn't sign out. Please try again.");
+
+      return;
+    }
+
+    queryClient.clear();
+    await router.invalidate();
+    await router.navigate({ to: "/" });
+  };
+}
 
 export default function UserMenu() {
   const { data: session, isPending } = authClient.useSession();
-  const queryClient = useQueryClient();
-  const router = useRouter();
+  const signOut = useSignOut();
   const accountActive = useRouterState({
-    select: (state) =>
-      state.location.pathname === "/settings" ||
-      state.location.pathname === "/pricing" ||
-      state.location.pathname === "/privacy" ||
-      state.location.pathname === "/support" ||
-      state.location.pathname === "/groups" ||
-      state.location.pathname === "/household" ||
-      state.location.pathname === "/login",
+    select: (state) => isYouPath(state.location.pathname),
   });
 
   if (isPending)
@@ -56,14 +68,8 @@ export default function UserMenu() {
           data-active={accountActive}
         >
           <span className="avatar">
-            <UserRound size={18} />
+            <UserRound size={16} />
           </span>
-          <UserRound
-            size={20}
-            className="account-mobile-icon"
-            aria-hidden="true"
-          />
-          <span className="nav-mobile-label">Account</span>
           <ChevronDown
             size={14}
             className="account-chevron"
@@ -104,20 +110,6 @@ export default function UserMenu() {
       </DropdownMenu>
     );
 
-  async function signOut() {
-    const result = await authClient.signOut();
-
-    if (result.error) {
-      toast.error("Couldn't sign out. Please try again.");
-
-      return;
-    }
-
-    queryClient.clear();
-    await router.invalidate();
-    await router.navigate({ to: "/" });
-  }
-
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -125,17 +117,11 @@ export default function UserMenu() {
         aria-label="Account menu"
         data-active={accountActive}
       >
-        <span className="avatar">
-          {session.user.name.slice(0, 1).toUpperCase()}
+        <span className="avatar" aria-hidden="true">
+          {initialsOf(session.user.name)}
         </span>
 
         <span className="account-name">{session.user.name}</span>
-        <UserRound
-          size={20}
-          className="account-mobile-icon"
-          aria-hidden="true"
-        />
-        <span className="nav-mobile-label">Account</span>
         <ChevronDown size={14} className="account-chevron" aria-hidden="true" />
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -156,15 +142,9 @@ export default function UserMenu() {
           </DropdownMenuItem>
           <DropdownMenuItem
             className="collection-select-manage"
-            render={<Link to="/household" />}
+            render={<Link to="/households" />}
           >
-            <Users size={16} /> Household
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className="collection-select-manage"
-            render={<Link to="/groups" />}
-          >
-            <Users size={16} /> Groups
+            <Users size={16} /> Households
           </DropdownMenuItem>
           <DropdownMenuItem
             className="collection-select-manage"

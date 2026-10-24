@@ -16,12 +16,30 @@ export const importSourceSchema = z
       (!url.port || ["80", "443"].includes(url.port))
     );
   }, "Use a public HTTP source link without credentials, query or fragment.");
-export const importInputSchema = z.strictObject({
+const importFields = {
   id: z.uuid(),
   content: z.string().trim().min(80).max(32_000),
   sourceUrl: importSourceSchema,
-  groupId: z.uuid().nullable(),
+};
+// What the extension sends. householdId shares the saved recipe (null = keep personal).
+export const importRequestSchema = z.strictObject({
+  ...importFields,
+  householdId: z.uuid().nullable(),
 });
+// Server parsing. collectionId adds the recipe to the caller's collection.
+// Older extension builds send the household as groupId.
+export const importInputSchema = z
+  .strictObject({
+    ...importFields,
+    householdId: z.uuid().nullable().optional(),
+    collectionId: z.uuid().nullable().optional(),
+    groupId: z.uuid().nullable().optional(),
+  })
+  .transform(({ groupId, householdId, collectionId, ...input }) => ({
+    ...input,
+    householdId: householdId ?? groupId ?? null,
+    collectionId: collectionId ?? null,
+  }));
 export const importStatusSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("queued"),
@@ -49,5 +67,6 @@ export const collectionsSchema = z.array(
 export const websiteImportSchema = z.object({
   id: z.uuid(),
   input: z.string().trim().min(3).max(20000),
-  groupId: z.uuid().nullable().optional(),
+  householdId: z.uuid().nullable().optional(),
+  collectionId: z.uuid().nullable().optional(),
 });

@@ -1,3 +1,6 @@
+/* Self-hosted Pantry font: Nunito, one family for UI and display. */
+@import "@fontsource-variable/nunito/wght.css";
+@import "@fontsource-variable/nunito/wght-italic.css";
 @import "@prep-sheet/ui/globals.css";
 
 @import "./styles/base.css";
@@ -8,16 +11,17 @@
 @import "./styles/login.css";
 @import "./styles/detail.css";
 
-@import "./styles/groups.css";
+@import "./styles/households.css";
 @import "./styles/responsive.css";
 @import "./styles/tags.css";
 @import "./styles/shopping.css";
 @import "./styles/planner.css";
-@import "./styles/households.css";
 @import "./styles/support.css";
 @import "./styles/landing.css";
 @import "./styles/pricing.css";
 @import "./styles/install-app.css";
+@import "./styles/shell.css";
+@import "./styles/pantry.css";
 .mobile-screen-title {
   display: none;
 }
@@ -34,15 +38,6 @@
   }
   html {
     scrollbar-gutter: auto;
-  }
-  /* Navigation lives in the bottom tabs. The page supplies its own title. */
-  .site-header {
-    height: env(safe-area-inset-top, 0px);
-    padding: 0;
-    border: 0;
-  }
-  .site-header > .brand {
-    display: none;
   }
   .home-page,
   .page-width {
@@ -108,17 +103,6 @@
   }
   .hero h1 > .mobile-screen-title {
     color: var(--ink);
-  }
-  .site-header nav {
-    background: #fffef9;
-    border-top-color: #ced7c2;
-  }
-  .site-header nav a.active,
-  .site-header nav .account-trigger[data-active="true"],
-  .site-header nav .account-trigger[data-popup-open] {
-    background: var(--green-dark);
-    color: white;
-    border-radius: 14px;
   }
   .button,
   .button:hover:not(:disabled),
@@ -198,7 +182,7 @@
   .collection-count {
     color: var(--ink);
     font-size: 13px;
-    font-weight: 800;
+    font-weight: 700;
   }
   .collection-page > .collection-select .collection-select-trigger,
   .composer-section > .collection-select .collection-select-trigger {
@@ -218,7 +202,7 @@
   .collection-page .recipe-card {
     padding: 16px;
     border-radius: 14px;
-    background: #fffef9;
+    background: var(--card);
   }
   .collection-page .recipe-card h2 {
     min-height: 28px;
@@ -248,7 +232,7 @@
   .meal-day-heading {
     min-height: 52px;
     padding-block: 8px;
-    background: #e9eddf;
+    background: var(--oat);
   }
   .meal-today .meal-day-heading {
     background: var(--green-dark);

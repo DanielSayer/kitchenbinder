@@ -82,7 +82,7 @@ function privateKeys(trpc: TRPCOptionsProxy<AppRouter>): QueryKey[] {
   return [
     trpc.planner.get.queryKey(),
     trpc.shopping.list.queryKey(),
-    trpc.groups.list.queryKey(),
+    trpc.households.list.queryKey(),
     trpc.recipes.list.queryKey(),
   ];
 }

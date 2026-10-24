@@ -7,14 +7,11 @@ export function Hero() {
   return (
     <section className="hero" aria-labelledby="hero-title">
       <h1 id="hero-title">
-        Big ideas.
+        Every recipe,
         <br />
-        <span>Good dinners.</span>
+        <i>one tidy binder.</i>
       </h1>
-      <p>
-        The recipe in your notes. The link a friend sent. Give them a place in
-        your kitchen.
-      </p>
+      <p>Paste a link, some text, or just “nan's pie”. We'll do the tidying.</p>
       {!isPending && !session && (
         <Link to="/pricing" className="hero-pricing-link">
           Start free. Explore Pro and its {pricing.trial.days}-day free trial →

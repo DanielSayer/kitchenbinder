@@ -1,12 +1,12 @@
-# Personal shopping list
+# Household shopping list
 
-Each signed-in account has one persistent list at `/shopping`. Ingredients can be added from the recipe picker, collection selection, or recipe detail. Shared-collection recipes may be copied into a personal list; the list itself is never shared.
+Each household (see [households](households.md)) has one persistent list at `/shopping`, shared by its members. Every procedure takes an optional `householdId` (omitted = the caller's "Just me") and verifies membership. Items record `addedBy`. Ingredients can be added from the recipe picker, collection selection, or recipe detail, from any recipe the caller can access.
 
 Ingredients retain their original text, recipe title and yield. List edits do not change recipes, and recipe updates or deletion do not change copied ingredients. Duplicate ingredient lines are kept separately. A recipe cannot be added again while any of its items remain on the list. Clearing or removing all of its items makes it available again.
 
-Items have three states: needed, bought and owned. The checkbox marks an item bought. Each row has a visible Have it button to mark it owned in one tap; Need this returns owned or bought items to needed. The checkbox, ingredient, Have it button and action menu share one row, with ingredient text wrapping when needed. Edit item and Remove item are in the action menu. Clear bought items removes only bought items. Reset list asks for confirmation before removing everything.
+Items have three states: needed, bought and owned. Tapping a row ticks it bought (olive). Swiping a row left marks it owned (Have it); a Have it button does the same with a mouse, keyboard or screen reader. Need this returns owned items to needed. Needed items are grouped by aisle (`categoriseGrocery`) or by recipe; bought and owned items collapse into their own sections. Quick add sits at the bottom of the screen. The row menu opens a sheet to edit or remove the item. Ticks, Have it, removals, Clear bought items and Clear the whole list act immediately with an Undo toast; removals are only sent when the toast closes.
 
-Writes are account-scoped. Recipe additions check current access and run transactionally; simultaneous additions of the same recipe do not duplicate its ingredients. A list holds up to 1,000 items, with up to 100 recipes per addition. Miscellaneous groceries use a request ID so retrying a save does not duplicate them. Unfinished text is stored locally by account and item, while saved items persist in PostgreSQL.
+Writes are household-scoped and serialized by a household lock. Recipe additions check current access and run transactionally; simultaneous additions of the same recipe do not duplicate its ingredients. A list holds up to 1,000 items, with up to 100 recipes per addition. Miscellaneous groceries use a request ID so retrying a save does not duplicate them. Unfinished text is stored locally by account and item, while saved items persist in PostgreSQL.
 
 ## Database setup
 
@@ -31,7 +31,7 @@ The build generates web routes before type checking on a clean checkout. The `pn
 
 ## Generated shopping trip
 
-Generate shopping list opens `/shopping/generated` and saves one generated view per account. It includes only items still needed, groups them by supermarket category, and preserves every original item and its recipe attribution. Ticking a combined item marks all of its source ingredients bought; unticking restores them to needed.
+Generate shopping list opens `/shopping/generated` and saves one generated view per household. It includes only items still needed, groups them by supermarket category, and preserves every original item and its recipe attribution. Ticking a combined item marks all of its source ingredients bought; unticking restores them to needed.
 
 Grouping runs entirely in code. Clear ingredient matches with compatible units are combined, including grams/kilograms and millilitres/litres. Cups, tablespoons and teaspoons remain separate because measurement standards vary. Different ingredient types, pack sizes, ranges, alternatives and ambiguous amounts remain separate. Unrecognised products go into Other. Category rules and quantity parsing live in `packages/db/src/shopping-plan.ts` and are covered by its unit tests.
 

@@ -11,12 +11,12 @@ import {
 const first = {
   id: "00000000-0000-4000-8000-000000000001",
   input: "Make lemon pasta",
-  groupId: null,
+  householdId: null,
 };
 const second = {
   id: "00000000-0000-4000-8000-000000000002",
   input: "https://example.com/soup",
-  groupId: "00000000-0000-4000-8000-000000000003",
+  householdId: "00000000-0000-4000-8000-000000000003",
 };
 
 beforeEach(() => {

@@ -104,7 +104,7 @@ export function Import({
     const timer = setTimeout(() => void recover(), 3000);
     return () => clearTimeout(timer);
   }, [status, busy, error, recover]);
-  async function choose(groupId: string | null) {
+  async function choose(householdId: string | null) {
     if (inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
@@ -112,7 +112,7 @@ export function Import({
     try {
       setDestinations(
         destinationSchema.parse(
-          await send({ kind: "select-collection", groupId }),
+          await send({ kind: "select-collection", householdId }),
         ),
       );
     } catch (cause) {
@@ -134,7 +134,11 @@ export function Import({
           await send({
             kind: "save-import",
             title,
-            input: { content, sourceUrl, groupId: destinations.groupId },
+            input: {
+              content,
+              sourceUrl,
+              householdId: destinations.householdId,
+            },
           }),
         ),
       );
@@ -191,7 +195,7 @@ export function Import({
           </h2>
           <p className="muted">
             {pending.collectionName ||
-              (pending.groupId ? "Selected group" : "My recipes")}
+              (pending.householdId ? "Selected household" : "My recipes")}
           </p>
         </div>
       )}
@@ -208,7 +212,7 @@ export function Import({
                 <input
                   type="radio"
                   name="collection"
-                  checked={destinations.groupId === collection.id}
+                  checked={destinations.householdId === collection.id}
                   onChange={() => void choose(collection.id)}
                 />
                 <span>{collection.name}</span>
@@ -234,7 +238,7 @@ export function Import({
               !!error ||
               content.trim().length < 80 ||
               !destinations.collections.some(
-                (item) => item.id === destinations.groupId,
+                (item) => item.id === destinations.householdId,
               )
             }
             onClick={() => void save()}

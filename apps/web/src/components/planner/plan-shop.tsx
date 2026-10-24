@@ -5,16 +5,13 @@ import {
 } from "@prep-sheet/db/meal-planner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { ShoppingBasket } from "lucide-react";
+import { RefreshCw, ShoppingBasket } from "lucide-react";
 import { useId, useState } from "react";
+import { useHouseholdScope } from "@/components/households/household-context";
+import { Sheet } from "@/components/pantry";
 import { useTRPC } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
-import {
-  planningRefresh,
-  usePlanningScope,
-} from "../households/planning-context";
-import { OrganiseDialog } from "../recipes/organise-dialog";
-import { addDays, dateLabel, localDate, weekStart } from "./dates";
+import { addDays, localDate, shortDate, weekday, weekStart } from "./dates";
 
 export function mealTitle(meal: Meal, meals: Meal[]) {
   if (meal.kind === "recipe") return meal.title;
@@ -23,12 +20,11 @@ export function mealTitle(meal: Meal, meals: Meal[]) {
   return source?.kind === "recipe" ? `${source.title} leftovers` : "Leftovers";
 }
 
+/** Shown on Plan and Shop when meals changed since the list was made. */
 export function MealListNotice() {
-  const { scope } = usePlanningScope();
   const trpc = useTRPC();
-  const query = useQuery(
-    trpc.planner.get.queryOptions(scope, planningRefresh(scope)),
-  );
+  const householdId = useHouseholdScope();
+  const query = useQuery(trpc.planner.get.queryOptions({ householdId }));
   const [review, setReview] = useState(false);
   const trip = query.data?.trip;
   if (query.isError)
@@ -41,8 +37,9 @@ export function MealListNotice() {
   if (!trip || !query.data?.stale) return null;
   return (
     <>
-      <div className="meal-list-notice" role="status">
-        <p>Your meals changed.</p>
+      <div className="list-notice" role="status">
+        <RefreshCw size={18} aria-hidden="true" />
+        <p>Your meals changed since the list was made.</p>
         <button
           className="button button-small button-outline"
           type="button"
@@ -56,6 +53,20 @@ export function MealListNotice() {
   );
 }
 
+function rangeText(coverage: Pick<Coverage, "start" | "end">) {
+  return coverage.start === coverage.end
+    ? `${weekday(coverage.start)} ${shortDate(coverage.start)}`
+    : `${weekday(coverage.start, "short")} ${shortDate(coverage.start)} – ${weekday(coverage.end, "short")} ${shortDate(coverage.end)}`;
+}
+
+const changeLabels = {
+  keep: "Keep",
+  add: "Add",
+  remove: "Remove",
+  change: "Change",
+} as const;
+
+/** Plan → shop: preview the ingredients for a date range, then save the list. */
 export function PlanShop({
   initial,
   onClose,
@@ -63,13 +74,11 @@ export function PlanShop({
   initial?: Coverage;
   onClose: () => void;
 }) {
-  const { scope } = usePlanningScope();
   const trpc = useTRPC();
+  const householdId = useHouseholdScope();
   const client = useQueryClient();
   const navigate = useNavigate();
-  const planner = useQuery(
-    trpc.planner.get.queryOptions(scope, planningRefresh(scope)),
-  );
+  const planner = useQuery(trpc.planner.get.queryOptions({ householdId }));
   const datesId = useId();
   const [coverage, setCoverage] = useState<Coverage>(
     initial ?? {
@@ -78,12 +87,12 @@ export function PlanShop({
       end: addDays(weekStart(localDate()), 6),
     },
   );
-  const [reviewed, setReviewed] = useState<Coverage | null>(null);
-  const [error, setError] = useState("");
   const [changeDates, setChangeDates] = useState(false);
+  const parsed = coverageInput.safeParse(coverage);
+  const reviewed = parsed.success ? parsed.data : null;
   const preview = useQuery(
     trpc.planner.preview.queryOptions(
-      { scope, coverage: reviewed ?? coverage, replace: false },
+      { householdId, coverage: reviewed ?? coverage, replace: false },
       { enabled: reviewed !== null, staleTime: 0 },
     ),
   );
@@ -108,97 +117,103 @@ export function PlanShop({
           ? patch.start
           : current.shoppingDate,
     }));
-    setReviewed(null);
     apply.reset();
-    setError("");
   };
+  const data = preview.data && !preview.isError ? preview.data : null;
   return (
-    <OrganiseDialog
-      title="Make shopping list"
-      className="meal-dialog meal-shop-dialog"
-      onClose={() => {
-        if (!apply.isPending) onClose();
+    <Sheet
+      open
+      onOpenChange={(next) => {
+        if (!next && !apply.isPending) onClose();
       }}
+      title="Shop for these meals"
+      className="plan-shop-sheet"
+      footer={
+        <>
+          <button
+            type="button"
+            className="button button-primary button-block"
+            disabled={
+              !reviewed ||
+              !data ||
+              apply.isPending ||
+              preview.isFetching ||
+              data.issues.length > 0
+            }
+            onClick={() => {
+              if (reviewed && data)
+                apply.mutate({
+                  householdId,
+                  coverage: reviewed,
+                  replace: false,
+                  token: data.token,
+                });
+            }}
+          >
+            <ShoppingBasket size={20} aria-hidden="true" />
+            {apply.isPending ? "Saving..." : "Save shopping list"}
+          </button>
+          <button
+            type="button"
+            className="button button-ghost"
+            disabled={apply.isPending}
+            onClick={onClose}
+          >
+            Cancel
+          </button>
+        </>
+      }
     >
-      <form
-        noValidate
-        onSubmit={(event) => {
-          event.preventDefault();
-          const parsed = coverageInput.safeParse(coverage);
-          if (!parsed.success) {
-            setError(parsed.error.issues[0]?.message ?? "Check the dates.");
-            setChangeDates(true);
-            return;
-          }
-          setError("");
-          setReviewed(parsed.data);
-        }}
-      >
-        <fieldset disabled={apply.isPending} className="meal-form">
-          <div className="meal-list-dates">
-            <div>
-              <h3>Which days are you shopping for?</h3>
-              <p>
-                {dateLabel(coverage.start)} to {dateLabel(coverage.end)}
-              </p>
-            </div>
-            <button
-              type="button"
-              className="text-button"
-              aria-expanded={changeDates}
-              aria-controls={datesId}
-              onClick={() => setChangeDates((current) => !current)}
-            >
-              {changeDates ? "Hide dates" : "Change dates"}
-            </button>
+      <div className="plan-shop">
+        <div className="plan-shop-dates">
+          <div>
+            <small>Meals from</small>
+            <b>{rangeText(coverage)}</b>
           </div>
-          <div id={datesId} className="meal-form-grid" hidden={!changeDates}>
-            <label className="shopping-field">
-              From
-              <input
-                type="date"
-                required
-                min="2000-01-01"
-                max="2100-12-31"
-                value={coverage.start}
-                onChange={(event) => set({ start: event.target.value })}
-              />
-            </label>
-            <label className="shopping-field">
-              Through
-              <input
-                type="date"
-                required
-                min={coverage.start}
-                max="2100-12-31"
-                value={coverage.end}
-                onChange={(event) => set({ end: event.target.value })}
-              />
-            </label>
-          </div>
-          <ErrorNotice message={error} />
+          <button
+            type="button"
+            className="button button-small button-outline"
+            aria-expanded={changeDates}
+            aria-controls={datesId}
+            onClick={() => setChangeDates((current) => !current)}
+          >
+            {changeDates ? "Done" : "Change dates"}
+          </button>
+        </div>
+        <div id={datesId} className="plan-shop-range" hidden={!changeDates}>
+          <label className="pick-field">
+            <span>From</span>
+            <input
+              type="date"
+              required
+              min="2000-01-01"
+              max="2100-12-31"
+              value={coverage.start}
+              onChange={(event) => set({ start: event.target.value })}
+            />
+          </label>
+          <label className="pick-field">
+            <span>Through</span>
+            <input
+              type="date"
+              required
+              min={coverage.start}
+              max="2100-12-31"
+              value={coverage.end}
+              onChange={(event) => set({ end: event.target.value })}
+            />
+          </label>
+        </div>
+        {!parsed.success && (
           <ErrorNotice
-            message={planner.error?.message}
-            retry={() => void planner.refetch()}
+            message={parsed.error.issues[0]?.message ?? "Check the dates."}
           />
-          {!reviewed && (
-            <div className="organise-dialog-footer">
-              <button
-                type="button"
-                className="button button-outline"
-                onClick={onClose}
-              >
-                Cancel
-              </button>
-              <button className="button button-primary" type="submit">
-                Review ingredients
-              </button>
-            </div>
-          )}
-        </fieldset>
-      </form>
-      {reviewed && (
-        <div className="meal-form">
+        )}
+        <ErrorNotice
+          message={planner.error?.message}
+          retry={() => void planner.refetch()}
+        />
+        {reviewed && (
           <LoadingState
             pending={preview.isPending}
             label="Reviewing meals and ingredients..."
@@ -207,33 +222,33 @@ export function PlanShop({
               message={preview.error?.message}
               retry={() => void preview.refetch()}
             />
-            {preview.data && !preview.isError && (
+            {data && (
               <>
-                <section className="meal-review-section">
-                  <h3>Included meals</h3>
-                  {!preview.data.meals.length && (
-                    <p>No meals planned. You can still shop for groceries.</p>
+                <section className="plan-shop-section">
+                  <h3>Meals</h3>
+                  {!data.meals.length && (
+                    <p className="meal-sheet-hint">
+                      No meals planned. You can still shop for groceries.
+                    </p>
                   )}
-                  <ul className="meal-review-meals">
-                    {preview.data.meals.map((meal) => (
+                  <ul className="plan-shop-meals">
+                    {data.meals.map((meal) => (
                       <li key={meal.id}>
                         <span>
-                          {dateLabel(meal.date)}
+                          {weekday(meal.date, "short")} {shortDate(meal.date)}
                           {meal.slot ? ` · ${meal.slot}` : ""}
                         </span>
-                        <strong>
-                          {mealTitle(meal, planner.data?.meals ?? [])}
-                        </strong>
+                        <b>{mealTitle(meal, planner.data?.meals ?? [])}</b>
                         <small>
                           {meal.kind === "recipe"
-                            ? `Cook ${meal.cook} servings`
-                            : "No ingredients added"}
+                            ? `Cook ${meal.cook}`
+                            : "No ingredients"}
                         </small>
                       </li>
                     ))}
                   </ul>
                 </section>
-                {preview.data.issues.map((issue) => (
+                {data.issues.map((issue) => (
                   <p
                     key={issue.id + issue.message}
                     className="meal-warning"
@@ -242,31 +257,25 @@ export function PlanShop({
                     {issue.message}
                   </p>
                 ))}
-                <section className="meal-review-section">
+                <section className="plan-shop-section">
                   <h3>Ingredient changes</h3>
-                  <p className="muted">
-                    Keeps other groceries and quantities already bought or at
+                  <p className="meal-sheet-hint">
+                    Keeps other groceries and anything already bought or at
                     home.
                   </p>
-                  {!preview.data.changes.length && (
-                    <p>No ingredient changes needed.</p>
+                  {!data.changes.length && (
+                    <p className="meal-sheet-hint">
+                      No ingredient changes needed.
+                    </p>
                   )}
-                  <ul className="meal-changes">
-                    {preview.data.changes.map((change, index) => (
+                  <ul className="plan-shop-changes">
+                    {data.changes.map((change, index) => (
                       <li key={`${index}:${change.title}`}>
-                        <span
-                          className={`meal-change-kind meal-change-${change.kind}`}
-                        >
-                          {change.kind === "keep"
-                            ? "Keep"
-                            : change.kind === "add"
-                              ? "Add"
-                              : change.kind === "remove"
-                                ? "Remove"
-                                : "Change"}
+                        <span className="plan-change" data-kind={change.kind}>
+                          {changeLabels[change.kind]}
                         </span>
                         <div>
-                          <strong>{change.title}</strong>
+                          <b>{change.title}</b>
                           {change.before && <p>{change.before}</p>}
                           {change.after && (
                             <p>
@@ -279,11 +288,11 @@ export function PlanShop({
                     ))}
                   </ul>
                 </section>
-                {!!preview.data.warnings.length && (
+                {!!data.warnings.length && (
                   <div className="meal-warning">
-                    <strong>Check these quantities</strong>
+                    <b>Check these quantities</b>
                     <ul>
-                      {preview.data.warnings.map((warning) => (
+                      {data.warnings.map((warning) => (
                         <li key={warning}>{warning}</li>
                       ))}
                     </ul>
@@ -296,42 +305,11 @@ export function PlanShop({
                     void preview.refetch();
                   }}
                 />
-                <div className="organise-dialog-footer">
-                  <button
-                    type="button"
-                    disabled={apply.isPending}
-                    className="button button-outline"
-                    onClick={onClose}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    className="button button-primary"
-                    disabled={
-                      apply.isPending ||
-                      preview.isFetching ||
-                      preview.data.issues.length > 0
-                    }
-                    onClick={() => {
-                      if (preview.data)
-                        apply.mutate({
-                          scope,
-                          coverage: reviewed,
-                          replace: false,
-                          token: preview.data.token,
-                        });
-                    }}
-                  >
-                    <ShoppingBasket size={17} />
-                    {apply.isPending ? "Saving..." : "Save shopping list"}
-                  </button>
-                </div>
               </>
             )}
           </LoadingState>
-        </div>
-      )}
-    </OrganiseDialog>
+        )}
+      </div>
+    </Sheet>
   );
 }

@@ -85,12 +85,13 @@ no automatic retention job and no per-report status or assignment table.
    tied to the signed-in account. For signed-out mailbox requests, establish account
    ownership through the approved support process before taking account action.
    Never ask for a provider password or sign-in code.
-2. The owner must transfer every owned group to an existing eligible member or
-   explicitly delete the group through Groups. Never choose a replacement owner
-   or delete a group on their behalf without instructions.
-   They must also transfer or explicitly delete any household they own through Household settings.
-3. Explain that shared recipes and other people's copies remain. Resolve specific
-   requests about personal details in shared recipe text or shared meals before completion. Shared household meals and groceries remain for other members.
+2. Explain what happens to households they own: each shared household passes to
+   its longest-standing other member; a household with no other members is
+   deleted. The app's deletion panel lists both. Owners may transfer or delete
+   households themselves first.
+3. Explain that recipes shared with a household (other than "Just me") remain
+   there without an owner, and other people's copies remain. Resolve specific
+   requests about personal details in shared recipe text before completion.
 4. Ask the user to cancel Pro and wait for paid/trial access to end. Wait for any
    pending checkout to expire too. Restore Polar configuration/connectivity if it
    is unavailable. Never clear billing rows, shorten checkout expiry or mark a
@@ -102,8 +103,8 @@ no automatic retention job and no per-report status or assignment table.
 node --env-file=apps/web/.env --import tsx packages/api/src/support-admin.ts complete-deletion <request-id> --confirm
 ```
 
-The transaction locks the exact pending request and account. It refuses owned
-groups, an owned household, unresolved billing and a checkout whose expiry is future or unknown. A
+The transaction locks the exact pending request and account. It refuses
+unresolved billing and a checkout whose expiry is future or unknown. A
 billing history or attempted checkout triggers authoritative Polar state and
 subscription checks even if the local customer ID is missing. Configuration or
 provider failure rolls back all deletion work and leaves the request pending for
@@ -116,11 +117,14 @@ committed deletion. Re-list the queue after any failure; retry only the same sti
 pending reference after the underlying block is resolved. A recreated request has
 a new reference. A completed or cancelled reference cannot be processed again.
 
-Successful completion removes personal recipes, including Recently deleted, and
-the account. Foreign keys remove sessions, provider tokens, extension credentials,
-imports, private tags/activity, shopping/planner data, memberships and support
-requests. Shared contributions retain content with their user link removed.
-Group-owned data, household meals and groceries, and independent copies remain. Keep only the minimal operational
+Successful completion transfers or deletes owned households (above), deletes
+"Just me" with its plan and shopping list, removes every recipe not shared with a
+household, including Recently deleted, and the account. Foreign keys remove
+sessions, provider tokens, extension credentials, imports, collections, tags,
+activity, memberships and support requests. Shared recipes keep their content and
+shares with the owner link removed; nobody can edit them, and they are removed if
+their last household is deleted. Shopping items they added remain without
+attribution. Independent copies remain. Keep only the minimal operational
 record permitted by the retention policy; the CLI success record contains the
 reference and operator, not a copy of the deleted account's email or content.
 
@@ -140,7 +144,7 @@ pnpm test packages/env/src/support.test.ts packages/api/src/support.integration.
 ```
 
 The rehearsal exercises report privacy/rate limits, exact-reference CLI resolution,
-owned-group refusal followed by ownership transfer, personal-data deletion with
+household transfer and deletion, personal-data deletion with
 shared-recipe retention, both request-cancellation lock orderings, missing billing
 configuration, outages during both provider state and subscription reads,
 unresolved subscription states without a local customer ID, and expired-checkout

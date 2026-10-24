@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { db } from "@prep-sheet/db";
 import { user } from "@prep-sheet/db/schema/auth";
-import { group, groupMember } from "@prep-sheet/db/schema/group";
-import { recipe } from "@prep-sheet/db/schema/recipe";
+import { household, householdMember } from "@prep-sheet/db/schema/household";
+import { recipe, recipeShare } from "@prep-sheet/db/schema/recipe";
 import { eq, inArray } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Context } from "./context";
@@ -11,7 +11,7 @@ import { appRouter } from "./routers";
 
 const ownerId = randomUUID();
 const otherId = randomUUID();
-const groupId = randomUUID();
+const householdId = randomUUID();
 const personalId = randomUUID();
 const sharedId = randomUUID();
 function caller(id: string) {
@@ -51,12 +51,14 @@ describe("personal shopping list with PostgreSQL", () => {
         email: `${id}@example.test`,
       })),
     );
-    await db
-      .insert(group)
-      .values({ id: groupId, ownerId: otherId, name: "Shopping test group" });
-    await db.insert(groupMember).values([
-      { groupId, userId: ownerId },
-      { groupId, userId: otherId },
+    await db.insert(household).values({
+      id: householdId,
+      ownerId: otherId,
+      name: "Shopping test household",
+    });
+    await db.insert(householdMember).values([
+      { householdId, userId: ownerId },
+      { householdId, userId: otherId },
     ]);
     await db.insert(recipe).values([
       {
@@ -68,17 +70,19 @@ describe("personal shopping list with PostgreSQL", () => {
       },
       {
         id: sharedId,
-        groupId,
         userId: otherId,
         title: "Salad",
         origin: "manual",
         content: { ...sampleRecipe, ingredients: ["1 onion", "2 tomatoes"] },
       },
     ]);
+    await db.insert(recipeShare).values({ recipeId: sharedId, householdId });
   });
   afterAll(async () => {
-    await db.delete(group).where(eq(group.id, groupId));
-    await db.delete(recipe).where(eq(recipe.id, personalId));
+    await db
+      .delete(household)
+      .where(inArray(household.ownerId, [ownerId, otherId]));
+    await db.delete(recipe).where(inArray(recipe.id, [personalId, sharedId]));
     await db.delete(user).where(inArray(user.id, [ownerId, otherId]));
     await db.$client.end();
   });

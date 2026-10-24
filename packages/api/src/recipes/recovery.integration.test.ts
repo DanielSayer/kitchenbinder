@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { db } from "@prep-sheet/db";
 import { user } from "@prep-sheet/db/schema/auth";
 import { billingAccount } from "@prep-sheet/db/schema/billing";
-import { group } from "@prep-sheet/db/schema/group";
+import { household } from "@prep-sheet/db/schema/household";
 import { recipe } from "@prep-sheet/db/schema/recipe";
 import { eq, inArray } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -61,8 +61,8 @@ describe("recipe recovery with PostgreSQL", () => {
     );
   });
   afterAll(async () => {
-    await db.delete(group).where(inArray(group.ownerId, users));
     await db.delete(recipe).where(inArray(recipe.userId, users));
+    await db.delete(household).where(inArray(household.ownerId, users));
     await db.delete(user).where(inArray(user.id, users));
     await db.$client.end();
   });
@@ -72,7 +72,6 @@ describe("recipe recovery with PostgreSQL", () => {
     const tag = await owner.tags.create({ name: "Recovery tag" });
     await owner.recipes.createManual({
       id,
-      groupId: null,
       content: sampleRecipe,
     });
     await owner.recipes.setFavourite({ id, isFavourite: true });
@@ -103,7 +102,7 @@ describe("recipe recovery with PostgreSQL", () => {
           id,
           content: sampleRecipe,
         }),
-      () => owner.recipes.copy({ id, newId: randomUUID(), groupId: null }),
+      () => owner.recipes.copy({ id, newId: randomUUID() }),
       () => owner.recipes.setFavourite({ id, isFavourite: false }),
       () =>
         owner.recipes.setTags({
@@ -115,12 +114,10 @@ describe("recipe recovery with PostgreSQL", () => {
       () => outsider.recipes.restore({ id }),
     ])
       await expect(request()).rejects.toMatchObject({ code: "NOT_FOUND" });
-    expect(await outsider.recipes.recentlyDeleted({ groupId: null })).toEqual(
-      [],
+    expect(await outsider.recipes.recentlyDeleted()).toEqual([]);
+    const deleted = (await owner.recipes.recentlyDeleted()).find(
+      (r) => r.id === id,
     );
-    const deleted = (
-      await owner.recipes.recentlyDeleted({ groupId: null })
-    ).find((r) => r.id === id);
     expect(deleted?.deletedByName).toBe("Recovery test");
     if (!deleted?.deletedAt || !deleted.expiresAt)
       throw new Error("Missing recovery dates");
@@ -151,58 +148,59 @@ describe("recipe recovery with PostgreSQL", () => {
       { id: entryId, cookedOn: "2026-09-01", note: "Keep this note" },
     ]);
     expect(
-      (await owner.recipes.recentlyDeleted({ groupId: null })).some(
-        (r) => r.id === id,
-      ),
+      (await owner.recipes.recentlyDeleted()).some((r) => r.id === id),
     ).toBe(false);
   });
 
-  it("allows current group members to restore and rejects removed members and outsiders", async () => {
-    const target = await owner.groups.create({ name: "Recovery group" });
-    const invitation = await owner.groups.invite({ groupId: target.id });
-    await member.groups.acceptInvite({ token: invitation.token });
+  it("lets only the owner delete and restore a shared recipe, keeping member metadata", async () => {
+    const target = await owner.households.create({ name: "Recovery group" });
+    const invitation = await owner.households.invite({
+      householdId: target.id,
+    });
+    await member.households.acceptInvite({ token: invitation.token });
     const id = randomUUID();
     await owner.recipes.createManual({
       id,
-      groupId: target.id,
+      householdId: target.id,
       content: sampleRecipe,
     });
     await owner.recipes.setRating({ id, rating: 5 });
     await member.recipes.setRating({ id, rating: 2 });
-    await member.recipes.delete({ id });
-    expect((await owner.recipes.list({ groupId: target.id })).items).toEqual(
-      [],
+    await expect(member.recipes.delete({ id })).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+    await owner.recipes.delete({ id });
+    expect((await member.recipes.list()).items.some((r) => r.id === id)).toBe(
+      false,
+    );
+    expect((await owner.recipes.recentlyDeleted()).map((r) => r.id)).toContain(
+      id,
     );
     expect(
-      await owner.recipes.recentlyDeleted({ groupId: target.id }),
-    ).toHaveLength(1);
-    expect(
-      (await owner.recipes.recentlyDeleted({ groupId: null })).some(
-        (r) => r.id === id,
-      ),
+      (await member.recipes.recentlyDeleted()).some((r) => r.id === id),
     ).toBe(false);
-    await expect(
-      outsider.recipes.recentlyDeleted({ groupId: target.id }),
-    ).rejects.toMatchObject({ code: "NOT_FOUND" });
-    await member.recipes.restore({ id });
-    expect((await member.recipes.get({ id })).rating).toBe(2);
-    expect((await owner.recipes.get({ id })).rating).toBe(5);
-    await owner.recipes.delete({ id });
-    await owner.groups.removeMember({ groupId: target.id, userId: memberId });
     await expect(member.recipes.restore({ id })).rejects.toMatchObject({
       code: "NOT_FOUND",
     });
-    await expect(
-      member.recipes.recentlyDeleted({ groupId: target.id }),
-    ).rejects.toMatchObject({ code: "NOT_FOUND" });
     await owner.recipes.restore({ id });
+    expect((await member.recipes.get({ id })).rating).toBe(2);
+    expect((await owner.recipes.get({ id })).rating).toBe(5);
+    await owner.households.removeMember({
+      householdId: target.id,
+      userId: memberId,
+    });
+    await expect(member.recipes.get({ id })).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
+    await expect(outsider.recipes.get({ id })).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
   });
 
   it("rejects expired restoration without removing the stored recipe", async () => {
     const id = randomUUID();
     await owner.recipes.createManual({
       id,
-      groupId: null,
       content: sampleRecipe,
     });
     await owner.recipes.delete({ id });
@@ -217,9 +215,7 @@ describe("recipe recovery with PostgreSQL", () => {
       code: "NOT_FOUND",
     });
     expect(
-      (await owner.recipes.recentlyDeleted({ groupId: null })).some(
-        (r) => r.id === id,
-      ),
+      (await owner.recipes.recentlyDeleted()).some((r) => r.id === id),
     ).toBe(false);
     expect(
       await db.select().from(recipe).where(eq(recipe.id, id)),

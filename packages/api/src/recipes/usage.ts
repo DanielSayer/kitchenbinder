@@ -3,7 +3,7 @@ import { recipeImport } from "@prep-sheet/db/schema/import";
 import { TRPCError } from "@trpc/server";
 import { and, count, eq, gte, inArray, or, sql } from "drizzle-orm";
 import { pricing } from "../billing/policy";
-import type { Database } from "../groups/access";
+import type { Database } from "../households/access";
 
 // Admission and reservation must share this transaction and account lock.
 // Job records outlive recipes. Failed AI calls remain spent attempts.

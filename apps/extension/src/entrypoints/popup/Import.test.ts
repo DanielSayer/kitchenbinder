@@ -20,7 +20,7 @@ const pending = {
   id,
   content,
   sourceUrl: "https://recipes.test/soup",
-  groupId: id,
+  householdId: id,
   title: "Soup",
   collectionName: "Family",
 };
@@ -72,7 +72,7 @@ it("keeps collection errors visible and reloads them without resetting an import
             ok: true,
             data: {
               collections: [{ id: null, name: "My recipes" }],
-              groupId: null,
+              householdId: null,
               changed: false,
             },
           };
@@ -126,7 +126,7 @@ it("recovers a lost submission before allowing another save", async () => {
         ok: true,
         data: {
           collections: [{ id, name: "Family" }],
-          groupId: id,
+          householdId: id,
           changed: false,
         },
       };

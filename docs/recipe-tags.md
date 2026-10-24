@@ -1,12 +1,14 @@
 # Recipe tags
 
-Applied tags belong to a recipe. Every member of its collection sees the same tags and can add or remove them. Detail views, collection filters, bulk edits and tag pickers use the same assignments. Favourites, ratings and cooking history remain account-specific.
+Tags are personal (see [households](households.md)). Only a recipe's owner adds or removes its tags, using built-in tags or their own custom tags. Everyone with access sees the owner's tags read-only: list items and details include `tags: { id, name }[]` alongside `tagIds`. Favourites, ratings and cooking history remain account-specific.
 
-Custom tag definitions belong to a collection. Personal collections use their owner's definitions; shared collections have definitions that any current member can create, rename or delete. Built-in tags are available everywhere and cannot be edited. Import and generation jobs offer the destination collection's tags to AI and validate returned IDs against that collection before saving.
+Custom tag definitions belong to one account; `tags.list` returns built-ins plus the caller's own tags. Built-in tags are available everywhere and cannot be edited. Import and generation jobs offer the importer's tags to AI and validate returned IDs against them before saving.
 
-Settings > Tags includes a collection selector. A collection supports up to 100 custom tags. The collection lock serializes member writes, name checks and tag admission. Names are case-insensitive within a collection and cannot conflict with built-in names. Leaving a group or deleting a member's account does not remove shared definitions or recipe assignments.
+An account supports up to 100 custom tags. The account lock serializes writes, name checks and tag admission. Names are case-insensitive per account and cannot conflict with built-in names. Deleting an account deletes its tags, including on recipes that survive in a household.
 
-Copying a recipe copies its applied tags. Built-ins keep their IDs. Custom tags reuse a name in the destination or copy the name and description into a new destination definition. Existing destination definitions keep their description. Copying fails atomically if new definitions would exceed the destination's limit.
+Copying a recipe copies its applied tags into the copier's tags. Built-ins keep their IDs. Other people's tags reuse a matching name or are created with the same name and description. Existing definitions keep their description. Copying fails atomically if new definitions would exceed the limit.
+
+Migration `0008_pantry_households.sql` merges each former group tag into the recipe owner's personal tag with the same `lower(name)` (creating it when missing) and remaps ready import checkpoints; unused group tags are dropped.
 
 ## Existing installations
 

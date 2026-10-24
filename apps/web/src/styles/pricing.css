@@ -28,7 +28,7 @@
 .plan-eyebrow {
   color: var(--green-dark);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 700;
 }
 .plan-grid {
   display: grid;
@@ -40,20 +40,20 @@
   padding: 28px;
   border: 1px solid var(--control-line);
   border-radius: 20px;
-  background: #fffef9;
+  background: var(--card);
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 .plan-card-pro {
-  background: #edf1e3;
+  background: var(--oat);
   border: 2px solid var(--green-dark);
   padding: 27px;
 }
 .plan-card h3 {
   font-size: 28px;
   margin: 12px 0 8px;
-  font-weight: 900;
+  font-weight: 700;
 }
 .plan-card .plan-description {
   color: var(--muted-ink);
@@ -63,7 +63,7 @@
 }
 .plan-card .plan-price {
   font-size: 40px;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: -1.2px;
   line-height: 1.2;
   margin: 0 0 10px;
@@ -107,7 +107,7 @@
   margin-top: 3px;
 }
 .plan-trial {
-  border-top: 1px solid #bac8aa;
+  border-top: 1px solid var(--line);
   margin-top: 24px;
   padding-top: 18px;
 }
@@ -134,13 +134,13 @@
   cursor: pointer;
   padding: 18px 0;
   min-height: 48px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .pricing-faq summary:focus-visible,
 .pricing-links a:focus-visible,
 .hero-pricing-link:focus-visible {
-  outline: 2px solid var(--ink);
+  outline: 1px solid var(--line);
   outline-offset: 4px;
 }
 .home-plans {
@@ -179,7 +179,7 @@
   max-width: 100ch;
 }
 .billing-overview {
-  background: #fffef9;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 16px;
   padding: 24px 24px 12px;
@@ -208,7 +208,7 @@
   background: var(--surface-muted);
   padding: 4px 9px;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 .billing-overview .billing-plan-note {
   color: var(--muted-ink);

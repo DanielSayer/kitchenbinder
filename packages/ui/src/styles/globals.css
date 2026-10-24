@@ -8,38 +8,40 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.58 0.22 27);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.809 0.105 251.813);
-  --chart-2: oklch(0.623 0.214 259.815);
-  --chart-3: oklch(0.546 0.245 262.881);
-  --chart-4: oklch(0.488 0.243 264.376);
-  --chart-5: oklch(0.424 0.199 265.638);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  /* Mapped onto Pantry tokens (apps/web/src/styles/brand.css); fallbacks keep
+     the package usable on its own. */
+  --background: var(--paper, #f7f0e3);
+  --foreground: var(--ink, #2b1d14);
+  --card: #fffbf4;
+  --card-foreground: var(--ink, #2b1d14);
+  --popover: var(--card);
+  --popover-foreground: var(--ink, #2b1d14);
+  --primary: var(--tomato, #c2412d);
+  --primary-foreground: var(--on-tomato, #fff7ee);
+  --secondary: var(--oat, #eee3cf);
+  --secondary-foreground: var(--ink, #2b1d14);
+  --muted: var(--oat, #eee3cf);
+  --muted-foreground: var(--ink-2, #6e5a49);
+  --accent: var(--oat, #eee3cf);
+  --accent-foreground: var(--ink, #2b1d14);
+  --destructive: var(--danger, #b3261e);
+  --border: var(--line, #e3d5be);
+  --input: var(--line, #e3d5be);
+  --ring: var(--tomato, #c2412d);
+  --chart-1: #c2412d;
+  --chart-2: #5e6b2f;
+  --chart-3: #edb94a;
+  --chart-4: #6d3b4e;
+  --chart-5: #3f6b5c;
+  --radius: 1rem;
+  --sidebar: var(--card);
+  --sidebar-foreground: var(--ink, #2b1d14);
+  --sidebar-primary: var(--tomato, #c2412d);
+  --sidebar-primary-foreground: var(--on-tomato, #fff7ee);
+  --sidebar-accent: var(--oat, #eee3cf);
+  --sidebar-accent-foreground: var(--ink, #2b1d14);
+  --sidebar-border: var(--line, #e3d5be);
+  --sidebar-ring: var(--tomato, #c2412d);
 }
 
 .dark {
@@ -77,7 +79,7 @@
 }
 
 @theme inline {
-  --font-sans: "Inter Variable", sans-serif;
+  --font-sans: "Nunito Variable", "Nunito", system-ui, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);

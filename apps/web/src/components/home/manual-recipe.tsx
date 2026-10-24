@@ -2,9 +2,10 @@ import type { RecipeContent } from "@prep-sheet/db/recipe-content";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useRef, useState } from "react";
+import { toast } from "sonner";
+import { undoToast } from "@/components/pantry";
 import { authClient } from "@/lib/auth-client";
 import { useTRPC } from "@/utils/trpc";
-import { CollectionSelect, useCollection } from "../groups/collection-context";
 import {
   type RecipeDraft,
   readRecipeDraft,
@@ -12,19 +13,26 @@ import {
   recipeFields,
   writeRecipeDraft,
 } from "../recipes/recipe-draft";
+import { RecipeEditor } from "../recipes/recipe-editor";
 import { parseRecipeDraft } from "../recipes/recipe-merge";
+import {
+  type Destination,
+  sameDestination,
+  useDefaultDestination,
+  useSavedMessage,
+} from "./destination";
 import {
   type ManualSubmission,
   readManualSubmission,
+  submissionDestination,
   writeManualSubmission,
 } from "./manual-submission";
+import { ReadySheet } from "./ready-sheet";
 
 type SubmissionState =
   | { kind: "ready" }
   | { kind: "pending"; request: ManualSubmission }
   | { kind: "blocked" };
-
-import { RecipeEditor } from "../recipes/recipe-editor";
 
 const emptyRecipe: RecipeContent = {
   title: "",
@@ -38,10 +46,18 @@ const emptyRecipe: RecipeContent = {
   notes: "",
 };
 
-export function ManualRecipe({ onCancel }: { onCancel: () => void }) {
+export function ManualRecipe({
+  onCancel,
+  onReopen,
+}: {
+  onCancel: () => void;
+  /** Undo of a discarded draft: show the editor again. */
+  onReopen?: () => void;
+}) {
   const { data: session } = authClient.useSession();
   const draftKey = recipeDraftKey(session?.user.id ?? "guest");
-  const { groupId, available } = useCollection();
+  const defaultDestination = useDefaultDestination();
+  const savedMessage = useSavedMessage();
   const submissionKey = `${draftKey}:submission`;
   const [submission, setSubmission] = useState<SubmissionState>(() => {
     try {
@@ -52,6 +68,17 @@ export function ManualRecipe({ onCancel }: { onCancel: () => void }) {
     }
   });
   const [notice, setNotice] = useState("");
+  const [ready, setReady] = useState<RecipeContent | null>(null);
+  const [readyOpen, setReadyOpen] = useState(false);
+  // Untouched = the pending save's destination, else the default.
+  const [chosen, setChosen] = useState<Destination | null>(null);
+  const destination =
+    chosen ??
+    (submission.kind === "pending"
+      ? submissionDestination(submission.request)
+      : defaultDestination);
+  const destinationRef = useRef(destination);
+  destinationRef.current = destination;
   const [recoveredId, setRecoveredId] = useState<string | null>(null);
   const latestDraft = useRef<RecipeDraft | null>(null);
   const onDraftChange = useCallback((draft: RecipeDraft) => {
@@ -60,19 +87,23 @@ export function ManualRecipe({ onCancel }: { onCancel: () => void }) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const share = useMutation(trpc.recipes.share.mutationOptions());
   const save = useMutation(
     trpc.recipes.createManual.mutationOptions({
-      onSuccess: (recipe, input) => {
+      onError: () => setReadyOpen(false),
+      onSuccess: async (recipe, input) => {
+        setReadyOpen(false);
         const draft = latestDraft.current;
         const current = draft && parseRecipeDraft(draft);
+        const placed = submissionDestination(input as ManualSubmission);
         if (
-          groupId !== input.groupId ||
+          !sameDestination(destinationRef.current, placed) ||
           !current?.success ||
           JSON.stringify(current.data) !== JSON.stringify(input.content)
         ) {
           setRecoveredId(recipe.id);
           setNotice(
-            "Your earlier recipe was saved to its original collection. Your newer draft is still here. Review it in that recipe before applying changes.",
+            "Your earlier recipe was saved with its original sharing. Your newer draft is still here. Review it in that recipe before applying changes.",
           );
           return;
         }
@@ -91,6 +122,20 @@ export function ManualRecipe({ onCancel }: { onCancel: () => void }) {
           return;
         }
         setSubmission({ kind: "ready" });
+        // The save shares with the first household; add the rest after.
+        const extra = placed.householdIds.filter(
+          (id) => id !== (input.householdId ?? null),
+        );
+        const shared = await Promise.allSettled(
+          extra.map((householdId) =>
+            share.mutateAsync({ id: recipe.id, householdId }),
+          ),
+        );
+        if (shared.some((item) => item.status === "rejected"))
+          toast.error(
+            "Saved, but couldn't share with every household. Share it from the recipe.",
+          );
+        else toast.success(savedMessage(placed));
         void queryClient.invalidateQueries({
           queryKey: trpc.recipes.list.queryKey(),
         });
@@ -103,7 +148,11 @@ export function ManualRecipe({ onCancel }: { onCancel: () => void }) {
   );
 
   function submit(content: RecipeContent) {
-    if (save.isPending || !available) return;
+    if (save.isPending) return;
+    const fail = (message: string) => {
+      setReadyOpen(false);
+      setNotice(message);
+    };
     if (!session) {
       void navigate({ to: "/login" });
       return;
@@ -115,31 +164,34 @@ export function ManualRecipe({ onCancel }: { onCancel: () => void }) {
         state = request ? { kind: "pending", request } : { kind: "ready" };
         setSubmission(state);
       } catch {
+        setReadyOpen(false);
         return;
       }
     }
-    const input = { groupId, content };
     if (
       state.kind === "pending" &&
-      JSON.stringify(input) !==
-        JSON.stringify({
-          groupId: state.request.groupId,
-          content: state.request.content,
-        })
+      (!sameDestination(destination, submissionDestination(state.request)) ||
+        JSON.stringify(content) !== JSON.stringify(state.request.content))
     ) {
-      setNotice(
+      fail(
         "An earlier save may have completed. Recover it before saving these changes. Your draft is still here.",
       );
       return;
     }
-    const request =
+    const request: ManualSubmission =
       state.kind === "pending"
         ? state.request
-        : { id: crypto.randomUUID(), ...input };
+        : {
+            id: crypto.randomUUID(),
+            householdId: destination.householdIds[0] ?? null,
+            collectionId: destination.collectionId,
+            householdIds: destination.householdIds,
+            content,
+          };
     try {
       writeManualSubmission(submissionKey, request);
     } catch {
-      setNotice(
+      fail(
         "This browser could not retain the save ID. Keep this page open and enable browser storage before saving.",
       );
       return;
@@ -185,11 +237,22 @@ export function ManualRecipe({ onCancel }: { onCancel: () => void }) {
     });
   }
 
+  // Undo, not "are you sure?": drop the draft now, offer it back.
+  function discard() {
+    const draft = latestDraft.current;
+    setReadyOpen(false);
+    if (!writeRecipeDraft(draftKey, null)) return;
+    onCancel();
+    undoToast("Draft discarded", {
+      onUndo: () => {
+        if (draft) writeRecipeDraft(draftKey, draft);
+        onReopen?.();
+      },
+    });
+  }
+
   return (
     <>
-      {session && (
-        <CollectionSelect label="Save to" disabled={save.isPending} />
-      )}
       <RecipeEditor
         key={draftKey}
         draftKey={draftKey}
@@ -197,14 +260,16 @@ export function ManualRecipe({ onCancel }: { onCancel: () => void }) {
         content={emptyRecipe}
         pending={save.isPending}
         error={
-          !available
-            ? "Choose an available collection to save your recipe."
-            : submission.kind === "blocked"
-              ? "The earlier save ID could not be read. Keep this draft open and restore browser storage before saving."
-              : notice || save.error?.message
+          submission.kind === "blocked"
+            ? "The earlier save ID could not be read. Keep this draft open and restore browser storage before saving."
+            : notice || save.error?.message
         }
-        saveLabel="Save recipe"
-        onSave={submit}
+        saveLabel="Continue"
+        onSave={(content) => {
+          setNotice("");
+          setReady(content);
+          setReadyOpen(true);
+        }}
         onDraftChange={onDraftChange}
         onCancel={onCancel}
         saveAction={
@@ -231,6 +296,36 @@ export function ManualRecipe({ onCancel }: { onCancel: () => void }) {
               </button>
             </div>
           ) : undefined
+        }
+      />
+      <ReadySheet
+        open={readyOpen}
+        onOpenChange={setReadyOpen}
+        recipe={ready ? { content: ready } : null}
+        destination={destination}
+        onDestinationChange={setChosen}
+        onSave={() => {
+          if (ready) submit(ready);
+        }}
+        saving={save.isPending}
+        secondary={
+          <>
+            <button
+              type="button"
+              className="button button-ghost"
+              onClick={() => setReadyOpen(false)}
+            >
+              Back to editing
+            </button>
+            <button
+              type="button"
+              className="button button-ghost ready-discard"
+              disabled={save.isPending || submission.kind !== "ready"}
+              onClick={discard}
+            >
+              Discard
+            </button>
+          </>
         }
       />
     </>

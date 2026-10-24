@@ -27,6 +27,14 @@ const server = vi.hoisted(() => ({
 }));
 vi.mock("../../utils/trpc", () => ({
   useTRPC: () => ({
+    collections: {
+      list: {
+        queryOptions: () => ({
+          queryKey: ["collections", "list"],
+          queryFn: async () => [],
+        }),
+      },
+    },
     shopping: {
       pathKey: () => ["shopping"],
       list: {
@@ -43,7 +51,7 @@ vi.mock("../../utils/trpc", () => ({
             const recipes = Array.from({ length: 50 }, (_, index) => ({
               id: `r${index + 1}`,
               title: `Dish ${index + 1}`,
-              groupId: null,
+              ownerId: null,
               servings: "2",
             }));
             const found = recipes.filter((recipe) =>
@@ -66,22 +74,9 @@ vi.mock("../../utils/trpc", () => ({
     },
   }),
 }));
-vi.mock("../groups/collection-context", () => ({
-  useCollection: () => ({
-    groups: { data: [], error: null, refetch: vi.fn() },
-  }),
-}));
-vi.mock("../households/planning-context", async (original) => ({
-  ...(await original<typeof import("../households/planning-context")>()),
-  usePlanningScope: () => ({
-    scope: { kind: "personal" },
-    scopeKey: "personal",
-    ready: true,
-    available: true,
-    household: null,
-    error: undefined,
-    retry: () => {},
-    selectScope: () => {},
+vi.mock("@/components/households/household-context", () => ({
+  useHousehold: () => ({
+    householdId: null,
   }),
 }));
 
@@ -151,18 +146,14 @@ it("keeps shopping selection across pages and search, submits both IDs, and requ
       createElement(RecipePicker, { onClose: close }),
     ),
   );
-  fireEvent.click(
-    await screen.findByRole("checkbox", { name: /^Dish 1\s*Personal/ }),
-  );
+  fireEvent.click(await screen.findByRole("checkbox", { name: /^Dish 1\b/ }));
   fireEvent.click(screen.getByRole("button", { name: "Next" }));
-  fireEvent.click(
-    await screen.findByRole("checkbox", { name: /^Dish 25\s*Personal/ }),
-  );
+  fireEvent.click(await screen.findByRole("checkbox", { name: /^Dish 25\b/ }));
   expect(screen.getByText("2 selected")).toBeTruthy();
   fireEvent.change(screen.getByLabelText("Search recipes"), {
     target: { value: "Dish 50" },
   });
-  await screen.findByRole("checkbox", { name: /^Dish 50\s*Personal/ });
+  await screen.findByRole("checkbox", { name: /^Dish 50\b/ });
   expect(screen.getByText("2 selected")).toBeTruthy();
   expect(server.requests.at(-1)).toMatchObject({
     search: "Dish 50",
@@ -172,7 +163,7 @@ it("keeps shopping selection across pages and search, submits both IDs, and requ
   fireEvent.click(screen.getByRole("button", { name: "Add ingredients" }));
   await waitFor(() =>
     expect(server.add).toHaveBeenCalledWith(
-      { scope: { kind: "personal" }, recipeIds: ["r1", "r25"] },
+      { recipeIds: ["r1", "r25"] },
       expect.anything(),
     ),
   );

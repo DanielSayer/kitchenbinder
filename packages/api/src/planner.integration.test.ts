@@ -2,9 +2,8 @@ import { randomUUID } from "node:crypto";
 import { db } from "@prep-sheet/db";
 import type { MealInput } from "@prep-sheet/db/meal-planner";
 import { user } from "@prep-sheet/db/schema/auth";
-import { mealPlanner } from "@prep-sheet/db/schema/meal-planner";
+import { household, householdMember } from "@prep-sheet/db/schema/household";
 import { recipe } from "@prep-sheet/db/schema/recipe";
-import { shoppingItem, shoppingPlan } from "@prep-sheet/db/schema/shopping";
 import { eq, inArray } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Context } from "./context";
@@ -14,6 +13,8 @@ import { appRouter } from "./routers";
 const ownerId = randomUUID();
 const otherId = randomUUID();
 const recipeId = randomUUID();
+const outsiderId = randomUUID();
+const sharedId = randomUUID();
 function caller(id: string) {
   const now = new Date();
   const session: Context["session"] = {
@@ -41,6 +42,7 @@ function caller(id: string) {
 }
 const owner = caller(ownerId);
 const other = caller(otherId);
+const outsider = caller(outsiderId);
 const meal: Extract<MealInput, { kind: "recipe" }> = {
   id: randomUUID(),
   kind: "recipe",
@@ -70,7 +72,7 @@ async function generate(replace = false) {
 describe("personal meal planner with PostgreSQL", () => {
   beforeAll(async () => {
     await db.insert(user).values(
-      [ownerId, otherId].map((id) => ({
+      [ownerId, otherId, outsiderId].map((id) => ({
         id,
         name: "Planner test",
         email: `${id}@example.test`,
@@ -84,20 +86,20 @@ describe("personal meal planner with PostgreSQL", () => {
       content: { ...sampleRecipe, ingredients: ["200 g rice", "1 onion"] },
     });
   });
+  // Plans and lists cascade with their households; "Just me" is recreated lazily.
   beforeEach(async () => {
     await db
-      .delete(mealPlanner)
-      .where(inArray(mealPlanner.userId, [ownerId, otherId]));
-    await db
-      .delete(shoppingItem)
-      .where(inArray(shoppingItem.userId, [ownerId, otherId]));
-    await db
-      .delete(shoppingPlan)
-      .where(inArray(shoppingPlan.userId, [ownerId, otherId]));
+      .delete(household)
+      .where(inArray(household.ownerId, [ownerId, otherId, outsiderId]));
   });
   afterAll(async () => {
     await db.delete(recipe).where(eq(recipe.id, recipeId));
-    await db.delete(user).where(inArray(user.id, [ownerId, otherId]));
+    await db
+      .delete(household)
+      .where(inArray(household.ownerId, [ownerId, otherId, outsiderId]));
+    await db
+      .delete(user)
+      .where(inArray(user.id, [ownerId, otherId, outsiderId]));
     await db.$client.end();
   });
   it("requires authentication, keeps plans private and checks recipe access", async () => {
@@ -293,5 +295,56 @@ describe("personal meal planner with PostgreSQL", () => {
     expect((await owner.shopping.generated())?.content.groups).toEqual([]);
     await owner.shopping.clear({ scope: "all" });
     expect((await owner.planner.get()).trip).toBeNull();
+  });
+  it("shares a plan and list per household and verifies membership", async () => {
+    await db
+      .insert(household)
+      .values({ id: sharedId, name: "Family", ownerId: ownerId });
+    await db.insert(householdMember).values([
+      { householdId: sharedId, userId: ownerId },
+      { householdId: sharedId, userId: otherId },
+    ]);
+    await owner.planner.save({ householdId: sharedId, revision: 0, meal });
+    // The member sees the meal even without access to its recipe.
+    expect(
+      (await other.planner.get({ householdId: sharedId })).meals,
+    ).toMatchObject([{ id: meal.id, title: "Curry" }]);
+    expect((await owner.planner.get()).meals).toEqual([]);
+    await expect(
+      outsider.planner.get({ householdId: sharedId }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(
+      outsider.shopping.addItem({
+        householdId: sharedId,
+        id: randomUUID(),
+        text: "Soap",
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    const preview = await other.planner.preview({
+      householdId: sharedId,
+      coverage,
+      replace: true,
+    });
+    await other.planner.applyTrip({
+      householdId: sharedId,
+      coverage,
+      replace: true,
+      token: preview.token,
+    });
+    await other.shopping.addItem({
+      householdId: sharedId,
+      id: randomUUID(),
+      text: "Soap",
+    });
+    const items = await owner.shopping.list({ householdId: sharedId });
+    expect(items.map((item) => item.text).sort()).toEqual(
+      ["2 onion", "400 g rice", "Soap"].sort(),
+    );
+    expect(new Set(items.map((item) => item.addedBy))).toEqual(
+      new Set([otherId]),
+    );
+    expect(await owner.shopping.list()).toEqual([]);
+    await owner.shopping.clear({ householdId: sharedId, scope: "all" });
+    expect(await other.shopping.list({ householdId: sharedId })).toEqual([]);
   });
 });

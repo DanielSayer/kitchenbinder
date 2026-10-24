@@ -57,6 +57,13 @@
       "when": 1792666760805,
       "tag": "0007_household_constraint_names",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792732793939,
+      "tag": "0008_pantry_households",
+      "breakpoints": true
     }
   ]
 }

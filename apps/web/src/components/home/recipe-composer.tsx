@@ -1,8 +1,11 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { type SubmitEvent, useEffect, useRef, useState } from "react";
+import { useHousehold } from "@/components/households/household-context";
+import { undoToast } from "@/components/pantry";
 import { authClient } from "@/lib/auth-client";
+import { useTRPC } from "@/utils/trpc";
 import { ErrorNotice } from "../feedback";
-import { CollectionSelect, useCollection } from "../groups/collection-context";
 import { readRecipeDraft, recipeDraftKey } from "../recipes/recipe-draft";
 import { ComposerForm } from "./composer-form";
 import { IdeaChips } from "./idea-chips";
@@ -13,6 +16,7 @@ import {
   writeImportQueue,
 } from "./import-draft";
 import { ImportQueueCard } from "./import-queue-card";
+import { ImportReadySheet } from "./import-ready";
 import { ManualRecipe } from "./manual-recipe";
 
 export function RecipeComposer() {
@@ -40,9 +44,22 @@ function AccountComposer({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [loaded, setLoaded] = useState(false);
   const [storageError, setStorageError] = useState<string>();
-  const { groupId, available, groups, selectGroup } = useCollection();
+  const { householdId, available, households, selectHousehold } =
+    useHousehold();
   const navigate = useNavigate();
   const key = importDraftKey(userId ?? "guest");
+  const trpc = useTRPC();
+  const client = useQueryClient();
+  const [ready, setReady] = useState<{ id: string; recipeId: string } | null>(
+    null,
+  );
+  const [readyOpen, setReadyOpen] = useState(false);
+  const deleteRecipe = useMutation(
+    trpc.recipes.delete.mutationOptions({
+      onSettled: () =>
+        client.invalidateQueries({ queryKey: trpc.recipes.list.queryKey() }),
+    }),
+  );
 
   useEffect(() => {
     const restored = userId ? readImportQueue(key) : [];
@@ -93,12 +110,18 @@ function AccountComposer({
   function submit(event: SubmitEvent) {
     event.preventDefault();
     const value = inputRef.current?.value.trim() ?? input.trim();
-    if (!loaded || sessionPending || !available || value.length < 3) return;
+    if (!loaded || sessionPending || value.length < 3) return;
     if (!userId) {
       void navigate({ to: "/login" });
       return;
     }
-    const next = { id: crypto.randomUUID(), input: value, groupId };
+    // Share with the selected household on save; the ready sheet can change it.
+    const next = {
+      id: crypto.randomUUID(),
+      input: value,
+      // A household the user has left falls back to "Just me".
+      householdId: households.data && !available ? null : householdId,
+    };
     if (!persist([...queueRef.current, next])) return;
     change("");
     // Clear immediately as well, so a second submit cannot reuse the old text.
@@ -127,26 +150,52 @@ function AccountComposer({
     if (!persist(queueRef.current.filter((item) => item.id !== id)))
       return false;
     if (restoreInput !== undefined) {
-      if (original) selectGroup(original.groupId);
+      if (original) selectHousehold(original.householdId);
       setInput(restoreInput);
       inputRef.current?.focus();
     }
     return true;
   }
 
+  function finishReady() {
+    if (!ready) return;
+    setReadyOpen(false);
+    persist(queueRef.current.filter((item) => item.id !== ready.id));
+  }
+
+  // Undo, not "are you sure?": hide the card now, delete when the toast goes.
+  function discardReady() {
+    if (!ready) return;
+    const index = queueRef.current.findIndex((item) => item.id === ready.id);
+    const original = queueRef.current[index];
+    if (!original) return;
+    const recipeId = ready.recipeId;
+    setReadyOpen(false);
+    if (!persist(queueRef.current.filter((item) => item.id !== original.id)))
+      return;
+    undoToast("Recipe discarded", {
+      onUndo: () => {
+        const next = [...queueRef.current];
+        next.splice(Math.min(index, next.length), 0, original);
+        persist(next);
+      },
+      onCommit: () => deleteRecipe.mutate({ id: recipeId }),
+    });
+  }
+
   return (
-    <section className="composer-section" aria-label="Add a recipe">
+    <section className="add-composer-section" aria-label="Add a recipe">
       {manual ? (
-        <ManualRecipe onCancel={() => setManual(false)} />
+        <ManualRecipe
+          onCancel={() => setManual(false)}
+          onReopen={() => setManual(true)}
+        />
       ) : (
         <>
-          {userId && <CollectionSelect label="Save to" />}
           <ComposerForm
             input={input}
             inputRef={inputRef}
-            disabled={
-              !loaded || !available || sessionPending || input.trim().length < 3
-            }
+            disabled={!loaded || sessionPending || input.trim().length < 3}
             onChange={change}
             onSubmit={submit}
             manualDisabled={sessionPending}
@@ -163,32 +212,50 @@ function AccountComposer({
       )}
       <ErrorNotice message={storageError} />
       {userId && queue.length > 0 && (
-        <section className="import-queue" aria-label="Recipe queue">
-          <div className="import-queue-heading">
-            <h2>Your recipe requests</h2>
-            <p>You can add another recipe while these finish.</p>
-            <Link className="text-button" to="/recipes/imports">
-              Recent imports
-            </Link>
+        <section className="add-queue" aria-labelledby="add-queue-title">
+          <div className="add-queue-heading">
+            <h2 id="add-queue-title">In the oven</h2>
+            <span>
+              {queue.length} {queue.length === 1 ? "recipe" : "recipes"}
+            </span>
           </div>
-          <ul className="import-queue-list">
+          <ul className="add-queue-list">
             {queue.map((item) => (
               <li key={item.id}>
                 <ImportQueueCard
                   request={item}
                   collectionName={
-                    item.groupId
-                      ? (groups.data?.find((group) => group.id === item.groupId)
-                          ?.name ?? "Original group collection")
-                      : "Personal collection"
+                    item.householdId
+                      ? (households.data?.find(
+                          (household) => household.id === item.householdId,
+                        )?.name ?? "Original household")
+                      : "Just me"
                   }
                   canEdit={!manual && !input.trim()}
                   onRemove={remove}
+                  onOpen={(recipeId) => {
+                    setReady({ id: item.id, recipeId });
+                    setReadyOpen(true);
+                  }}
                 />
               </li>
             ))}
           </ul>
+          <p className="add-queue-foot">
+            You can add another recipe while these finish.{" "}
+            <Link to="/recipes/imports">Recent imports</Link>
+          </p>
         </section>
+      )}
+      {ready && (
+        <ImportReadySheet
+          key={ready.recipeId}
+          recipeId={ready.recipeId}
+          open={readyOpen}
+          onOpenChange={setReadyOpen}
+          onSaved={finishReady}
+          onDiscard={discardReady}
+        />
       )}
     </section>
   );

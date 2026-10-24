@@ -1,6 +1,6 @@
 # Recipe collection pages
 
-Collection membership is separate from [household membership](households.md). Scheduling a recipe shares its saved meal details with the selected household, without granting access to the source collection. Recipe pickers continue to show only collections the current account can access.
+Since migration `0008_pantry_households.sql`, "collection" means a personal, ordered recipe grouping (`collection`, `collection_recipe`) that can be shared with households; see [households](households.md). `recipes.list` takes `collectionId` (omitted = every accessible recipe) and supports `sort: "position"` for the collection's manual order. Pickers take `collectionId` too and return `ownerId` instead of the former group ID. Tagging lists contain only the caller's own recipes. Older notes below that mention groups describe the pre-0008 model.
 
 Collection, shopping, meal and tag pickers request 24 recipes at a time. The API accepts page sizes from 1 to 48 and returns `{ items, total }`. Page numbers start at zero. Filtering and sorting happen in PostgreSQL before the page is selected. Count and page queries share a read-only repeatable-read snapshot.
 

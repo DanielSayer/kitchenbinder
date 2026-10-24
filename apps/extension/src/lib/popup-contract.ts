@@ -1,16 +1,26 @@
 import {
   collectionsSchema,
-  importInputSchema,
+  importRequestSchema,
 } from "@prep-sheet/api/import-contract";
 import { z } from "zod";
 
-export const pendingSchema = importInputSchema.extend({
-  title: z.string().max(300).optional(),
-  collectionName: z.string().optional(),
-});
+// Pending imports stored before households used groupId for the destination.
+const withHousehold = (value: unknown) => {
+  if (!value || typeof value !== "object" || !("groupId" in value))
+    return value;
+  const { groupId, ...rest } = value as Record<string, unknown>;
+  return { householdId: groupId, ...rest };
+};
+export const pendingSchema = z.preprocess(
+  withHousehold,
+  importRequestSchema.extend({
+    title: z.string().max(300).optional(),
+    collectionName: z.string().optional(),
+  }),
+);
 export const destinationSchema = z.object({
   collections: collectionsSchema,
-  groupId: z.uuid().nullable(),
+  householdId: z.uuid().nullable(),
   changed: z.boolean(),
 });
 export const responseSchema = z.discriminatedUnion("ok", [

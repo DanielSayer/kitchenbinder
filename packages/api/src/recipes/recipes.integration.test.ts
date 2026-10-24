@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { db } from "@prep-sheet/db";
 import { user } from "@prep-sheet/db/schema/auth";
 import { aiSpend, billingAccount } from "@prep-sheet/db/schema/billing";
-import { group, groupInvite } from "@prep-sheet/db/schema/group";
+import { household, householdInvite } from "@prep-sheet/db/schema/household";
 import { recipeImport } from "@prep-sheet/db/schema/import";
 import {
   recipe,
@@ -51,6 +51,12 @@ function caller(id: string) {
   return appRouter.createCaller({ auth: null, session });
 }
 
+// Removes every recipe and household the test accounts own.
+async function cleanup() {
+  await db.delete(recipe).where(inArray(recipe.userId, [...ids]));
+  await db.delete(household).where(inArray(household.ownerId, [...ids]));
+}
+
 async function createAndWait(
   api: ReturnType<typeof caller>,
   input: Parameters<ReturnType<typeof caller>["recipes"]["create"]>[0],
@@ -64,27 +70,34 @@ async function createAndWait(
 }
 
 describe("recipes API with PostgreSQL", () => {
-  it("rejects concurrent shared and same-user edits, including a second conflict after review", async () => {
+  it("rejects concurrent same-user edits, including a second conflict after review, and non-owner edits", async () => {
     const owner = caller(ids[0]);
     const member = caller(ids[1]);
-    const shared = await owner.groups.create({ name: "Concurrent edits" });
-    const invite = await owner.groups.invite({ groupId: shared.id });
-    await member.groups.acceptInvite({ token: invite.token });
-    for (const groupId of [shared.id, null]) {
+    const shared = await owner.households.create({ name: "Concurrent edits" });
+    const invite = await owner.households.invite({ householdId: shared.id });
+    await member.households.acceptInvite({ token: invite.token });
+    for (const householdId of [shared.id, null]) {
       const id = randomUUID();
       const created = await owner.recipes.createManual({
         id,
-        groupId,
+        householdId,
         content: sampleRecipe,
       });
-      const secondEditor = groupId ? member : owner;
+      if (householdId)
+        await expect(
+          member.recipes.update({
+            id,
+            expectedRevision: created.revision,
+            content: { ...sampleRecipe, title: "Member writer" },
+          }),
+        ).rejects.toMatchObject({ code: "FORBIDDEN" });
       const results = await Promise.allSettled([
         owner.recipes.update({
           id,
           expectedRevision: created.revision,
           content: { ...sampleRecipe, title: "First writer" },
         }),
-        secondEditor.recipes.update({
+        owner.recipes.update({
           id,
           expectedRevision: created.revision,
           content: { ...sampleRecipe, title: "Second writer" },
@@ -104,7 +117,7 @@ describe("recipes API with PostgreSQL", () => {
         content: { ...sampleRecipe, title: "Third writer" },
       });
       await expect(
-        secondEditor.recipes.update({
+        owner.recipes.update({
           id,
           expectedRevision: latest.revision,
           content: sampleRecipe,
@@ -113,7 +126,7 @@ describe("recipes API with PostgreSQL", () => {
       expect((await owner.recipes.get({ id })).title).toBe("Third writer");
       await owner.recipes.delete({ id });
     }
-    await db.delete(group).where(eq(group.id, shared.id));
+    await cleanup();
   });
   beforeAll(async () => {
     await db.insert(user).values(
@@ -143,8 +156,8 @@ describe("recipes API with PostgreSQL", () => {
             .where(inArray(recipeImport.userId, ids)),
         ),
       );
-    await db.delete(group).where(inArray(group.ownerId, ids));
     await db.delete(recipe).where(inArray(recipe.userId, ids));
+    await db.delete(household).where(inArray(household.ownerId, ids));
     await db.delete(user).where(inArray(user.id, ids));
     await db.$client.end();
   });
@@ -152,13 +165,15 @@ describe("recipes API with PostgreSQL", () => {
     const owner = caller(ids[0]);
     const member = caller(ids[1]);
     const outsider = caller(ids[3]);
-    const target = await owner.groups.create({ name: "Cooking history test" });
-    const invite = await owner.groups.invite({ groupId: target.id });
-    await member.groups.acceptInvite({ token: invite.token });
+    const target = await owner.households.create({
+      name: "Cooking history test",
+    });
+    const invite = await owner.households.invite({ householdId: target.id });
+    await member.households.acceptInvite({ token: invite.token });
     const id = randomUUID();
     await owner.recipes.createManual({
       id,
-      groupId: target.id,
+      householdId: target.id,
       content: sampleRecipe,
     });
     const entry = {
@@ -181,9 +196,7 @@ describe("recipes API with PostgreSQL", () => {
       lastCookedOn: "2026-09-01",
     });
     expect(
-      (await owner.recipes.list({ groupId: target.id })).items.find(
-        (r) => r.id === id,
-      ),
+      (await owner.recipes.list()).items.find((r) => r.id === id),
     ).toMatchObject({ cookedCount: 2, lastCookedOn: "2026-09-01" });
     expect(await member.recipes.cookingHistory({ id })).toEqual([]);
     expect(await member.recipes.get({ id })).toMatchObject({
@@ -191,9 +204,7 @@ describe("recipes API with PostgreSQL", () => {
       lastCookedOn: null,
     });
     expect(
-      (await member.recipes.list({ groupId: target.id })).items.find(
-        (r) => r.id === id,
-      ),
+      (await member.recipes.list()).items.find((r) => r.id === id),
     ).toMatchObject({ cookedCount: 0, lastCookedOn: null });
     await expect(
       member.recipes.saveCooking({ ...entry, note: "Hijacked" }),
@@ -227,7 +238,7 @@ describe("recipes API with PostgreSQL", () => {
       content: sampleRecipe,
     });
     const copyId = randomUUID();
-    await owner.recipes.copy({ id, newId: copyId, groupId: null });
+    await owner.recipes.copy({ id, newId: copyId });
     expect(await owner.recipes.cookingHistory({ id: copyId })).toEqual([]);
     await owner.recipes.delete({ id: copyId });
     await owner.recipes.deleteCooking({ id, entryId: entry.entryId });
@@ -244,7 +255,7 @@ describe("recipes API with PostgreSQL", () => {
     ).toHaveLength(1);
     await owner.recipes.restore({ id });
     expect(await owner.recipes.cookingHistory({ id })).toHaveLength(1);
-    await db.delete(group).where(eq(group.id, target.id));
+    await cleanup();
   });
   it("requires authentication", async () => {
     await expect(
@@ -340,7 +351,6 @@ describe("recipes API with PostgreSQL", () => {
     const copied = await owner.recipes.copy({
       id,
       newId: randomUUID(),
-      groupId: null,
     });
     expect((await owner.recipes.get(copied)).tagIds).toEqual([custom.id]);
     expect(
@@ -389,178 +399,119 @@ describe("recipes API with PostgreSQL", () => {
     await owner.recipes.delete(copied);
     vi.mocked(generateRecipe).mockClear();
   });
-  it("shares automatic and manual tags across members, scopes definitions and preserves copied tags", async () => {
+  it("keeps tags personal to the recipe owner, read-only for household members, and copies them into the copier's tags", async () => {
     const owner = caller(ids[0]);
     const member = caller(ids[1]);
     const outsider = caller(ids[2]);
-    const shared = await owner.groups.create({ name: "Shared tags" });
-    const invite = await owner.groups.invite({ groupId: shared.id });
-    await member.groups.acceptInvite({ token: invite.token });
-    const personalTag = await member.tags.create({
-      name: "Private import tag",
-    });
-    const sharedTag = await owner.tags.create({
-      groupId: shared.id,
-      name: "Shared lunch",
+    const shared = await owner.households.create({ name: "Shared tags" });
+    const invite = await owner.households.invite({ householdId: shared.id });
+    await member.households.acceptInvite({ token: invite.token });
+    const memberTag = await member.tags.create({
+      name: "Packed lunch",
       description: "Pack for lunch",
     });
-    expect(sharedTag).toMatchObject({ groupId: shared.id, userId: null });
-    expect(await member.tags.list({ groupId: shared.id })).toContainEqual(
-      sharedTag,
-    );
-    expect(await member.tags.list()).not.toContainEqual(sharedTag);
-    expect(await owner.tags.list({ groupId: shared.id })).not.toContainEqual(
-      personalTag,
-    );
-    await expect(
-      outsider.tags.list({ groupId: shared.id }),
-    ).rejects.toMatchObject({ code: "NOT_FOUND" });
-    await expect(
-      outsider.tags.create({ groupId: shared.id, name: "Intruder" }),
-    ).rejects.toMatchObject({ code: "NOT_FOUND" });
-    await expect(
-      outsider.tags.delete({ id: sharedTag.id, groupId: shared.id }),
-    ).rejects.toMatchObject({ code: "NOT_FOUND" });
-    await expect(
-      member.tags.update({ id: sharedTag.id, name: "Wrong scope" }),
-    ).rejects.toMatchObject({ code: "NOT_FOUND" });
-    await expect(
-      member.tags.create({ groupId: shared.id, name: "SHARED LUNCH" }),
-    ).rejects.toMatchObject({ code: "CONFLICT" });
-    const renamed = await member.tags.update({
-      id: sharedTag.id,
-      groupId: shared.id,
-      name: "Lunch to share",
-      description: sharedTag.description,
-    });
+    const ownerTag = await owner.tags.create({ name: "Owner only" });
+    expect(memberTag).toMatchObject({ userId: ids[1] });
+    expect(await owner.tags.list()).not.toContainEqual(memberTag);
     vi.mocked(generateRecipe).mockResolvedValueOnce({
       content: sampleRecipe,
       origin: "generated",
       sourceUrl: null,
-      tagIds: [sharedTag.id, personalTag.id],
+      tagIds: [memberTag.id, ownerTag.id],
     });
     const imported = await createAndWait(member, {
       id: randomUUID(),
       input: "Shared packed lunch",
-      groupId: shared.id,
+      householdId: shared.id,
     });
-    expect(generateRecipe).toHaveBeenLastCalledWith(
-      "Shared packed lunch",
-      expect.arrayContaining([renamed]),
-      undefined,
-    );
     const offeredTags = vi.mocked(generateRecipe).mock.lastCall?.[1];
-    expect(offeredTags).not.toContainEqual(personalTag);
-    expect((await owner.recipes.get(imported)).tagIds).toEqual([sharedTag.id]);
-    for (const api of [owner, member]) {
-      const filtered = await api.recipes.list({
-        groupId: shared.id,
-        tagIds: [sharedTag.id],
-      });
-      expect(filtered.items.map((item) => item.id)).toEqual([imported.id]);
-      expect(filtered.items[0]?.tagIds).toEqual([sharedTag.id]);
-      expect(
-        (
-          await api.recipes.taggingList({
-            groupId: shared.id,
-            excludeTagId: sharedTag.id,
-          })
-        ).total,
-      ).toBe(0);
-    }
-    await owner.recipes.setTag({
-      id: imported.id,
-      tagId: sharedTag.id,
-      selected: false,
+    expect(offeredTags).toContainEqual(memberTag);
+    expect(offeredTags).not.toContainEqual(ownerTag);
+    // Members see the owner's tags read-only.
+    expect(await owner.recipes.get(imported)).toMatchObject({
+      tagIds: [memberTag.id],
+      tags: [{ id: memberTag.id, name: "Packed lunch" }],
+      isOwner: false,
     });
-    expect((await member.recipes.get(imported)).tagIds).toEqual([]);
-    await Promise.all(
-      [owner, member].map((api) =>
+    const filtered = await owner.recipes.list({ tagIds: [memberTag.id] });
+    expect(filtered.items.map((item) => item.id)).toEqual([imported.id]);
+    expect(filtered.items[0]?.tags).toEqual([
+      { id: memberTag.id, name: "Packed lunch" },
+    ]);
+    expect(
+      (await owner.recipes.taggingList()).items.some(
+        (item) => item.id === imported.id,
+      ),
+    ).toBe(false);
+    for (const api of [owner, outsider])
+      await expect(
         api.recipes.setTag({
           id: imported.id,
-          tagId: sharedTag.id,
-          selected: true,
+          tagId: memberTag.id,
+          selected: false,
         }),
-      ),
-    );
-    expect((await owner.recipes.get(imported)).tagIds).toEqual([sharedTag.id]);
-    await member.recipes.setTags({
-      recipeIds: [imported.id],
-      tagIds: [sharedTag.id],
-      operation: "remove",
-    });
-    expect((await owner.recipes.get(imported)).tagIds).toEqual([]);
-    await owner.recipes.setTags({
-      recipeIds: [imported.id],
-      tagIds: [sharedTag.id],
-      operation: "add",
-    });
+      ).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(
       member.recipes.setTag({
         id: imported.id,
-        tagId: personalTag.id,
+        tagId: ownerTag.id,
         selected: true,
       }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
-    await expect(
-      outsider.recipes.setTag({
-        id: imported.id,
-        tagId: sharedTag.id,
-        selected: false,
-      }),
-    ).rejects.toMatchObject({ code: "NOT_FOUND" });
-    const personal = await member.recipes.copy({
+    await member.recipes.setTags({
+      recipeIds: [imported.id],
+      tagIds: [memberTag.id],
+      operation: "remove",
+    });
+    expect((await owner.recipes.get(imported)).tagIds).toEqual([]);
+    await member.recipes.setTag({
+      id: imported.id,
+      tagId: memberTag.id,
+      selected: true,
+    });
+    // Copying recreates the owner's tag among the copier's own tags.
+    const ownCopy = await owner.recipes.copy({
       id: imported.id,
       newId: randomUUID(),
-      groupId: null,
     });
-    const copiedTags = (await member.tags.list()).filter(
-      (item) => item.name === renamed.name,
+    const copiedTags = (await owner.tags.list()).filter(
+      (item) => item.name === memberTag.name,
     );
     expect(copiedTags).toHaveLength(1);
     const copiedTag = copiedTags[0];
     if (!copiedTag) throw new Error("Missing copied tag");
     expect(copiedTag).toMatchObject({
-      userId: ids[1],
-      groupId: null,
-      description: renamed.description,
+      userId: ids[0],
+      description: memberTag.description,
     });
-    expect(copiedTag.id).not.toBe(sharedTag.id);
-    expect((await member.recipes.get(personal)).tagIds).toEqual([copiedTag.id]);
+    expect(copiedTag.id).not.toBe(memberTag.id);
+    expect((await owner.recipes.get(ownCopy)).tagIds).toEqual([copiedTag.id]);
+    // Copying back reuses the member's existing tag with the same name.
+    await owner.recipes.share({ id: ownCopy.id, householdId: shared.id });
     const copiedBack = await member.recipes.copy({
-      id: personal.id,
+      id: ownCopy.id,
       newId: randomUUID(),
-      groupId: shared.id,
     });
-    expect((await owner.recipes.get(copiedBack)).tagIds).toEqual([
-      sharedTag.id,
+    expect((await member.recipes.get(copiedBack)).tagIds).toEqual([
+      memberTag.id,
     ]);
-    // A mixed-scope batch must fail atomically before changing either recipe.
-    await expect(
-      member.recipes.setTags({
-        recipeIds: [imported.id, personal.id],
-        tagIds: [sharedTag.id],
-        operation: "remove",
-      }),
-    ).rejects.toMatchObject({ code: "NOT_FOUND" });
-    expect((await owner.recipes.get(imported)).tagIds).toEqual([sharedTag.id]);
-    await owner.groups.removeMember({ groupId: shared.id, userId: ids[1] });
-    expect((await owner.recipes.get(imported)).tagIds).toEqual([sharedTag.id]);
-    await expect(
-      member.tags.update({
-        id: sharedTag.id,
-        groupId: shared.id,
-        name: "After leaving",
-      }),
-    ).rejects.toMatchObject({ code: "NOT_FOUND" });
-    await owner.tags.delete({ id: sharedTag.id, groupId: shared.id });
-    expect((await owner.recipes.get(imported)).tagIds).toEqual([]);
-    expect((await member.recipes.get(personal)).tagIds).toEqual([copiedTag.id]);
-    await member.tags.delete({ id: personalTag.id });
-    await member.tags.delete({ id: copiedTag.id });
-    await db.delete(recipe).where(eq(recipe.id, personal.id));
-    await db.delete(group).where(eq(group.id, shared.id));
+    await owner.households.removeMember({
+      householdId: shared.id,
+      userId: ids[1],
+    });
+    // Shares outlive the sharer's membership; the removed member loses others' recipes.
+    expect((await owner.recipes.get(imported)).id).toBe(imported.id);
+    await expect(member.recipes.get(ownCopy)).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
+    await member.tags.delete({ id: memberTag.id });
+    expect((await member.recipes.get(imported)).tagIds).toEqual([]);
+    expect((await owner.recipes.get(ownCopy)).tagIds).toEqual([copiedTag.id]);
+    await owner.tags.delete({ id: copiedTag.id });
+    await owner.tags.delete({ id: ownerTag.id });
+    await cleanup();
   });
+
   it("saves JSONB, avoids duplicate saves, isolates users, edits and deletes", async () => {
     const owner = caller(ids[0]);
     const other = caller(ids[1]);
@@ -610,7 +561,7 @@ describe("recipes API with PostgreSQL", () => {
 
   it("binds manual retries to their immutable submission, including concurrent and legacy requests", async () => {
     const api = caller(ids[0]);
-    const input = { id: randomUUID(), groupId: null, content: sampleRecipe };
+    const input = { id: randomUUID(), content: sampleRecipe };
     // A lost response is equivalent to dropping this first successful return value.
     await api.recipes.createManual(input);
     await expect(
@@ -666,7 +617,7 @@ describe("recipes API with PostgreSQL", () => {
   it("saves manual recipes without AI, validates content and protects collections", async () => {
     const owner = caller(ids[0]);
     const other = caller(ids[1]);
-    const input = { id: randomUUID(), groupId: null, content: sampleRecipe };
+    const input = { id: randomUUID(), content: sampleRecipe };
     vi.mocked(generateRecipe).mockClear();
     vi.mocked(generateRecipe).mockRejectedValue(new Error("AI unavailable"));
     const saved = await owner.recipes.createManual(input);
@@ -699,23 +650,45 @@ describe("recipes API with PostgreSQL", () => {
         owner.recipes.createManual({ ...input, id: randomUUID(), content }),
       ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     }
-    const target = await owner.groups.create({ name: "Manual recipe test" });
-    const sharedInput = { ...input, id: randomUUID(), groupId: target.id };
+    const target = await owner.households.create({
+      name: "Manual recipe test",
+    });
+    const sharedInput = { ...input, id: randomUUID(), householdId: target.id };
     await expect(other.recipes.createManual(sharedInput)).rejects.toMatchObject(
       { code: "NOT_FOUND" },
     );
-    const invite = await owner.groups.invite({ groupId: target.id });
-    await other.groups.acceptInvite({ token: invite.token });
+    const invite = await owner.households.invite({ householdId: target.id });
+    await other.households.acceptInvite({ token: invite.token });
     const shared = await other.recipes.createManual(sharedInput);
+    expect(shared.sharedWith).toMatchObject([{ id: target.id }]);
     expect((await owner.recipes.get({ id: shared.id })).content).toEqual(
       sampleRecipe,
     );
     await expect(
-      owner.recipes.createManual({ ...input, groupId: target.id }),
+      owner.recipes.createManual({ ...input, householdId: target.id }),
     ).rejects.toMatchObject({ code: "CONFLICT" });
+    // Saving into a collection appends the recipe; others' collections are rejected.
+    const mine = await owner.collections.create({ name: "Manual saves" });
+    const collected = await owner.recipes.createManual({
+      ...input,
+      id: randomUUID(),
+      collectionId: mine.id,
+    });
+    expect(collected.collectionIds).toEqual([mine.id]);
+    expect(
+      (await owner.recipes.list({ collectionId: mine.id })).items.map(
+        (r) => r.id,
+      ),
+    ).toEqual([collected.id]);
+    await expect(
+      other.recipes.createManual({
+        ...input,
+        id: randomUUID(),
+        collectionId: mine.id,
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect(generateRecipe).not.toHaveBeenCalled();
-    await db.delete(group).where(eq(group.id, target.id));
-    await owner.recipes.delete({ id: saved.id });
+    await cleanup();
   });
 
   it("persists personal favourites and rejects inaccessible recipes", async () => {
@@ -803,7 +776,7 @@ describe("recipes API with PostgreSQL", () => {
     ).toHaveLength(1);
   });
 
-  it("shares a group collection while keeping personal and other groups private", async () => {
+  it("shares recipes with households and collections by the three access rules", async () => {
     vi.mocked(generateRecipe).mockResolvedValue({
       content: sampleRecipe,
       origin: "generated",
@@ -813,85 +786,91 @@ describe("recipes API with PostgreSQL", () => {
     const owner = caller(ids[0]);
     const member = caller(ids[1]);
     const outsider = caller(ids[2]);
-    const friends = await owner.groups.create({ name: "Dinner friends" });
-    const separate = await outsider.groups.create({ name: "Another group" });
-    const invitation = await owner.groups.invite({ groupId: friends.id });
+    const friends = await owner.households.create({ name: "Dinner friends" });
+    const separate = await outsider.households.create({
+      name: "Another household",
+    });
+    const invitation = await owner.households.invite({
+      householdId: friends.id,
+    });
     expect(
-      await member.groups.previewInvite({ token: invitation.token }),
-    ).toEqual({ name: "Dinner friends" });
-    await member.groups.acceptInvite({ token: invitation.token });
+      await member.households.previewInvite({ token: invitation.token }),
+    ).toMatchObject({ name: "Dinner friends" });
+    await member.households.acceptInvite({ token: invitation.token });
     await expect(
-      outsider.groups.acceptInvite({ token: invitation.token }),
+      outsider.households.acceptInvite({ token: invitation.token }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
-    expect(await member.groups.list()).toHaveLength(1);
+    const memberHouseholds = await member.households.list();
+    expect(memberHouseholds.map((item) => item.personal)).toEqual([
+      true,
+      false,
+    ]);
+    expect(memberHouseholds[1]).toMatchObject({
+      id: friends.id,
+      isOwner: false,
+      members: [{ id: ids[0] }, { id: ids[1] }],
+    });
+    const memberPersonal = memberHouseholds[0];
+    if (!memberPersonal) throw new Error("Missing personal household");
     await expect(
-      member.groups.invite({ groupId: friends.id }),
+      member.households.invite({ householdId: friends.id }),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(
-      member.groups.rename({ groupId: friends.id, name: "No" }),
+      member.households.rename({ householdId: friends.id, name: "No" }),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(
-      member.groups.removeMember({ groupId: friends.id, userId: ids[0] }),
+      member.households.removeMember({
+        householdId: friends.id,
+        userId: ids[0],
+      }),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(
-      owner.groups.removeMember({ groupId: friends.id, userId: ids[0] }),
+      owner.households.removeMember({
+        householdId: friends.id,
+        userId: ids[0],
+      }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(
-      outsider.groups.details({ groupId: friends.id }),
+      outsider.households.details({ householdId: friends.id }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
 
     const personal = await createAndWait(owner, {
       id: randomUUID(),
       input: "Personal pasta",
     });
+    // Rule 2: shared with a household the viewer belongs to.
     const shared = await createAndWait(member, {
       id: randomUUID(),
       input: "Shared pasta",
-      groupId: friends.id,
+      householdId: friends.id,
+    });
+    expect(await owner.recipes.get({ id: shared.id })).toMatchObject({
+      isOwner: false,
+      owner: { id: ids[1] },
+      sharedWith: [{ id: friends.id, name: "Dinner friends" }],
     });
     expect(
-      (await owner.recipes.list({ groupId: friends.id })).items,
-    ).toHaveLength(1);
+      (await owner.recipes.list()).items.map((item) => item.id).sort(),
+    ).toEqual([personal.id, shared.id].sort());
+    expect((await member.recipes.list()).items.map((item) => item.id)).toEqual([
+      shared.id,
+    ]);
     await member.recipes.setFavourite({ id: shared.id, isFavourite: true });
     await member.recipes.setRating({ id: shared.id, rating: 5 });
-    const sharedTag = (await member.tags.list())[0];
-    if (!sharedTag) throw new Error("Missing default tag");
-    await member.recipes.setTag({
-      id: shared.id,
-      tagId: sharedTag.id,
-      selected: true,
-    });
-    expect((await member.recipes.get({ id: shared.id })).tagIds).toEqual([
-      sharedTag.id,
-    ]);
-    expect((await owner.recipes.get({ id: shared.id })).tagIds).toEqual([
-      sharedTag.id,
-    ]);
     expect((await member.recipes.get({ id: shared.id })).isFavourite).toBe(
       true,
     );
     expect((await owner.recipes.get({ id: shared.id })).isFavourite).toBe(
       false,
     );
-    expect((await member.recipes.get({ id: shared.id })).rating).toBe(5);
     expect((await owner.recipes.get({ id: shared.id })).rating).toBeNull();
-    expect(
-      (await member.recipes.list({ groupId: friends.id })).items[0]
-        ?.isFavourite,
-    ).toBe(true);
+    await owner.recipes.setRating({ id: shared.id, rating: 2 });
+    expect((await member.recipes.get({ id: shared.id })).rating).toBe(5);
     await expect(
       outsider.recipes.setFavourite({ id: shared.id, isFavourite: true }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(
       outsider.recipes.setRating({ id: shared.id, rating: 4 }),
-    ).rejects.toMatchObject({ code: "NOT_FOUND" });
-    expect((await member.recipes.list()).items).toHaveLength(0);
-    expect((await owner.recipes.list()).items).toHaveLength(1);
-    expect(
-      (await outsider.recipes.list({ groupId: separate.id })).items,
-    ).toHaveLength(0);
-    await expect(
-      outsider.recipes.list({ groupId: friends.id }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(member.recipes.get({ id: personal.id })).rejects.toMatchObject(
       { code: "NOT_FOUND" },
@@ -914,22 +893,51 @@ describe("recipes API with PostgreSQL", () => {
       createAndWait(outsider, {
         id: randomUUID(),
         input: "Unauthorised import",
-        groupId: friends.id,
+        householdId: friends.id,
       }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect(vi.mocked(generateRecipe).mock.calls.length).toBe(calls);
-    await owner.recipes.update({
+    // Only the owner edits, deletes or shares.
+    await expect(
+      owner.recipes.update({
+        expectedRevision: 1,
+        id: shared.id,
+        content: { ...sampleRecipe, title: "Not mine" },
+      }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(owner.recipes.delete({ id: shared.id })).rejects.toMatchObject(
+      { code: "FORBIDDEN" },
+    );
+    await expect(
+      owner.recipes.share({ id: shared.id, householdId: friends.id }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await member.recipes.update({
       expectedRevision: 1,
       id: shared.id,
       content: { ...sampleRecipe, title: "Everyone's pasta" },
     });
-    expect((await member.recipes.get({ id: shared.id })).title).toBe(
+    expect((await owner.recipes.get({ id: shared.id })).title).toBe(
       "Everyone's pasta",
     );
+    await expect(
+      member.recipes.share({
+        id: shared.id,
+        householdId: memberPersonal.id,
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(
+      member.recipes.share({ id: shared.id, householdId: separate.id }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await member.recipes.unshare({ id: shared.id, householdId: friends.id });
+    await expect(owner.recipes.get({ id: shared.id })).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
+    await member.recipes.share({ id: shared.id, householdId: friends.id });
+    expect((await owner.recipes.get({ id: shared.id })).id).toBe(shared.id);
     const copy = await owner.recipes.copy({
       id: personal.id,
       newId: randomUUID(),
-      groupId: friends.id,
+      householdId: friends.id,
     });
     expect((await member.recipes.get({ id: copy.id })).content).toEqual(
       personal.content,
@@ -938,91 +946,126 @@ describe("recipes API with PostgreSQL", () => {
       member.recipes.copy({
         id: shared.id,
         newId: randomUUID(),
-        groupId: separate.id,
+        householdId: separate.id,
       }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
-    await owner.groups.removeMember({ groupId: friends.id, userId: ids[1] });
-    await expect(
-      member.recipes.setTag({
-        id: shared.id,
-        tagId: sharedTag.id,
-        selected: false,
-      }),
-    ).rejects.toMatchObject({ code: "NOT_FOUND" });
-    await expect(
-      member.recipes.setFavourite({ id: shared.id, isFavourite: false }),
-    ).rejects.toMatchObject({ code: "NOT_FOUND" });
-    await expect(
-      member.recipes.setRating({ id: shared.id, rating: null }),
-    ).rejects.toMatchObject({ code: "NOT_FOUND" });
-    expect(await member.groups.list()).toHaveLength(0);
-    await expect(member.recipes.get({ id: shared.id })).rejects.toMatchObject({
-      code: "NOT_FOUND",
+
+    // Rule 3: a shared collection exposes only the collection owner's recipes.
+    const tasting = await owner.households.create({ name: "Tasting" });
+    const tastingInvite = await owner.households.invite({
+      householdId: tasting.id,
+    });
+    await outsider.households.acceptInvite({ token: tastingInvite.token });
+    const favourites = await owner.collections.create({ name: "Favourites" });
+    await owner.collections.addRecipes({
+      collectionId: favourites.id,
+      recipeIds: [personal.id, shared.id],
     });
     await expect(
-      member.recipes.update({
-        expectedRevision: 1,
-        id: shared.id,
-        content: sampleRecipe,
+      outsider.recipes.list({ collectionId: favourites.id }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await owner.collections.share({
+      collectionId: favourites.id,
+      householdId: tasting.id,
+    });
+    expect(
+      (await outsider.collections.list()).find(
+        (item) => item.id === favourites.id,
+      ),
+    ).toMatchObject({
+      isOwner: false,
+      owner: { id: ids[0] },
+      recipeCount: 1,
+      sharedWith: [{ id: tasting.id }],
+    });
+    expect(
+      (await outsider.recipes.list({ collectionId: favourites.id })).items.map(
+        (item) => item.id,
+      ),
+    ).toEqual([personal.id]);
+    expect((await outsider.recipes.get({ id: personal.id })).isOwner).toBe(
+      false,
+    );
+    await expect(outsider.recipes.get({ id: shared.id })).rejects.toMatchObject(
+      { code: "NOT_FOUND" },
+    );
+    await expect(
+      outsider.collections.addRecipes({
+        collectionId: favourites.id,
+        recipeIds: [personal.id],
       }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await owner.collections.unshare({
+      collectionId: favourites.id,
+      householdId: tasting.id,
+    });
     await expect(
-      member.recipes.delete({ id: shared.id }),
+      outsider.recipes.get({ id: personal.id }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
-    expect((await owner.recipes.get({ id: shared.id })).id).toBe(shared.id);
-    await owner.recipes.delete({ id: shared.id });
-    await owner.recipes.delete({ id: personal.id });
+
+    // Removal revokes household access but leaves the member's own recipes.
+    await owner.households.removeMember({
+      householdId: friends.id,
+      userId: ids[1],
+    });
+    await expect(
+      member.recipes.setFavourite({ id: copy.id, isFavourite: true }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(member.recipes.get({ id: copy.id })).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
+    expect(await member.households.list()).toHaveLength(1);
+    expect((await member.recipes.get({ id: shared.id })).isOwner).toBe(true);
+    await cleanup();
   });
 
   it("expires and revokes invitations and accepts a link only once under concurrency", async () => {
     const owner = caller(ids[0]);
-    const target = await owner.groups.create({ name: "Invitation checks" });
-    const expired = await owner.groups.invite({ groupId: target.id });
+    const target = await owner.households.create({ name: "Invitation checks" });
+    const expired = await owner.households.invite({ householdId: target.id });
     await db
-      .update(groupInvite)
+      .update(householdInvite)
       .set({ expiresAt: new Date(0) })
-      .where(eq(groupInvite.groupId, target.id));
+      .where(eq(householdInvite.householdId, target.id));
     await expect(
-      caller(ids[1]).groups.acceptInvite({ token: expired.token }),
+      caller(ids[1]).households.acceptInvite({ token: expired.token }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
-    const revoked = await owner.groups.invite({ groupId: target.id });
-    const detail = await owner.groups.details({ groupId: target.id });
+    const revoked = await owner.households.invite({ householdId: target.id });
+    const detail = await owner.households.details({ householdId: target.id });
     const inviteId = detail.invites[0]?.id;
     if (!inviteId) throw new Error("Missing invite");
-    await owner.groups.revokeInvite({ groupId: target.id, inviteId });
+    await owner.households.revokeInvite({ householdId: target.id, inviteId });
     await expect(
-      caller(ids[1]).groups.acceptInvite({ token: revoked.token }),
+      caller(ids[1]).households.acceptInvite({ token: revoked.token }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
-    const concurrent = await owner.groups.invite({ groupId: target.id });
+    const concurrent = await owner.households.invite({
+      householdId: target.id,
+    });
     const results = await Promise.allSettled([
-      caller(ids[1]).groups.acceptInvite({ token: concurrent.token }),
-      caller(ids[2]).groups.acceptInvite({ token: concurrent.token }),
+      caller(ids[1]).households.acceptInvite({ token: concurrent.token }),
+      caller(ids[2]).households.acceptInvite({ token: concurrent.token }),
     ]);
     expect(
       results.filter((result) => result.status === "fulfilled"),
     ).toHaveLength(1);
-    expect(
-      (await owner.groups.details({ groupId: target.id })).members,
-    ).toHaveLength(2);
-    const members = (await owner.groups.details({ groupId: target.id }))
+    const members = (await owner.households.details({ householdId: target.id }))
       .members;
+    expect(members).toHaveLength(2);
     const joined = members.find((member) => member.id !== ids[0]);
     if (!joined) throw new Error("Missing member");
-    await caller(joined.id).groups.removeMember({
-      groupId: target.id,
-      userId: joined.id,
-    });
+    await caller(joined.id).households.leave({ householdId: target.id });
     expect(
-      (await owner.groups.details({ groupId: target.id })).members,
+      (await owner.households.details({ householdId: target.id })).members,
     ).toHaveLength(1);
+    await cleanup();
   });
 
-  it("rechecks membership after generation and keeps contributions when an account is deleted", async () => {
+  it("rechecks membership after generation and keeps shared recipes when an account is deleted", async () => {
     const owner = caller(ids[0]);
     const member = caller(ids[3]);
-    const target = await owner.groups.create({ name: "Membership checks" });
-    const invite = await owner.groups.invite({ groupId: target.id });
-    await member.groups.acceptInvite({ token: invite.token });
+    const target = await owner.households.create({ name: "Membership checks" });
+    const invite = await owner.households.invite({ householdId: target.id });
+    await member.households.acceptInvite({ token: invite.token });
     vi.mocked(generateRecipe).mockResolvedValue({
       content: sampleRecipe,
       origin: "generated",
@@ -1032,10 +1075,13 @@ describe("recipes API with PostgreSQL", () => {
     const saved = await createAndWait(member, {
       id: randomUUID(),
       input: "Keep this recipe",
-      groupId: target.id,
+      householdId: target.id,
     });
     vi.mocked(generateRecipe).mockImplementationOnce(async () => {
-      await owner.groups.removeMember({ groupId: target.id, userId: ids[3] });
+      await owner.households.removeMember({
+        householdId: target.id,
+        userId: ids[3],
+      });
       return {
         content: sampleRecipe,
         origin: "generated",
@@ -1047,45 +1093,81 @@ describe("recipes API with PostgreSQL", () => {
       createAndWait(member, {
         id: randomUUID(),
         input: "Removed during generation",
-        groupId: target.id,
+        householdId: target.id,
       }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
-    expect(
-      (await owner.recipes.list({ groupId: target.id })).items,
-    ).toHaveLength(1);
+    expect((await owner.recipes.list()).items.map((r) => r.id)).toEqual([
+      saved.id,
+    ]);
+    await db.delete(household).where(eq(household.ownerId, ids[3]));
     await db.delete(user).where(eq(user.id, ids[3]));
-    expect((await owner.recipes.get({ id: saved.id })).userId).toBeNull();
+    expect(await owner.recipes.get({ id: saved.id })).toMatchObject({
+      userId: null,
+      owner: null,
+      isOwner: false,
+    });
+    await db.delete(recipe).where(eq(recipe.id, saved.id));
+    await cleanup();
   });
 
-  it("transfers ownership and blocks group deletion until recipe recovery expires", async () => {
+  it("transfers ownership, protects personal households and keeps recipes when a household is deleted", async () => {
     const owner = caller(ids[0]);
     const member = caller(ids[1]);
-    const target = await owner.groups.create({ name: "Group lifecycle" });
-    const invite = await owner.groups.invite({ groupId: target.id });
-    await member.groups.acceptInvite({ token: invite.token });
-    await owner.groups.rename({ groupId: target.id, name: "Renamed group" });
-    expect((await member.groups.details({ groupId: target.id })).name).toBe(
-      "Renamed group",
-    );
+    const [justMe] = await owner.households.list();
+    if (!justMe?.personal) throw new Error("Missing personal household");
+    expect(justMe).toMatchObject({ name: "Just me", color: "sage" });
+    for (const request of [
+      () => owner.households.rename({ householdId: justMe.id, name: "Mine" }),
+      () => owner.households.invite({ householdId: justMe.id }),
+      () => owner.households.leave({ householdId: justMe.id }),
+      () =>
+        owner.households.delete({ householdId: justMe.id, name: "Just me" }),
+    ])
+      await expect(request()).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await owner.households.recolor({ householdId: justMe.id, color: "plum" });
+    const target = await owner.households.create({
+      name: "Household lifecycle",
+    });
+    const invite = await owner.households.invite({ householdId: target.id });
+    await member.households.acceptInvite({ token: invite.token });
+    await owner.households.rename({
+      householdId: target.id,
+      name: "Renamed household",
+    });
+    expect(
+      (await member.households.details({ householdId: target.id })).name,
+    ).toBe("Renamed household");
     await expect(
-      member.groups.delete({ groupId: target.id, name: "Renamed group" }),
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(
-      member.groups.transferOwnership({ groupId: target.id, userId: ids[1] }),
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(
-      owner.groups.transferOwnership({ groupId: target.id, userId: ids[2] }),
+      owner.households.leave({ householdId: target.id }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
-    await owner.groups.transferOwnership({
-      groupId: target.id,
+    await expect(
+      member.households.delete({
+        householdId: target.id,
+        name: "Renamed household",
+      }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(
+      member.households.transferOwnership({
+        householdId: target.id,
+        userId: ids[1],
+      }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(
+      owner.households.transferOwnership({
+        householdId: target.id,
+        userId: ids[2],
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await owner.households.transferOwnership({
+      householdId: target.id,
       userId: ids[1],
     });
     await expect(
-      owner.groups.invite({ groupId: target.id }),
+      owner.households.invite({ householdId: target.id }),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await owner.groups.removeMember({ groupId: target.id, userId: ids[0] });
+    await owner.households.leave({ householdId: target.id });
     await expect(
-      owner.groups.details({ groupId: target.id }),
+      owner.households.details({ householdId: target.id }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
     vi.mocked(generateRecipe).mockResolvedValue({
       content: sampleRecipe,
@@ -1096,37 +1178,19 @@ describe("recipes API with PostgreSQL", () => {
     const shared = await createAndWait(member, {
       id: randomUUID(),
       input: "Shared fixture",
-      groupId: target.id,
-    });
-    const personal = await member.recipes.copy({
-      id: shared.id,
-      newId: randomUUID(),
-      groupId: null,
+      householdId: target.id,
     });
     await expect(
-      member.groups.delete({ groupId: target.id, name: "Wrong name" }),
+      member.households.delete({ householdId: target.id, name: "Wrong name" }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
-    await expect(
-      member.groups.delete({ groupId: target.id, name: "Renamed group" }),
-    ).rejects.toMatchObject({ code: "CONFLICT" });
-    await member.recipes.delete({ id: shared.id });
-    await expect(
-      member.groups.delete({ groupId: target.id, name: "Renamed group" }),
-    ).rejects.toMatchObject({ code: "CONFLICT" });
-    await db
-      .update(recipe)
-      .set({
-        deletedAt: new Date(Date.now() - 31 * 86400000),
-        expiresAt: new Date(Date.now() - 86400000),
-      })
-      .where(eq(recipe.id, shared.id));
-    await member.groups.delete({ groupId: target.id, name: "Renamed group" });
-    await expect(member.recipes.get({ id: shared.id })).rejects.toMatchObject({
-      code: "NOT_FOUND",
+    await member.households.delete({
+      householdId: target.id,
+      name: "Renamed household",
     });
-    expect((await member.recipes.get({ id: personal.id })).title).toBe(
-      sampleRecipe.title,
-    );
-    await member.recipes.delete({ id: personal.id });
+    expect(await member.recipes.get({ id: shared.id })).toMatchObject({
+      title: sampleRecipe.title,
+      sharedWith: [],
+    });
+    await cleanup();
   });
 });

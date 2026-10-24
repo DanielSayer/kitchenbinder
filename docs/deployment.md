@@ -178,6 +178,29 @@ locale string.
 This release deliberately rejects PostgreSQL majors other than 18 until their
 catalogue checks and application suite have been exercised.
 
+### Household and collection upgrade
+
+Published migration files are immutable. Keep `0006_households.sql` and
+`0007_household_constraint_names.sql` byte-for-byte compatible with their
+recorded SHA-256 hashes. The current household/collection model is introduced
+by `0008_pantry_households.sql`, after those files. Fresh installations and
+databases still on earlier versions follow the same complete sequence.
+
+Rehearse the candidate image against a restored copy, then use the normal
+release script. It stops the old web/worker, takes a backup, runs the candidate
+migrations and `--verify`, and only then starts the new image. Migration 0008
+preserves existing shared households and their plans/lists while converting
+personal records and former recipe groups. It does not merge independent
+households with recipe groups. Conflicting IDs or invitation hashes abort and
+roll back the transaction rather than discard records.
+
+Do not edit `prep_sheet_migration`, delete ledger rows, run `db:push`, or use
+`--adopt` to work around `Unknown or changed migration history`. Restore the
+published SQL and add a forward migration. Adoption is only for installations
+that have no release ledger. An installation that used the superseded,
+unpublished Pantry version of 0006 requires a separate restored-copy
+reconciliation; its hash must not be accepted as published 0006.
+
 ## Adopt an existing installation
 
 Schedule a maintenance window. Stop admissions by taking web traffic offline and

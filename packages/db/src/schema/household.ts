@@ -1,32 +1,69 @@
-import { index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import {
+  boolean,
+  check,
+  index,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { user } from "./auth";
 
-export const household = pgTable("household", {
-  id: uuid("id").primaryKey(),
-  name: text("name").notNull(),
-  ownerId: text("owner_id")
-    .notNull()
-    .references(() => user.id, { onDelete: "restrict" }),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const householdColors = [
+  "tomato",
+  "olive",
+  "butter",
+  "plum",
+  "sage",
+] as const;
+export type HouseholdColor = (typeof householdColors)[number];
 
-// The primary key enforces one household per account, including competing invitations.
+export const household = pgTable(
+  "household",
+  {
+    id: uuid("id").primaryKey(),
+    name: text("name").notNull(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "restrict" }),
+    // Every user owns exactly one personal "Just me" household.
+    personal: boolean("personal").default(false).notNull(),
+    color: text("color", { enum: householdColors }).default("sage").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("household_personal_owner_idx")
+      .on(table.ownerId)
+      .where(sql`${table.personal}`),
+    check(
+      "household_color_check",
+      sql`${table.color} in ('tomato', 'olive', 'butter', 'plum', 'sage')`,
+    ),
+  ],
+);
+
 export const householdMember = pgTable(
   "household_member",
   {
-    userId: text("user_id")
-      .primaryKey()
-      .references(() => user.id, { onDelete: "cascade" }),
     householdId: uuid("household_id")
       .notNull()
       .references(() => household.id, { onDelete: "cascade" }),
-    joinedAt: timestamp("joined_at", { withTimezone: true })
+    userId: text("user_id")
       .notNull()
-      .defaultNow(),
+      .references(() => user.id, { onDelete: "cascade" }),
+    joinedAt: timestamp("joined_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
-  (table) => [index("household_member_household_idx").on(table.householdId)],
+  (table) => [
+    primaryKey({ columns: [table.householdId, table.userId] }),
+    index("household_member_user_idx").on(table.userId),
+  ],
 );
 
 export const householdInvite = pgTable(
@@ -38,8 +75,8 @@ export const householdInvite = pgTable(
       .references(() => household.id, { onDelete: "cascade" }),
     tokenHash: text("token_hash").notNull().unique(),
     createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+      .defaultNow()
+      .notNull(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     acceptedAt: timestamp("accepted_at", { withTimezone: true }),

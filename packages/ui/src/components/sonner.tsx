@@ -26,10 +26,23 @@ const Toaster = ({ ...props }: ToasterProps) => {
       }}
       style={
         {
-          "--normal-bg": "var(--popover)",
-          "--normal-text": "var(--popover-foreground)",
-          "--normal-border": "var(--border)",
-          "--border-radius": "var(--radius)",
+          // Pantry: ink toasts with a butter action; soft tones for rich colours.
+          "--normal-bg": "var(--ink, #2b1d14)",
+          "--normal-text": "var(--paper, #f7f0e3)",
+          "--normal-border": "var(--ink, #2b1d14)",
+          "--success-bg": "var(--olive-soft, #e4e5c8)",
+          "--success-text": "var(--olive, #5e6b2f)",
+          "--success-border": "var(--olive-soft, #e4e5c8)",
+          "--error-bg": "var(--tomato-soft, #f6dcd3)",
+          "--error-text": "var(--tomato-press, #a2321f)",
+          "--error-border": "var(--tomato-soft, #f6dcd3)",
+          "--warning-bg": "var(--butter-soft, #f8eacb)",
+          "--warning-text": "var(--butter-ink, #8a5d0a)",
+          "--warning-border": "var(--butter-soft, #f8eacb)",
+          "--info-bg": "var(--card, #fffbf4)",
+          "--info-text": "var(--ink, #2b1d14)",
+          "--info-border": "var(--line, #e3d5be)",
+          "--border-radius": "var(--r-m, 16px)",
         } as React.CSSProperties
       }
       toastOptions={{
