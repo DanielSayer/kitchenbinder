@@ -85,30 +85,44 @@ export function RecipeBody({
         className="recipe-pane recipe-pane-ingredients"
         aria-labelledby="ingredients-heading"
       >
-        <div className="recipe-pane-head">
-          <h2 id="ingredients-heading" tabIndex={-1}>
-            {base && servings ? `For ${servings}` : "Ingredients"}
+        {base && servings ? (
+          <h2
+            id="ingredients-heading"
+            tabIndex={-1}
+            className="pantry-visually-hidden"
+          >
+            Ingredients
           </h2>
+        ) : (
+          <div className="recipe-pane-head">
+            <h2 id="ingredients-heading" tabIndex={-1}>
+              Ingredients
+            </h2>
+            {content.servings ? (
+              <span className="recipe-servings-note">
+                Serves {content.servings}
+              </span>
+            ) : null}
+          </div>
+        )}
+        <div
+          className="ingredient-progress"
+          data-scalable={base && servings ? "" : undefined}
+        >
+          <span className="ingredient-progress-count">
+            {currentChecks.size} of {content.ingredients.length} checked
+            <button
+              type="button"
+              className="text-button"
+              disabled={currentChecks.size === 0}
+              onClick={() => update(new Set())}
+            >
+              Reset
+            </button>
+          </span>
           {base && servings ? (
             <ServingsStepper value={servings} onChange={setServings} />
-          ) : content.servings ? (
-            <span className="recipe-servings-note">
-              Serves {content.servings}
-            </span>
           ) : null}
-        </div>
-        <div className="ingredient-progress">
-          <span>
-            {currentChecks.size} of {content.ingredients.length} checked
-          </span>
-          <button
-            type="button"
-            className="text-button"
-            disabled={currentChecks.size === 0}
-            onClick={() => update(new Set())}
-          >
-            Reset
-          </button>
         </div>
         {storageFailed && (
           <p className="muted" role="status">

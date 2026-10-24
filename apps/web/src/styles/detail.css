@@ -483,6 +483,7 @@
 }
 .servings-stepper {
   display: flex;
+  margin-left: auto;
   align-items: center;
   padding: 3px;
   border: 1px solid var(--line);
@@ -520,10 +521,18 @@
   font-size: 13px;
   color: var(--ink-2);
 }
-.ingredient-progress button {
+.ingredient-progress[data-scalable] {
+  margin: 18px 2px 10px;
+}
+.ingredient-progress-count {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.ingredient-progress .text-button {
   min-height: 40px;
 }
-.ingredient-progress button:disabled {
+.ingredient-progress .text-button:disabled {
   opacity: 0.5;
   cursor: default;
 }
