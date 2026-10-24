@@ -164,6 +164,7 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
               <RecipeCover
                 id={meal.recipeId}
                 title={meal.title}
+                photo={query.data?.photos[meal.recipeId]}
                 size={compact ? "thumb" : "list"}
               />
             ) : (

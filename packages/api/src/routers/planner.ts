@@ -18,7 +18,7 @@ import { recipe } from "@prep-sheet/db/schema/recipe";
 import { shoppingItem, shoppingPlan } from "@prep-sheet/db/schema/shopping";
 import { generateShoppingPlan } from "@prep-sheet/db/shopping-plan";
 import { TRPCError } from "@trpc/server";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
 import {
   accessibleRecipe,
@@ -261,8 +261,31 @@ export const plannerRouter = router({
         input.householdId,
       );
       const saved = await state(db, householdId);
+      // Meals are snapshots; covers come from the live recipe.
+      const recipeIds = [
+        ...new Set(
+          saved.meals.flatMap((meal) =>
+            meal.kind === "recipe" ? [meal.recipeId] : [],
+          ),
+        ),
+      ];
+      const covers = recipeIds.length
+        ? await db
+            .select({ id: recipe.id, photo: recipe.photo })
+            .from(recipe)
+            .where(
+              and(
+                inArray(recipe.id, recipeIds),
+                isNull(recipe.deletedAt),
+                isNotNull(recipe.photo),
+              ),
+            )
+        : [];
       return {
         ...saved,
+        photos: Object.fromEntries(
+          covers.flatMap(({ id, photo }) => (photo ? [[id, photo]] : [])),
+        ),
         issues: mealIssues(saved.meals),
         stale: saved.trip ? tripIsStale(saved.meals, saved.trip) : false,
       };
