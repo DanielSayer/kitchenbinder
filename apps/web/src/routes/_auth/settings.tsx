@@ -35,6 +35,7 @@ import {
   Plus,
   Puzzle,
   Shield,
+  Sparkles,
   Tag,
   Trash2,
 } from "lucide-react";
@@ -238,40 +239,63 @@ function PlanCard({ onOpen }: { onOpen: () => void }) {
         retry={() => void status.refetch()}
       />
     );
-  if (!plan) return <div className="you-plan" aria-busy="true" />;
-  const remaining = Math.max(0, plan.credits - plan.used);
-  const limit = plan.recipes;
-  const value = limit === null ? remaining : plan.saved;
-  const max = Math.max(1, limit === null ? plan.credits : limit);
-  const label =
-    limit === null
-      ? `${remaining} of ${plan.credits} AI credits left`
-      : `${plan.saved} of ${limit} recipes saved`;
+  const tier = !plan
+    ? "Plan"
+    : plan.tier === "pro"
+      ? plan.bucket === "trial"
+        ? "Pro trial"
+        : "Pro plan"
+      : "Free plan";
+  let usage: ReactNode = null;
+  if (plan) {
+    const remaining = Math.max(0, plan.credits - plan.used);
+    const limit = plan.recipes;
+    const value = limit === null ? remaining : plan.saved;
+    const max = Math.max(1, limit === null ? plan.credits : limit);
+    const label =
+      limit === null
+        ? `${remaining} of ${plan.credits} AI credits left`
+        : `${plan.saved} of ${limit} recipes saved`;
+    usage = (
+      <>
+        <small>{label}</small>
+        <meter
+          min={0}
+          max={max}
+          value={Math.min(value, max)}
+          aria-label={label}
+        />
+      </>
+    );
+  }
   return (
-    <section className="you-plan" aria-label="Your plan">
-      <small>
-        {plan.tier === "pro"
-          ? plan.bucket === "trial"
-            ? "Pro trial"
-            : "Pro plan"
-          : "Free plan"}
-      </small>
-      <b>{label}</b>
-      <meter
-        min={0}
-        max={max}
-        value={Math.min(value, max)}
-        aria-label={label}
-      />
-      <p>
-        {plan.tier === "pro"
-          ? "Unlimited recipes. Create households and invite people."
-          : "Unlimited recipes and shared households with Pro."}
-      </p>
-      <button type="button" className="button you-plan-button" onClick={onOpen}>
-        {plan.tier === "pro" ? "Manage plan" : "See Pro"}
-      </button>
-    </section>
+    <>
+      <p className="grouped-label">Plan</p>
+      <div className="pantry-list">
+        <button
+          type="button"
+          className="pantry-row you-plan"
+          aria-busy={!plan}
+          onClick={onOpen}
+        >
+          <span className="pantry-row-icon" aria-hidden="true">
+            <Sparkles size={20} />
+          </span>
+          <span className="pantry-row-text">
+            <b>{tier}</b>
+            {usage}
+          </span>
+          {plan?.tier === "free" && (
+            <span className="you-plan-upgrade">See Pro</span>
+          )}
+          <ChevronRight
+            size={18}
+            className="pantry-row-go"
+            aria-hidden="true"
+          />
+        </button>
+      </div>
+    </>
   );
 }
 
