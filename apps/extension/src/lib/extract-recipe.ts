@@ -35,9 +35,66 @@ export function extractRecipe(): CaptureResult {
     )
   )
     return error("challenge");
-  const recipes: Extract<CaptureResult, { kind: "captured" }>["recipes"] = [];
+  type Recipes = Extract<CaptureResult, { kind: "captured" }>["recipes"];
+  type Image = NonNullable<Recipes[number]["images"]>[number];
+  const recipes: Recipes = [];
   let oversized = false;
-  const add = (title: string, content: string, format: "json-ld" | "text") => {
+  // Absolute, credential-free http(s) photo URLs. The server fetches them.
+  const imageList = (
+    values: { url: unknown; alt?: unknown; source: Image["source"] }[],
+  ) => {
+    const images: Image[] = [];
+    for (const value of values) {
+      if (images.length >= 10) break;
+      if (
+        typeof value.url !== "string" ||
+        /^data:|\.svg(?:$|\?)/i.test(value.url)
+      )
+        continue;
+      try {
+        const image = new URL(value.url, location.href);
+        image.hash = "";
+        if (
+          !["http:", "https:"].includes(image.protocol) ||
+          image.username ||
+          image.password ||
+          image.href.length > 2048 ||
+          images.some((item) => item.url === image.href)
+        )
+          continue;
+        images.push({
+          url: image.href,
+          alt:
+            typeof value.alt === "string" ? clean(value.alt).slice(0, 200) : "",
+          source: value.source,
+        });
+      } catch {
+        /* Skip malformed image URLs. */
+      }
+    }
+    return images;
+  };
+  const meta = (selector: string) =>
+    document.querySelector(selector)?.getAttribute("content");
+  const pageImages = [
+    { url: meta('meta[property="og:image"]'), source: "page" as const },
+    { url: meta('meta[name="twitter:image"]'), source: "page" as const },
+  ];
+  const contentImages = (root: ParentNode) =>
+    [...root.querySelectorAll("img")]
+      .filter((image) => image.naturalWidth >= 200 || image.width >= 200)
+      .slice(0, 8)
+      .map((image) => ({
+        url: image.currentSrc || image.src,
+        alt: image.alt,
+        source: "content" as const,
+      }));
+  const add = (
+    title: string,
+    content: string,
+    format: "json-ld" | "text",
+    images: Image[],
+  ) => {
     if (content.length > 32_000 || recipes.length >= 10) {
       oversized = true;
       return;
@@ -47,12 +104,23 @@ export function extractRecipe(): CaptureResult {
         title: clean(title).slice(0, 300) || "Untitled recipe",
         content,
         format,
+        ...(images.length ? { images } : {}),
       });
   };
   const record = (value: unknown): Record<string, unknown> | undefined =>
     typeof value === "object" && value !== null && !Array.isArray(value)
       ? Object.fromEntries(Object.entries(value))
       : undefined;
+  // schema.org image: a URL, an ImageObject, or a list of either.
+  const metadataImages = (value: unknown, depth = 0): unknown[] => {
+    if (depth > 3) return [];
+    if (Array.isArray(value))
+      return value.flatMap((item) => metadataImages(item, depth + 1));
+    const item = record(value);
+    return item
+      ? metadataImages(item.url ?? item.contentUrl, depth + 1)
+      : [value];
+  };
   let visited = 0;
   const instructions = (value: unknown, depth = 0): string[] => {
     if (depth > 12 || ++visited > 10_000) {
@@ -122,6 +190,13 @@ export function extractRecipe(): CaptureResult {
             ...steps,
           ].join("\n"),
           "json-ld",
+          imageList([
+            ...metadataImages(item.image).map((url) => ({
+              url,
+              source: "recipe" as const,
+            })),
+            ...pageImages,
+          ]),
         );
       }
     }
@@ -222,6 +297,7 @@ export function extractRecipe(): CaptureResult {
             document.title,
           content,
           "text",
+          imageList([...pageImages, ...contentImages(root)]),
         );
     }
   }
@@ -230,6 +306,9 @@ export function extractRecipe(): CaptureResult {
     sourceUrl: url.href,
     recipes,
   };
+  // Photos are optional; never let them make a capture too large.
+  if (JSON.stringify(result).length > 128_000)
+    for (const recipe of recipes) delete recipe.images;
   if (oversized || JSON.stringify(result).length > 128_000)
     return error("too-large");
   return recipes.length ? result : error("missing");

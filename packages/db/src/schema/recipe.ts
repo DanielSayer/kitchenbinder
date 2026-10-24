@@ -12,6 +12,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import type { RecipeContent } from "../recipe-content";
+import type { RecipePhoto } from "../recipe-photo";
 import { user } from "./auth";
 import { household } from "./household";
 
@@ -26,6 +27,7 @@ export const recipe = pgTable(
     manualRequestHash: text("manual_request_hash"),
     revision: integer("revision").default(1).notNull(),
     sourceUrl: text("source_url"),
+    photo: jsonb("photo").$type<RecipePhoto>(),
     origin: text("origin", {
       enum: ["imported", "generated", "manual"],
     }).notNull(),

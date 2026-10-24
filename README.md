@@ -26,6 +26,7 @@ Copy `apps/web/.env.example` to `apps/web/.env` and fill in the credentials. Kee
 - `AI_ENABLED=false` and `BILLING_MODE=disabled`: keep AI and billing disabled for initial setup and private staging.
 - `OPENAI_API_KEY`: needed only when explicitly enabling AI after provider acceptance.
 - `OPENAI_MODEL`: defaults to `gpt-6-luna`.
+- `MEDIA_*`: optional bucket for imported recipe photos. Leave blank to keep placeholder covers. See `docs/recipe-photos.md`.
 
 If enabling Discord locally, register `http://localhost:3001/api/auth/callback/discord` in the Discord Developer Portal under OAuth2 redirects. Use the same hostname for the app and callback.
 

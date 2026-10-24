@@ -138,6 +138,18 @@ describe("loaded recipe capture", () => {
       code: "challenge",
     });
   });
+  it("collects photo candidates as absolute URLs, recipe metadata first", () => {
+    const result = capture(
+      `<meta property="og:image" content="/og.jpg">${metadata({
+        ...recipe,
+        image: [{ "@type": "ImageObject", url: "/dish.jpg#x" }, "data:x"],
+      })}`,
+    );
+    expect(result.kind === "captured" && result.recipes[0]?.images).toEqual([
+      { url: "https://recipes.test/dish.jpg", alt: "", source: "recipe" },
+      { url: "https://recipes.test/og.jpg", alt: "", source: "page" },
+    ]);
+  });
   it("detects a challenge form", () => {
     expect(capture('<form id="challenge-form"></form>')).toEqual({
       kind: "error",

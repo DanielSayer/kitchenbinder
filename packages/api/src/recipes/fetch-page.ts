@@ -28,13 +28,57 @@ export function recipeUrl(value: string) {
   return url;
 }
 
-// Pin the request to the validated address, including after every redirect.
+type FetchOptions = {
+  accept: string;
+  allowed: (contentType: string) => boolean;
+  maxBytes: number;
+  signal: AbortSignal;
+  importId?: string;
+  referer?: string;
+};
+
 export async function fetchPage(
   input: string,
   signal = AbortSignal.timeout(15000),
   redirects = 0,
   importId?: string,
 ): Promise<string> {
+  const { body } = await fetchPublic(
+    input,
+    {
+      accept: "text/html",
+      allowed: (type) => type.includes("text/html"),
+      maxBytes: 2_000_000,
+      signal,
+      importId,
+    },
+    redirects,
+  );
+  return body.toString("utf8");
+}
+
+// Images are fetched like pages: public addresses only, pinned, size capped.
+export function fetchImage(
+  input: string,
+  referer?: string,
+  signal = AbortSignal.timeout(10000),
+) {
+  return fetchPublic(input, {
+    accept: "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8",
+    allowed: (type) => /^image\/(avif|webp|png|jpeg|gif)\b/i.test(type),
+    maxBytes: 10_000_000,
+    signal,
+    referer,
+  });
+}
+
+// Pin the request to the validated address, including after every redirect.
+async function fetchPublic(
+  input: string,
+  options: FetchOptions,
+  redirects = 0,
+): Promise<{ body: Buffer; contentType: string }> {
+  const { signal, importId } = options;
   const url = recipeUrl(input);
   const hostname = url.hostname.replace(/^\[|\]$/g, "");
   const addresses = await lookup(hostname, { all: true });
@@ -52,8 +96,9 @@ export async function fetchPage(
         signal,
         headers: {
           "User-Agent": "Kitchenbinder/1.0 recipe importer",
-          Accept: "text/html",
+          Accept: options.accept,
           "Accept-Encoding": "identity",
+          ...(options.referer ? { Referer: options.referer } : {}),
         },
         lookup: (_hostname, options, callback) =>
           options.all
@@ -80,21 +125,18 @@ export async function fetchPage(
         ) {
           response.resume();
           try {
-            fetchPage(
+            fetchPublic(
               new URL(response.headers.location, url).href,
-              signal,
+              options,
               redirects + 1,
-              importId,
             ).then(resolve, reject);
           } catch (cause) {
             reject(new Error(PAGE_ERROR, { cause }));
           }
           return;
         }
-        if (
-          status !== 200 ||
-          !response.headers["content-type"]?.includes("text/html")
-        ) {
+        const contentType = response.headers["content-type"] ?? "";
+        if (status !== 200 || !options.allowed(contentType)) {
           response.resume();
           reject(new Error(PAGE_ERROR));
           return;
@@ -103,11 +145,11 @@ export async function fetchPage(
         const chunks: Buffer[] = [];
         response.on("data", (chunk: Buffer) => {
           bytes += chunk.length;
-          if (bytes > 2_000_000) request.destroy(new Error(PAGE_ERROR));
+          if (bytes > options.maxBytes) request.destroy(new Error(PAGE_ERROR));
           else chunks.push(chunk);
         });
         response.on("end", () =>
-          resolve(Buffer.concat(chunks).toString("utf8")),
+          resolve({ body: Buffer.concat(chunks), contentType }),
         );
       },
     );

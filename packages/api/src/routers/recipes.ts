@@ -496,6 +496,7 @@ export const recipesRouter = router({
             title: source.title,
             content: source.content,
             sourceUrl: source.sourceUrl,
+            photo: source.photo,
             origin: source.origin,
           })
           .onConflictDoNothing()

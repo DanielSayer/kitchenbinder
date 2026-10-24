@@ -1,4 +1,5 @@
 import {
+  type ImageCandidate,
   type ImportStatus,
   importStatusSchema,
 } from "@prep-sheet/api/import-contract";
@@ -19,6 +20,7 @@ type Pending = z.infer<typeof pendingSchema>;
 export function Import({
   content,
   sourceUrl,
+  images,
   title,
   accountId,
   onReconnect,
@@ -27,6 +29,7 @@ export function Import({
 }: {
   content?: string;
   sourceUrl?: string;
+  images?: ImageCandidate[];
   title?: string;
   accountId: string;
   onBusy: (busy: boolean) => void;
@@ -137,6 +140,7 @@ export function Import({
             input: {
               content,
               sourceUrl,
+              images,
               householdId: destinations.householdId,
             },
           }),

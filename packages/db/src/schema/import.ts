@@ -25,6 +25,11 @@ export const recipeImport = pgTable(
     fingerprint: text("fingerprint").notNull(),
     input: text("input").notNull(),
     sourceUrl: text("source_url"),
+    // Cover photo candidates found on the source page. Cleared once saved.
+    imageCandidates:
+      jsonb("image_candidates").$type<
+        { url: string; alt: string; source: "recipe" | "page" | "content" }[]
+      >(),
     sourceKind: text("source_kind", { enum: ["captured", "website"] })
       .notNull()
       .default("captured"),
@@ -41,6 +46,7 @@ export const recipeImport = pgTable(
       content: RecipeContent;
       tagIds: string[];
       origin?: "imported" | "generated";
+      imageUrl?: string | null;
     }>(),
     error: text("error"),
     createdAt: timestamp("created_at", { withTimezone: true })

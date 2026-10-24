@@ -1,4 +1,5 @@
 import type { RecipeContent } from "@prep-sheet/db/recipe-content";
+import type { RecipePhoto } from "@prep-sheet/db/recipe-photo";
 import { Link2, LoaderCircle } from "lucide-react";
 import type { ReactNode } from "react";
 import { RecipeCover, Sheet, toneForTags } from "@/components/pantry";
@@ -9,7 +10,7 @@ export type ReadyRecipe = {
   id?: string;
   content: RecipeContent;
   sourceUrl?: string | null;
-  photoUrl?: string | null;
+  photo?: RecipePhoto | null;
   tags?: { id: string; name: string }[];
 };
 
@@ -103,7 +104,7 @@ export function ReadySheet({
           <RecipeCover
             id={recipe?.id}
             title={title}
-            photoUrl={recipe?.photoUrl}
+            photo={recipe?.photo}
             tone={toneForTags(tags.map((tag) => tag.name))}
             size="hero"
             className="ready-cover"

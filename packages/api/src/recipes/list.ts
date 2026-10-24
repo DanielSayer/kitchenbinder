@@ -185,6 +185,7 @@ export function collectionQueries(
       .select({
         id: recipe.id,
         title: recipe.title,
+        photo: recipe.photo,
         description: sql<string>`${recipe.content}->>'description'`,
         ingredientCount: sql<number>`jsonb_array_length(${recipe.content}->'ingredients')`,
         prepMinutes: prep,
@@ -228,6 +229,7 @@ export async function listRecipes(
 const pickerFields = {
   id: recipe.id,
   title: recipe.title,
+  photo: recipe.photo,
   ownerId: recipe.userId,
   servings: sql<string | null>`${recipe.content}->>'servings'`,
 };

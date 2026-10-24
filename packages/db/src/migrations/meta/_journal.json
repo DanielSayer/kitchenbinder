@@ -64,6 +64,13 @@
       "when": 1792732793939,
       "tag": "0008_pantry_households",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792825615957,
+      "tag": "0009_recipe_photo",
+      "breakpoints": true
     }
   ]
 }

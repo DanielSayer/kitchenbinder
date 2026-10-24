@@ -114,6 +114,28 @@ describe("personal meal planner with PostgreSQL", () => {
     await other.planner.remove({ id: meal.id, revision: 0 });
     expect((await owner.planner.get()).meals).toHaveLength(1);
   });
+  it("returns live recipe covers for planned meals", async () => {
+    await save(meal);
+    expect((await owner.planner.get()).photos).toEqual({});
+    const photo = {
+      key: `recipes/${recipeId}/cover`,
+      url: `https://media.test/recipes/${recipeId}/cover`,
+      width: 1200,
+      height: 800,
+      color: "#c04020",
+    };
+    await db.update(recipe).set({ photo }).where(eq(recipe.id, recipeId));
+    try {
+      expect((await owner.planner.get()).photos).toEqual({
+        [recipeId]: photo,
+      });
+    } finally {
+      await db
+        .update(recipe)
+        .set({ photo: null })
+        .where(eq(recipe.id, recipeId));
+    }
+  });
   it("prevents lost updates between tabs", async () => {
     const results = await Promise.allSettled([
       owner.planner.save({ revision: 0, meal }),

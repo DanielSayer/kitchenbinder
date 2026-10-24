@@ -4,6 +4,7 @@ import { recipeImport } from "@prep-sheet/db/schema/import";
 import { count, inArray, min } from "drizzle-orm";
 import { importFailure, logImport } from "./import-diagnostics";
 import { processNextImport } from "./imports";
+import { sweepRecipeMedia } from "./recipes/media";
 import { clearWorkerHeartbeat, writeWorkerHeartbeat } from "./worker-heartbeat";
 
 let stopping = false;
@@ -80,9 +81,28 @@ async function heartbeat() {
     checkingQueue = false;
   }
 }
+let sweeping: Promise<void> | undefined;
+function sweep() {
+  if (sweeping || stopping) return;
+  sweeping = sweepRecipeMedia()
+    .then(({ scanned, deleted }) => {
+      if (scanned)
+        logImport({ event: "media_sweep_completed", scanned, deleted });
+    })
+    .catch((error: unknown) =>
+      logImport({ event: "media_sweep_failed", failure: importFailure(error) }),
+    )
+    .finally(() => {
+      sweeping = undefined;
+    });
+}
 logImport({ event: "import_worker_started", pid: process.pid });
 const heartbeatTimer = setInterval(() => void heartbeat(), 30_000);
 heartbeatTimer.unref();
+// Unreferenced photos (deleted recipes) are removed every six hours.
+const sweepTimer = setInterval(sweep, 6 * 60 * 60 * 1000);
+sweepTimer.unref();
+sweep();
 try {
   await heartbeat();
   while (!stopping) {
@@ -99,6 +119,8 @@ try {
   }
 } finally {
   clearInterval(heartbeatTimer);
+  clearInterval(sweepTimer);
+  await sweeping;
   // Wait for the in-flight writer before removing the clean-shutdown marker.
   while (checkingQueue) await setTimeout(10);
   await clearWorkerHeartbeat();
