@@ -53,7 +53,7 @@ Meaning first: **tomato = do this**, **olive = done / have it**, **butter = rati
 | Label | 13 · 600 |
 | Eyebrow / overline | 11 · 700 · caps · 0.12–0.14em |
 
-Accent: one italic tomato phrase in a headline, 700 italic ("What are we *cooking?*"). The wordmark sets "kitchen" roman, "binder" italic tomato.
+Accent: one italic tomato phrase in a headline, 700 italic ("What are we *cooking?*"). The wordmark is lowercase "kitchenbinder", one weight (850) in ink; both i dots are tomato punch rings (`.brand-punch`). The mark (Punchline) is a k whose spine is a binder page with two punched holes (`BrandMark`, `public/branding/mark.svg`).
 
 ## Shape, elevation, motion, space
 

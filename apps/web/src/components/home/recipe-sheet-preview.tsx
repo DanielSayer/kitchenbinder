@@ -1,3 +1,5 @@
+import { Wordmark } from "@/components/pantry";
+
 const ingredients = [
   "200 g pasta",
   "1 tin chickpeas, drained",
@@ -17,7 +19,7 @@ export function RecipeSheetPreview() {
       <article className="sample-sheet">
         <div className="sample-sheet-brand">
           <img src="/branding/icon-192.png" alt="" width={32} height={32} />
-          <span>kitchenbinder</span>
+          <Wordmark className="sample-sheet-wordmark" />
           <small>Example recipe</small>
         </div>
         <h2>Lemon &amp; chickpea pasta</h2>
