@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import { importInputSchema } from "../import-contract";
+import { imageCandidatesSchema } from "../import-contract";
 import { extractImages } from "./extract-page";
 import { fetchImage } from "./fetch-page";
 import { preferredImage, withImageChoices } from "./generate";
@@ -80,27 +80,16 @@ describe("image choice", () => {
       `Soup\n\nImage candidates: [{"index":0,"url":"https://cdn.test/p.jpg","alt":"","source":"page"}]`,
     );
   });
-  it("rejects malformed candidates from the extension", () => {
-    const base = {
-      id: crypto.randomUUID(),
-      content: "x".repeat(80),
-      sourceUrl: "https://recipes.test/soup",
-    };
+  it("rejects malformed image candidates and oversized lists", () => {
     expect(
-      importInputSchema.safeParse({
-        ...base,
-        images: [{ url: "file:///etc/passwd", alt: "", source: "page" }],
-      }).success,
+      imageCandidatesSchema.safeParse([
+        { url: "file:///etc/passwd", alt: "", source: "page" },
+      ]).success,
     ).toBe(false);
-    expect(
-      importInputSchema.safeParse({
-        ...base,
-        images: Array(11).fill(page),
-      }).success,
-    ).toBe(false);
-    expect(
-      importInputSchema.safeParse({ ...base, images: [page] }).success,
-    ).toBe(true);
+    expect(imageCandidatesSchema.safeParse(Array(11).fill(page)).success).toBe(
+      false,
+    );
+    expect(imageCandidatesSchema.safeParse([page]).success).toBe(true);
   });
 });
 

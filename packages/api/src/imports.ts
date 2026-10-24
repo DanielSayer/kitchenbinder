@@ -2,7 +2,6 @@ import { createHash, randomUUID } from "node:crypto";
 import { db } from "@prep-sheet/db";
 import { recipeContentSchema } from "@prep-sheet/db/recipe-content";
 import { user } from "@prep-sheet/db/schema/auth";
-import { household, householdMember } from "@prep-sheet/db/schema/household";
 import { recipeImport } from "@prep-sheet/db/schema/import";
 import { recipe } from "@prep-sheet/db/schema/recipe";
 import { TRPCError } from "@trpc/server";
@@ -34,12 +33,7 @@ import {
   type Placement,
   preparePlacement,
 } from "./households/placement";
-import {
-  type ImageCandidate,
-  type ImportStatus,
-  importInputSchema,
-  websiteImportSchema,
-} from "./import-contract";
+import { type ImportStatus, websiteImportSchema } from "./import-contract";
 import { importFailure, logImport } from "./import-diagnostics";
 import {
   generateRecipe,
@@ -51,19 +45,6 @@ import {
 import { persistRecipe } from "./recipes/persist";
 import { checkRecipeUsage } from "./recipes/usage";
 import { availableTags } from "./routers/tags";
-
-// Extension destinations: keep it personal (null) or share with a household.
-export async function importCollections(userId: string) {
-  const households = await db
-    .select({ id: household.id, name: household.name })
-    .from(household)
-    .innerJoin(householdMember, eq(householdMember.householdId, household.id))
-    .where(
-      and(eq(householdMember.userId, userId), eq(household.personal, false)),
-    )
-    .orderBy(asc(household.name));
-  return [{ id: null, name: "My recipes" }, ...households];
-}
 
 export async function recentImports(userId: string) {
   return db
@@ -156,8 +137,7 @@ type JobInput = Placement & {
   id: string;
   content: string;
   sourceUrl: string | null;
-  sourceKind: "captured" | "website";
-  images: ImageCandidate[];
+  sourceKind: "website";
 };
 
 function fingerprintOf(input: JobInput) {
@@ -169,18 +149,10 @@ function fingerprintOf(input: JobInput) {
         sourceUrl: input.sourceUrl,
         groupId: input.householdId,
         ...(input.collectionId ? { collectionId: input.collectionId } : {}),
-        ...(input.sourceKind === "website"
-          ? { sourceKind: input.sourceKind }
-          : {}),
-        ...(input.images.length ? { images: input.images } : {}),
+        sourceKind: input.sourceKind,
       }),
     )
     .digest("hex");
-}
-
-export async function discardImport(userId: string, value: unknown) {
-  const { images = [], ...input } = importInputSchema.parse(value);
-  return discardJob(userId, { ...input, images, sourceKind: "captured" });
 }
 
 async function discardJob(userId: string, input: JobInput) {
@@ -240,11 +212,6 @@ async function discardJob(userId: string, input: JobInput) {
   });
 }
 
-export async function submitImport(userId: string, value: unknown) {
-  const { images = [], ...input } = importInputSchema.parse(value);
-  return submitJob(userId, { ...input, images, sourceKind: "captured" });
-}
-
 function websiteInput(value: unknown): JobInput {
   const input = websiteImportSchema.parse(value);
   return {
@@ -254,7 +221,6 @@ function websiteInput(value: unknown): JobInput {
     collectionId: input.collectionId ?? null,
     sourceUrl: null,
     sourceKind: "website",
-    images: [],
   };
 }
 
@@ -348,7 +314,6 @@ async function submitJob(userId: string, input: JobInput) {
       input: input.content,
       sourceKind: input.sourceKind,
       sourceUrl: input.sourceUrl,
-      imageCandidates: input.images.length ? input.images : null,
       fingerprint,
       usageBucket,
     });
@@ -576,18 +541,13 @@ export async function processNextImport(
   let saveClaim: SaveClaim | undefined;
   try {
     await preparePlacement(db, job.userId, job, { lock: false });
-    const prepared =
-      job.sourceKind === "website"
-        ? await prepareRecipeInput(
-            job.input,
-            job.sourceUrl ?? undefined,
-            job.id,
-          )
-        : {
-            content: job.input,
-            sourceUrl: job.sourceUrl,
-            images: job.imageCandidates ?? [],
-          };
+    const prepared = await prepareRecipeInput(
+      job.input,
+      job.sourceUrl ?? undefined,
+      job.id,
+    );
+    if (!prepared.images.length && job.imageCandidates)
+      prepared.images = job.imageCandidates;
     const tags = await availableTags(job.userId);
     // A missing provider key must fail before reserving spend or consuming AI usage.
     ensureProviderReady();

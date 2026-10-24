@@ -1,5 +1,4 @@
-/* Website brand source of truth (Pantry, see DESIGN.md).
-   Also imported by the extension popup. */
+/* Website brand source of truth (Pantry, see DESIGN.md). */
 :root {
   /* Surfaces */
   --paper: #f7f0e3;

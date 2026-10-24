@@ -76,10 +76,7 @@ function AccountImports({ userId }: { userId: string }) {
                 <strong>
                   {job.state === "saved" && job.title
                     ? job.title
-                    : job.sourceUrl ||
-                      (job.sourceKind === "captured"
-                        ? "Browser extension import"
-                        : "Website import")}
+                    : job.sourceUrl || "Recipe import"}
                 </strong>
                 <time dateTime={new Date(job.createdAt).toISOString()}>
                   {new Date(job.createdAt).toLocaleString()}

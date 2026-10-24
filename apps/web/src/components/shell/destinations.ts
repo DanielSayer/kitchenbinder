@@ -41,7 +41,6 @@ export const youPaths = [
   "/privacy",
   "/support",
   "/login",
-  "/connect-extension",
 ];
 
 export function isYouPath(pathname: string) {

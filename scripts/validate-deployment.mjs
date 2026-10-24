@@ -330,7 +330,6 @@ createServer(async (req, res) => {
     ["/", 16384],
     ["/api/auth/sign-in/social", 16384],
     ["/api/trpc/save", 1572864],
-    ["/api/extensions/import", 200000],
     ["/api/polar/webhooks", 262144],
     ["/api/polar/webhooks/", 16384],
   ]) {

@@ -605,10 +605,6 @@ ul.pantry-list {
   margin: 0 0 14px;
   color: var(--ink-2);
 }
-.you-sheet .extension-id {
-  font-family: ui-monospace, monospace;
-  font-size: 11px;
-}
 .you-sheet .linked-check {
   flex: none;
   color: var(--olive);

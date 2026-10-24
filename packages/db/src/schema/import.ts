@@ -32,7 +32,7 @@ export const recipeImport = pgTable(
       >(),
     sourceKind: text("source_kind", { enum: ["captured", "website"] })
       .notNull()
-      .default("captured"),
+      .default("website"),
     usageReleased: boolean("usage_released").notNull().default(false),
     usageBucket: text("usage_bucket", { enum: ["free", "trial", "pro"] })
       .notNull()
@@ -66,11 +66,3 @@ export const recipeImport = pgTable(
     index("recipe_import_save_retry_idx").on(t.state, t.nextSaveAttemptAt),
   ],
 );
-
-export const extensionRate = pgTable("extension_rate", {
-  userId: text("user_id")
-    .primaryKey()
-    .references(() => user.id, { onDelete: "cascade" }),
-  window: timestamp("window", { withTimezone: true }).notNull(),
-  requests: integer("requests").notNull(),
-});

@@ -13,7 +13,6 @@ export const env = createEnv({
     DATABASE_IDLE_TIMEOUT_MS: z.coerce.number().int().min(1).default(30_000),
     BETTER_AUTH_SECRET: z.string().min(32),
     BETTER_AUTH_URL: z.url(),
-    EXTENSION_IDS: z.string().optional(),
     DISCORD_CLIENT_ID: z.string().trim().optional(),
     DISCORD_CLIENT_SECRET: z.string().trim().optional(),
     GOOGLE_CLIENT_ID: z.string().trim().optional(),

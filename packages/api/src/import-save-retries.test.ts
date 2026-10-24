@@ -18,7 +18,11 @@ import {
 } from "vitest";
 import { pricing } from "./billing/policy";
 import { usageSummary } from "./billing/usage";
-import { importStatus, processNextImport, submitImport } from "./imports";
+import {
+  importStatus,
+  processNextImport,
+  submitWebsiteImport,
+} from "./imports";
 import { sampleRecipe } from "./recipes/fixtures";
 
 const owner = randomUUID();
@@ -276,12 +280,11 @@ it("stops after five failed saves, retains output and spent credits, and dedupli
   clock();
   const input = {
     id: randomUUID(),
-    content:
+    input:
       "Soup. Ingredients: onion and water. Simmer the onion in the water for twenty minutes.",
-    sourceUrl: "https://recipes.example/soup",
-    groupId: null,
+    householdId: null,
   };
-  await submitImport(owner, input);
+  await submitWebsiteImport(owner, input);
   const originalFingerprint = (await job(input.id)).fingerprint;
   await db
     .update(recipeImport)
@@ -313,7 +316,7 @@ it("stops after five failed saves, retains output and spent credits, and dedupli
     .update(recipeImport)
     .set({ fingerprint: originalFingerprint })
     .where(eq(recipeImport.id, input.id));
-  expect((await submitImport(owner, input)).kind).toBe("failed");
+  expect((await submitWebsiteImport(owner, input)).kind).toBe("failed");
   vi.setSystemTime(Date.now() + 86400000);
   expect(await processNextImport(generate)).toBe(false);
   expect(generate).toHaveBeenCalledTimes(1);
