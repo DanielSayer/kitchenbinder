@@ -13,12 +13,7 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 import { useHouseholdScope } from "@/components/households/household-context";
-import {
-  LargeTitle,
-  RecipeCover,
-  StickyCta,
-  undoToast,
-} from "@/components/pantry";
+import { RecipeCover, StickyCta, undoToast } from "@/components/pantry";
 import { PageBar } from "@/components/shell/page-bar";
 import { useTRPC, useTRPCClient } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
@@ -45,11 +40,12 @@ type Editor = {
 };
 const slotOrder = ["Breakfast", "Lunch", "Dinner", ""];
 
-function weekTitle(offset: number, start: string) {
+/** Relative name for nearby weeks; further out the date range is the title. */
+function weekTitle(offset: number) {
   if (offset === 0) return "This week";
   if (offset === 1) return "Next week";
   if (offset === -1) return "Last week";
-  return `Week of ${shortDate(start)}`;
+  return null;
 }
 
 export function MealPlanner({ recipeId }: { recipeId?: string }) {
@@ -137,7 +133,7 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
   const earlier = currentWeek
     ? days.filter((day) => day < today && mealsOn(day).length)
     : [];
-  const title = weekTitle(offset, week);
+  const relativeTitle = weekTitle(offset);
   const issuesFor = (id: string) =>
     query.data?.issues.filter((issue) => issue.id === id) ?? [];
 
@@ -277,30 +273,35 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
           >
             <ChevronLeft size={18} />
           </button>
-          <span className="plan-range" aria-live="polite">
-            {weekRangeLabel(week)}
-          </span>
-          <span className="plan-week-nav-end">
-            {!currentWeek && (
-              <button
-                type="button"
-                className="button button-small button-ghost"
-                onClick={() => setWeek(thisWeek)}
-              >
-                Today
-              </button>
+          <div className="plan-week-heading">
+            <h1 className="plan-week-title" aria-live="polite">
+              {relativeTitle ?? weekRangeLabel(week)}
+            </h1>
+            {(relativeTitle || !currentWeek) && (
+              <span className="plan-range">
+                {relativeTitle ? weekRangeLabel(week) : null}
+                {relativeTitle && !currentWeek ? " · " : null}
+                {currentWeek ? null : (
+                  <button
+                    type="button"
+                    className="plan-today"
+                    onClick={() => setWeek(thisWeek)}
+                  >
+                    {relativeTitle ? "This week" : "Back to this week"}
+                  </button>
+                )}
+              </span>
             )}
-            <button
-              type="button"
-              className="icon-button plan-nav-button"
-              aria-label="Next week"
-              onClick={() => setWeek(addDays(week, 7))}
-            >
-              <ChevronRight size={18} />
-            </button>
-          </span>
+          </div>
+          <button
+            type="button"
+            className="icon-button plan-nav-button"
+            aria-label="Next week"
+            onClick={() => setWeek(addDays(week, 7))}
+          >
+            <ChevronRight size={18} />
+          </button>
         </div>
-        <LargeTitle>{title}</LargeTitle>
         <ol className="plan-strip" aria-label="Days this week">
           {days.map((day) => (
             <li key={day}>

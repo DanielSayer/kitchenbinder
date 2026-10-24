@@ -11,11 +11,6 @@
   justify-content: space-between;
   gap: 8px;
 }
-.plan-week-nav-end {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
 .plan-nav-button {
   min-width: 40px;
   min-height: 40px;
@@ -23,14 +18,32 @@
   background: var(--card);
   border: 1px solid var(--line);
 }
-.plan-range {
-  font: 600 15px / 1.2 var(--sans);
-  color: var(--ink-2);
+.plan-week-heading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
   text-align: center;
 }
-.plan-page .pantry-title {
-  margin-top: 14px;
-  margin-bottom: 0;
+.plan-week-title {
+  margin: 0;
+  font: 800 22px / 1.15 var(--sans);
+  letter-spacing: -0.02em;
+}
+.plan-range {
+  font: 600 14px / 1.2 var(--sans);
+  color: var(--ink-2);
+}
+.plan-today {
+  padding: 8px 4px;
+  margin: -8px -4px;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--tomato);
+  cursor: pointer;
 }
 
 /* Day strip */
