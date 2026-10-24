@@ -501,78 +501,41 @@ ul.pantry-list {
   font-size: 14px;
   overflow-wrap: anywhere;
 }
-.you-plan {
-  position: relative;
-  overflow: hidden;
-  min-height: 180px;
-  margin-top: 18px;
-  padding: 18px;
-  border-radius: var(--r-l);
-  background: var(--ink);
-  color: var(--paper);
-}
-.you-plan::after {
-  content: "";
-  position: absolute;
-  top: -40px;
-  right: -40px;
-  width: 160px;
-  height: 160px;
-  border: 24px solid rgba(237, 185, 74, 0.15);
-  border-radius: 50%;
-  pointer-events: none;
-}
-.you-plan small {
-  color: var(--butter);
-  font: 700 11px / 1 var(--sans);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-.you-plan b {
-  display: block;
-  margin: 8px 0 10px;
-  font: 800 22px / 1.2 var(--sans);
-}
 .you-plan meter {
   display: block;
   width: 100%;
-  height: 6px;
+  height: 4px;
+  margin-top: 8px;
   border: 0;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+  background: var(--oat);
   appearance: none;
 }
 .you-plan meter::-webkit-meter-bar {
-  height: 6px;
+  height: 4px;
   border: 0;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+  background: var(--oat);
 }
 .you-plan meter::-webkit-meter-optimum-value,
 .you-plan meter::-webkit-meter-suboptimum-value,
 .you-plan meter::-webkit-meter-even-less-good-value {
-  border-radius: 3px;
+  border-radius: 2px;
   background: var(--butter);
 }
 .you-plan meter::-moz-meter-bar {
-  border-radius: 3px;
+  border-radius: 2px;
   background: var(--butter);
 }
-.you-plan p {
-  margin-top: 8px;
-  color: #d9c9b6;
-  font-size: 13px;
+.you-plan .pantry-row-icon {
+  background: var(--butter-soft);
+  color: var(--butter-ink);
 }
-.you-plan .you-plan-button {
-  position: relative;
-  z-index: 1;
-  min-height: 44px;
-  margin-top: 14px;
-  background: var(--butter);
-  color: var(--ink);
-}
-.you-plan .you-plan-button:hover:not(:disabled) {
-  background: #f3c868;
+.you-plan-upgrade {
+  flex: none;
+  color: var(--butter-ink);
+  font-size: 14px;
+  font-weight: 600;
 }
 .you-sign-out {
   margin-top: 18px;
