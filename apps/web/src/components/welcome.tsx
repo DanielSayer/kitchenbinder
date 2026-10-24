@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { BrandMark, type PantryTone, RecipeCover, toneColor } from "./pantry";
 
 /**
- * Welcome illustration: oat blobs, the ring spoon and two floating recipe
+ * Welcome illustration: oat blobs, the Punchline mark and two floating recipe
  * cards. `tone` tints the mark (e.g. an invited household's colour).
  */
 export function WelcomeArt({
