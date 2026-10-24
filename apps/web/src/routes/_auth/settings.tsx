@@ -1,3 +1,19 @@
+import { useQuery } from "@tanstack/react-query";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import {
+  ChevronRight,
+  CircleUserRound,
+  Download,
+  KeyRound,
+  LifeBuoy,
+  Plus,
+  Puzzle,
+  Shield,
+  Sparkles,
+  Tag,
+  Trash2,
+} from "lucide-react";
+import { type ReactNode, useState } from "react";
 import { Billing } from "@/components/billing";
 import { ConnectedExtensions } from "@/components/connected-extensions";
 import { ErrorNotice, LoadingState } from "@/components/feedback";
@@ -24,22 +40,6 @@ import { useSignOut } from "@/components/user-menu";
 import { getSupportContact } from "@/functions/get-support-contact";
 import { authClient } from "@/lib/auth-client";
 import { useTRPC } from "@/utils/trpc";
-import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import {
-  ChevronRight,
-  CircleUserRound,
-  Download,
-  KeyRound,
-  LifeBuoy,
-  Plus,
-  Puzzle,
-  Shield,
-  Sparkles,
-  Tag,
-  Trash2,
-} from "lucide-react";
-import { type ReactNode, useState } from "react";
 
 export const Route = createFileRoute("/_auth/settings")({
   loader: () => getSupportContact(),
