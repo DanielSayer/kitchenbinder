@@ -15,7 +15,7 @@ worker together after configuration changes.
 
 | Feature | Required configuration | Intentionally disabled behaviour |
 | --- | --- | --- |
-| Sign-in | HTTPS `BETTER_AUTH_URL` origin only, signing secret of at least 32 characters, at least one complete Google/Discord ID and secret pair | Provider-free development may view public pages. Production requires sign-in. Only configured providers appear on login, invitations, extension connection and linking. |
+| Sign-in | HTTPS `BETTER_AUTH_URL` origin only, signing secret of at least 32 characters, at least one complete Google/Discord ID and secret pair | Provider-free development may view public pages. Production requires sign-in. Only configured providers appear on login, invitations and linking. |
 | AI | Explicit `AI_ENABLED=true`, nonempty `OPENAI_API_KEY`, reviewed `OPENAI_MODEL` | `AI_ENABLED=false`, no key. Manual entry, existing recipes and generated checkpoint saves remain usable. New AI imports fail before admission/spend. |
 | Billing | Explicit `BILLING_MODE=sandbox` or `production`, exactly matching explicit `POLAR_SERVER`, token, product UUID and webhook secret | `BILLING_MODE=disabled`, no Polar credentials/product. Free usage and manual entry remain usable. Cached entitlements expire normally. This does not cancel subscriptions. |
 
@@ -58,9 +58,8 @@ Kitchenbinder production uses `https://kitchenbinder.app`. Register
 `https://kitchenbinder.app/api/auth/callback/discord`. Update provider application
 names and public links to Kitchenbinder. Preserve existing provider applications
 and account identities when rebranding. The
-[domain cutover checklist](kitchenbinder-rebrand.md) covers extension releases,
-support and billing destinations too. A staging deployment needs its own exact
-hostname and callbacks.
+[domain cutover checklist](kitchenbinder-rebrand.md) covers support and billing
+destinations too. A staging deployment needs its own exact hostname and callbacks.
 
 For the first private staging deployment, use a dedicated HTTPS subdomain of the
 chosen production domain, Google only, `AI_ENABLED=false` and
@@ -77,9 +76,9 @@ origin/consent screen and authorised test users with each provider. Never regist
 wildcards or substitute a synthetic session for this check.
 
 - [ ] Run the configuration check on web and worker settings for the exact image.
-- [ ] In a clean browser, check login, `/join` with a controlled invitation, and
-  `/connect-extension` when offered. Only enabled providers appear. In Settings,
-  only enabled providers can be linked. Repeat with Google-only and Discord-only
+- [ ] In a clean browser, check login and `/join` with a controlled invitation.
+  Only enabled providers appear and can be linked in Settings. Repeat with
+  Google-only and Discord-only
   staging configurations if both deployment variants will be supported.
 - [ ] Complete each enabled provider's real HTTPS login. Verify callback origin,
   final user and authorised redirect. Inspect session cookies for Secure,

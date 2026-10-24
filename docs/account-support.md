@@ -120,7 +120,7 @@ a new reference. A completed or cancelled reference cannot be processed again.
 Successful completion transfers or deletes owned households (above), deletes
 "Just me" with its plan and shopping list, removes every recipe not shared with a
 household, including Recently deleted, and the account. Foreign keys remove
-sessions, provider tokens, extension credentials, imports, collections, tags,
+sessions, provider tokens, imports, collections, tags,
 activity, memberships and support requests. Shared recipes keep their content and
 shares with the owner link removed; nobody can edit them, and they are removed if
 their last household is deleted. Shopping items they added remain without

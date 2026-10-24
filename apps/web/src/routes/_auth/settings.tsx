@@ -8,7 +8,6 @@ import {
   LifeBuoy,
   LogOut,
   Plus,
-  Puzzle,
   Shield,
   Sparkles,
   Tag,
@@ -16,7 +15,6 @@ import {
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Billing } from "@/components/billing";
-import { ConnectedExtensions } from "@/components/connected-extensions";
 import { ErrorNotice, LoadingState } from "@/components/feedback";
 import {
   useHousehold,
@@ -51,11 +49,10 @@ export const Route = createFileRoute("/_auth/settings")({
   component: You,
 });
 
-type YouSheet = "plan" | "extensions" | "accounts" | "help";
+type YouSheet = "plan" | "accounts" | "help";
 
 const sheetTitles: Record<YouSheet, string> = {
   plan: "Plan & billing",
-  extensions: "Browser extension",
   accounts: "Linked accounts",
   help: "Help & feedback",
 };
@@ -133,12 +130,6 @@ function You() {
           />
         </InstallButton>
         <YouRow
-          icon={<Puzzle size={20} />}
-          onClick={() => setSheet("extensions")}
-        >
-          Browser extension
-        </YouRow>
-        <YouRow
           icon={<KeyRound size={20} />}
           sub={providers || undefined}
           onClick={() => setSheet("accounts")}
@@ -180,7 +171,6 @@ function You() {
         className="you-sheet"
       >
         {sheet === "plan" && <Billing />}
-        {sheet === "extensions" && <ConnectedExtensions />}
         {sheet === "accounts" && <LinkedAccounts />}
         {sheet === "help" && (
           <div className="you-help">

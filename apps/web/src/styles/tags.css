@@ -502,13 +502,6 @@
   }
 }
 
-.connected-extensions {
-  margin-top: 40px;
-}
-.extension-id {
-  overflow-wrap: anywhere;
-}
-
 .settings-tabs button[aria-selected="true"] {
   background: var(--oat);
   border-color: var(--line);
@@ -526,9 +519,6 @@
 }
 .settings-panels {
   min-width: 0;
-}
-.settings-panels .connected-extensions {
-  margin-top: 0;
 }
 .settings-policy-heading {
   margin-bottom: 24px;

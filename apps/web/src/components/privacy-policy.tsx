@@ -17,7 +17,7 @@ export function PrivacyPolicy({ embedded = false }: { embedded?: boolean }) {
         </p>
       </section>
       <section className="help-section">
-        <Heading>Recipe capture and AI</Heading>
+        <Heading>Recipe imports and AI</Heading>
         <p>
           To import or generate recipes, we send your input and tag names and
           descriptions to OpenAI. Leave private information out of recipes and
@@ -25,16 +25,13 @@ export function PrivacyPolicy({ embedded = false }: { embedded?: boolean }) {
         </p>
         <p>
           For a pasted link, our server fetches the page and extracts recipe
-          content. The browser extension reads recipe content from the page you
-          choose to capture and sends that content and its source URL to
-          Kitchenbinder. It does not send your browsing history or browser
-          cookies. Check the capture preview before sending.
+          content.
         </p>
         <p>
-          Extension imports are stored with their input, source URL, processing
-          status and result so you can return to them. Saved recipes retain
-          their content and source link. Manually entering or editing a recipe
-          does not require AI processing.
+          Imports are stored with their source URL, processing status and result
+          so you can return to them. Input text is cleared after processing or
+          failure. Saved recipes retain their content and source link. Manually
+          entering or editing a recipe does not require AI processing.
         </p>
         <p>
           AI can make mistakes. Check ingredients, quantities and instructions
@@ -89,12 +86,12 @@ export function PrivacyPolicy({ embedded = false }: { embedded?: boolean }) {
         </p>
         <p>
           Account deletion removes your personal recipes, preferences, private
-          activity, imports, support reports, memberships, sessions and
-          extension connections from the live database. Recipes you contributed
-          to surviving groups stay in those groups with the account link
-          removed. Copies saved by other people remain. Names or personal
-          details written inside shared recipe text are not automatically
-          removed, so review those before requesting deletion.
+          activity, imports, support reports, memberships and sessions from the
+          live database. Recipes you contributed to surviving groups stay in
+          those groups with the account link removed. Copies saved by other
+          people remain. Names or personal details written inside shared recipe
+          text are not automatically removed, so review those before requesting
+          deletion.
         </p>
         <p>
           Deleting an account does not clear browser storage on your devices or

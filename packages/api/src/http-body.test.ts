@@ -181,7 +181,6 @@ describe("body admission before parsers", () => {
     for (const path of [
       "/api/auth/callback",
       "/api/polar/webhooks",
-      "/api/extensions/import",
       "/api/trpc/recipes.createManual",
     ]) {
       const result = await boundedRequest(

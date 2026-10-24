@@ -41,8 +41,8 @@ export function AccountControls() {
             from the live database.
           </li>
           <li>
-            Your sessions, extension connections, household memberships and your
-            "Just me" household are removed.
+            Your sessions, household memberships and your "Just me" household
+            are removed.
           </li>
           <li>
             Recipes you shared with a household stay there without an owner;

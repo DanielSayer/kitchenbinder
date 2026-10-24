@@ -8,7 +8,6 @@ pnpm check
 pnpm --filter web build
 pnpm check-types
 pnpm test
-pnpm package:extension
 ```
 
 `pnpm check` runs Biome without changing files. `pnpm check:fix` is the separate, explicit fixing command. Biome respects Git ignores and excludes generated outputs and the throwaway `prototypes` directory. Application code, tests, scripts and root configuration remain checked.
@@ -20,7 +19,6 @@ The root command checks `vitest.config.ts`, then runs every applicable package's
 | Package | Compiler inputs |
 | --- | --- |
 | `web` | Application source, tests, development helpers and Vite configuration |
-| `@prep-sheet/extension` | WXT configuration, build settings, application source and tests; `wxt prepare` generates browser types first |
 | `@prep-sheet/api` | All source TS/TSX, asset declarations and tests, including the production-server regression |
 | `@prep-sheet/auth` | All source and tests |
 | `@prep-sheet/db` | All source and tests, plus `drizzle.config.ts` |
@@ -28,7 +26,7 @@ The root command checks `vitest.config.ts`, then runs every applicable package's
 | `@prep-sheet/ui` | All source TS/TSX and any tests under `src` |
 | `@prep-sheet/config` | JSON-only package with shared compiler settings; consuming configurations validate it, so it has no TypeScript task |
 
-Adding a TypeScript workspace requires its own `check-types` script and a configuration that includes its tests. A Turbo package-in-scope message alone does not prove that a package ran a compiler task. The current run must report seven successful package tasks, with zero cached tasks, after the root compiler succeeds. See [Turbo's TypeScript guidance](https://turborepo.dev/docs/guides/tools/typescript).
+Adding a TypeScript workspace requires its own `check-types` script and a configuration that includes its tests. A Turbo package-in-scope message alone does not prove that a package ran a compiler task. The current run must report six successful package tasks, with zero cached tasks, after the root compiler succeeds. See [Turbo's TypeScript guidance](https://turborepo.dev/docs/guides/tools/typescript).
 
 ## CI behaviour
 
@@ -51,7 +49,7 @@ CI builds the Docker release and reruns migration, HTTP/PDF and worker tests aga
 the same isolated test wrapper. It disables external OAuth, AI and payment
 services. See [deployment](deployment.md) and [PDF packaging](pdf-production.md).
 
-CI separately builds the web production artifact and packages development extensions for Chrome and Edge. Those ZIPs use the local development origin and identity. A store release still requires the real HTTPS origin, public key and matching website extension IDs, followed by installed-browser verification. Use `pnpm --filter @prep-sheet/extension package:production` with the release settings for that separate step.
+CI builds the web production artifact before running TypeScript checks and tests.
 
 Make the `release-checks` job required in repository branch protection before relying on it to prevent merges. Trusted `master` runs publish the exact tested Docker image to GitHub Container Registry after all checks pass. Pull requests never publish. The image carries its full commit revision and is consumed by digest.
 
@@ -70,4 +68,4 @@ Local verification used Windows, Node 26.7.0, pnpm 11.21.0 and Docker 27.4.0:
 - Chrome and Edge development builds and ZIPs passed without cached package results.
 - Actionlint 1.7.12 accepted the workflow. At that point the hosted GitHub job had not run because those commits had not been pushed. This dated record does not describe the current candidate's hosted status; inspect the exact commit's release-checks run.
 
-P08's compiler and repository-check gaps are resolved. Production host acceptance, store extension release and the other production-readiness audit findings remain separate launch work.
+P08's compiler and repository-check gaps are resolved. Production host acceptance and the other production-readiness audit findings remain separate launch work.

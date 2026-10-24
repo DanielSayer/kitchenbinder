@@ -25,7 +25,6 @@ export default defineConfig({
     include: [
       "packages/**/*.test.ts",
       "apps/web/**/*.test.ts",
-      "apps/extension/**/*.test.ts",
       "deploy/**/*.test.mjs",
     ],
     testTimeout: 15000,

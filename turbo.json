@@ -1,41 +1,27 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "ui": "tui",
-  "globalDependencies": [
-    "apps/web/src/styles/brand.css",
-    "apps/web/public/branding/**"
-  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": ["dist/**", ".output/**"],
-      "env": ["WXT_PREP_SHEET_ORIGIN", "WXT_EXTENSION_PUBLIC_KEY"]
-    },
-    "package": {
-      "dependsOn": ["^build"],
-      "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [".output/**"],
-      "env": ["WXT_PREP_SHEET_ORIGIN", "WXT_EXTENSION_PUBLIC_KEY"]
+      "outputs": ["dist/**", ".output/**"]
     },
     "lint": {
       "dependsOn": ["^lint"]
     },
     "check-types": {
       "cache": false,
-      "dependsOn": ["^check-types"],
-      "env": ["WXT_PREP_SHEET_ORIGIN", "WXT_EXTENSION_PUBLIC_KEY"]
+      "dependsOn": ["^check-types"]
     },
     "dev": {
       "cache": false,
-      "persistent": true,
-      "env": ["WXT_PREP_SHEET_ORIGIN", "WXT_EXTENSION_PUBLIC_KEY"]
+      "persistent": true
     },
     "web#dev": {
       "with": ["@prep-sheet/api#dev"],
       "cache": false,
-      "persistent": true,
-      "env": ["WXT_PREP_SHEET_ORIGIN", "WXT_EXTENSION_PUBLIC_KEY"]
+      "persistent": true
     },
     "db:push": {
       "cache": false,
@@ -76,7 +62,6 @@
     "BETTER_AUTH_URL",
     "SUPPORT_EMAIL",
     "SUPPORT_OPERATOR",
-    "EXTENSION_IDS",
     "DISCORD_CLIENT_ID",
     "DISCORD_CLIENT_SECRET",
     "GOOGLE_CLIENT_ID",

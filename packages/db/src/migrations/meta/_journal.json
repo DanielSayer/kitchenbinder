@@ -71,6 +71,13 @@
       "when": 1792825615957,
       "tag": "0009_recipe_photo",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792844245792,
+      "tag": "0010_remove_browser_extension",
+      "breakpoints": true
     }
   ]
 }

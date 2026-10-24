@@ -93,7 +93,7 @@ Discord values unset. At least one complete sign-in provider is required.
 Choose `AI_ENABLED=true|false` and `BILLING_MODE=disabled|sandbox|production`
 explicitly. Enabled AI requires a key and the reviewed model. Enabled billing
 requires all Polar settings and an explicitly matching `POLAR_SERVER`.
-`EXTENSION_IDS` must match released extensions. `deploy/compose.yml` forwards
+`deploy/compose.yml` forwards
 these settings. Both runtime entry points reject unsafe provider configuration
 before accessing the database. Run `pnpm providers:check` with the intended
 runtime environment and complete the [provider acceptance workflow](provider-acceptance.md)
@@ -358,12 +358,21 @@ The combined release includes the manual-save and import-retry migrations
 after the unchanged baseline and collation migrations. Later schema changes
 must become new, uniquely numbered migrations with the Drizzle snapshot/journal
 updated by `pnpm db:generate`. Do not edit published migrations.
+
+Migration `0010_remove_browser_extension.sql` drops the retired browser
+extension's credentials, grants and rate-limit tables and makes website imports
+the default. Saved recipes and import history, including admitted jobs and
+checkpointed output, are preserved. Drain and stop both old processes before
+migrating, then start web and worker from the new image. The removed connection
+and import endpoints are no longer available. Remove `EXTENSION_IDS` from any
+existing deployment environment. Historical migration files remain unchanged.
+
 Include clean provisioning, existing-version
 upgrade, data preservation and web/worker compatibility checks with each change.
 Keep SQL unqualified or use Drizzle's quoted `"public".` references so the
 transactional comparison can replay it in an isolated verification schema.
-Data backfills and nontransactional operations need a reviewed runner extension;
-the present schema replay is intended for additive DDL.
+Data backfills and nontransactional operations need reviewed runner changes;
+the present schema replay supports transactional DDL.
 
 The combined image can adopt the supported unversioned installation directly
 while writers are stopped. Adoption applies the recorded additive upgrades and

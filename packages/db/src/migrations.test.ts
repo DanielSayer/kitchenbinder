@@ -158,7 +158,7 @@ it("provisions a clean database with ICU and preserves all data on repeated migr
           "SELECT count(*)::int AS total FROM prep_sheet_migration",
         )
       ).rows[0].total,
-    ).toBe(10);
+    ).toBe(11);
     expect(
       (
         await client.query(
@@ -844,3 +844,43 @@ it("keeps the published household SQL hashes unchanged", () => {
     expect(createHash("sha256").update(sql).digest("hex")).toBe(expected);
   }
 });
+
+it("removes browser credentials while preserving recipes and admitted imports", async () => {
+  await database(async (client, run) => {
+    await applyRecorded(client, [
+      ...migrationNames,
+      "0008_pantry_households.sql",
+      "0009_recipe_photo.sql",
+    ]);
+    await seed(client);
+    await client.query(`
+      INSERT INTO extension_credential(id,token_hash,user_id,extension_id,scope,expires_at)
+      VALUES ('old-credential','old-token-hash','migration-user','old-browser','recipes:import','2030-01-01');
+      INSERT INTO extension_grant(code_hash,user_id,extension_id,redirect_uri,challenge,state,expires_at)
+      VALUES ('old-code-hash','migration-user','old-browser','https://callback.test','challenge','state','2030-01-01');
+      INSERT INTO extension_rate(user_id,"window",requests) VALUES ('migration-user',now(),10);
+    `);
+    const before = await contents(client);
+    expect(run()).toContain("verified");
+    expect(run("--verify")).toContain("verified");
+    expect(await contents(client)).toEqual(before);
+    expect(
+      (
+        await client.query(`SELECT
+      to_regclass('public.extension_credential') AS credential,
+      to_regclass('public.extension_grant') AS grant,
+      to_regclass('public.extension_rate') AS rate
+    `)
+      ).rows,
+    ).toEqual([{ credential: null, grant: null, rate: null }]);
+    expect(
+      (
+        await client.query(`
+      INSERT INTO recipe_import(id,user_id,fingerprint,input)
+      VALUES ('00000000-0000-4000-8000-000000000010','migration-user','new-request','Soup')
+      RETURNING source_kind
+    `)
+      ).rows,
+    ).toEqual([{ source_kind: "website" }]);
+  });
+}, 60_000);

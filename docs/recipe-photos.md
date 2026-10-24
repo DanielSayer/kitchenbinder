@@ -8,7 +8,7 @@ placeholder cover. There are no user uploads and no backfill of existing recipes
 
 1. Candidates are collected without AI: the Recipe JSON-LD `image`, then
    `og:image`/`twitter:image`, then up to eight large `<img>` elements in
-   `article`/`main` (website imports) or the recipe card (extension captures).
+   `article`/`main` for website imports.
    At most ten, http(s) only, no credentials, no SVG or `data:` URLs.
 2. If the recipe metadata has an image, the first one is used. The AI is not asked.
 3. Otherwise the remaining candidates (URL, alt text, source) are appended to the
@@ -74,11 +74,6 @@ recipes keep their photo until the row is gone.
 If any of the five values is blank, photo copying and the sweep are skipped.
 `MEDIA_PUBLIC_URL` is baked into stored photo URLs. Changing it later needs a
 `recipe.photo` URL rewrite.
-
-## Release order
-
-The extension sends `images` with captures. The server must be deployed before
-an extension build that sends them, because older servers reject unknown fields.
 
 ## Local development
 

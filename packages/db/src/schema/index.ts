@@ -2,7 +2,6 @@ export * from "./auth";
 export * from "./auth-rate-limit";
 export * from "./billing";
 export * from "./collection";
-export * from "./extension";
 export * from "./household";
 export * from "./import";
 export * from "./meal-planner";

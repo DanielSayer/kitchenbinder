@@ -4,7 +4,6 @@ export const BODY_READ_TIMEOUT_MS = 15_000;
 export function bodyByteLimit(pathname) {
   if (pathname.startsWith("/api/trpc/")) return 1_572_864;
   if (pathname === "/api/polar/webhooks") return 262_144;
-  if (pathname.startsWith("/api/extensions/")) return 200_000;
   return 16_384;
 }
 
