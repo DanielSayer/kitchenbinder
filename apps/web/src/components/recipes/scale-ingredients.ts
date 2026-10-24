@@ -57,6 +57,13 @@ export function parseServings(servings: string | null | undefined) {
   return value > 0 && value <= 1000 ? value : null;
 }
 
+/** Readable servings label: bare numbers/ranges become "Serves 4"; "12 cookies" stays. */
+export function formatServings(servings: string | null | undefined) {
+  const text = servings?.trim();
+  if (!text) return null;
+  return /^\d+(\s*[-–]\s*\d+)?$/.test(text) ? `Serves ${text}` : text;
+}
+
 export function scaleIngredient(line: string, factor: number) {
   if (factor === 1) return line;
   const match = line.match(leading);

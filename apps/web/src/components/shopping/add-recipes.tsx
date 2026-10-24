@@ -15,6 +15,7 @@ import {
   recipePageSize,
   useRecipePage,
 } from "../recipes/pagination";
+import { formatServings } from "../recipes/scale-ingredients";
 
 export function AddRecipesButton({
   recipeIds,
@@ -247,7 +248,7 @@ export function RecipePicker({
                     {onList ? (
                       <small>On your list</small>
                     ) : recipe.servings ? (
-                      <small>{recipe.servings}</small>
+                      <small>{formatServings(recipe.servings)}</small>
                     ) : null}
                   </span>
                   <span className="pick-mark" aria-hidden="true">

@@ -26,6 +26,7 @@ import {
   recipePageSize,
   useRecipePage,
 } from "../recipes/pagination";
+import { formatServings } from "../recipes/scale-ingredients";
 import {
   dateLabel,
   dayOfMonth,
@@ -700,7 +701,9 @@ export function MealEditor({
                           {entry.ownerId === session?.user.id
                             ? "Your recipe"
                             : "Shared with you"}
-                          {entry.servings ? ` · ${entry.servings}` : ""}
+                          {entry.servings
+                            ? ` · ${formatServings(entry.servings)}`
+                            : ""}
                         </small>
                       </span>
                       <span className="pick-mark" aria-hidden="true" />
