@@ -19,27 +19,15 @@ export const imageCandidateSchema = z.strictObject({
   source: z.enum(["recipe", "page", "content"]),
 });
 export type ImageCandidate = z.infer<typeof imageCandidateSchema>;
-export const imageCandidatesSchema = z.array(imageCandidateSchema).max(10);
-export const importStatusSchema = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("queued"),
-    id: z.uuid(),
-    queuedForMs: z.number().nonnegative().optional(),
-  }),
-  z.object({
-    kind: z.literal("processing"),
-    id: z.uuid(),
-    stage: z.enum(["fetching", "generating", "saving"]).optional(),
-  }),
-  z.object({
-    kind: z.literal("saved"),
-    id: z.uuid(),
-    recipeId: z.uuid(),
-    title: z.string(),
-  }),
-  z.object({ kind: z.literal("failed"), id: z.uuid(), message: z.string() }),
-]);
-export type ImportStatus = z.infer<typeof importStatusSchema>;
+export type ImportStatus =
+  | { kind: "queued"; id: string; queuedForMs?: number }
+  | {
+      kind: "processing";
+      id: string;
+      stage?: "fetching" | "generating" | "saving";
+    }
+  | { kind: "saved"; id: string; recipeId: string; title: string }
+  | { kind: "failed"; id: string; message: string };
 export const websiteImportSchema = z.object({
   id: z.uuid(),
   input: z.string().trim().min(3).max(20000),
