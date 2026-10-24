@@ -538,8 +538,23 @@ ul.pantry-list {
   font-weight: 600;
 }
 .you-sign-out {
-  margin-top: 18px;
   color: var(--danger);
+}
+.you-sign-out-mobile {
+  margin-top: 18px;
+}
+.you-sign-out-desktop {
+  display: none;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+@media (min-width: 851px) {
+  .you-sign-out-mobile {
+    display: none;
+  }
+  .you-sign-out-desktop {
+    display: inline-flex;
+  }
 }
 .you-sign-out:hover:not(:disabled) {
   background: var(--tomato-soft);
