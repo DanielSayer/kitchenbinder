@@ -201,7 +201,7 @@
 }
 .billing-plan-identity h3 {
   margin: 0;
-  font-size: 24px;
+  font-size: 18px;
 }
 .billing-plan-badge {
   border-radius: 6px;
@@ -296,15 +296,18 @@
   font-weight: 600;
 }
 .billing-comparison {
-  border-bottom: 1px solid var(--line);
-  margin-top: 8px;
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
 }
 .billing-comparison > summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-height: 48px;
   list-style: none;
   font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
 }
 .billing-comparison > summary::-webkit-details-marker {
   display: none;
@@ -349,7 +352,7 @@
   margin-top: 28px;
 }
 .billing-section .pricing-faq h2 {
-  font-size: 18px;
+  font-size: 16px;
   margin-bottom: 4px;
 }
 .billing-section .pricing-faq summary {
