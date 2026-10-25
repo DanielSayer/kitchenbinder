@@ -18,6 +18,7 @@ import {
   Segmented,
   Sheet,
 } from "@/components/pantry";
+import { useWeekStartsOn } from "@/components/preferences";
 import { authClient } from "@/lib/auth-client";
 import { useTRPC } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
@@ -91,6 +92,7 @@ export function MealEditor({
   onRemove?: (meal: Meal) => void;
 }) {
   const trpc = useTRPC();
+  const weekStartsOn = useWeekStartsOn();
   const client = useQueryClient();
   const { data: session } = authClient.useSession();
   const key = `meal-draft:${session?.user.id ?? "guest"}:${duplicate ? "copy" : "edit"}:${meal?.id ?? date}`;
@@ -393,7 +395,7 @@ export function MealEditor({
           ? `Add ${dishName} to ${day}`
           : "Choose a dish";
   const radioName = `${formId}-dish`;
-  const days = weekDays(weekStart(draft.date));
+  const days = weekDays(weekStart(draft.date, weekStartsOn));
   return (
     <Sheet
       open={open}
