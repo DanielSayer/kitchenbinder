@@ -4,7 +4,7 @@ import { aiPolicy } from "@prep-sheet/env/ai-policy";
 export const pricing = {
   free: { recipes: 10, aiCredits: 3, createHousehold: false },
   pro: { recipes: null, aiCredits: 50, createHousehold: true },
-  trial: { days: 7, aiCredits: 3 },
+  trial: { days: 7, aiCredits: 10 },
   ai: {
     enabled: true,
     dailyAttemptsPerAccount: 50,
