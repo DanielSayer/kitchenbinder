@@ -9,9 +9,9 @@ export function addDays(value: string, days: number) {
   date.setDate(date.getDate() + days);
   return localDate(date);
 }
-export function weekStart(value: string) {
-  const day = noon(value).getDay();
-  return addDays(value, -(day === 0 ? 6 : day - 1));
+/** startsOn: 0 = Sunday ... 6 = Saturday, like Date#getDay. */
+export function weekStart(value: string, startsOn = 1) {
+  return addDays(value, -((noon(value).getDay() - startsOn + 7) % 7));
 }
 export function weekDays(start: string) {
   return Array.from({ length: 7 }, (_, index) => addDays(start, index));
@@ -45,8 +45,4 @@ export function weekRangeLabel(start: string) {
   if (first.getMonth() === last.getMonth())
     return `${first.getDate()} – ${last.toLocaleDateString("en-AU", { day: "numeric", month: "long" })}`;
   return `${shortDate(start)} – ${shortDate(end)}`;
-}
-/** Whole weeks between two Monday dates. */
-export function weeksBetween(from: string, to: string) {
-  return Math.round((noon(to).getTime() - noon(from).getTime()) / 604800000);
 }

@@ -609,3 +609,31 @@ ul.pantry-list {
   flex: none;
   color: var(--olive);
 }
+.preference-group {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.preference-group > legend {
+  padding: 0;
+}
+.preference-choice {
+  cursor: pointer;
+}
+.preference-choice + .preference-choice::before {
+  left: 16px;
+}
+.preference-choice:has(:focus-visible) {
+  outline: 2px solid var(--tomato);
+  outline-offset: -3px;
+}
+.preference-check {
+  flex: none;
+  color: var(--tomato);
+}
+.preference-hint {
+  display: block;
+  margin: 8px 4px 0;
+  color: var(--ink-3);
+}

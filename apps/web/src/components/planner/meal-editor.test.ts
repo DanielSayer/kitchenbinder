@@ -75,6 +75,14 @@ vi.mock("@/utils/trpc", () => ({
       },
       pathKey: () => ["planner"],
     },
+    preferences: {
+      get: {
+        queryOptions: () => ({
+          queryKey: ["preferences", "get"],
+          queryFn: async () => ({ weekStartsOn: 1 }),
+        }),
+      },
+    },
     shopping: {
       recipes: {
         queryOptions: () => ({
