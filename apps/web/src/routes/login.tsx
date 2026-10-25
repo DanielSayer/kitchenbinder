@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ErrorNotice } from "@/components/feedback";
+import { readPendingShare } from "@/components/home/shared-recipe";
 import { type SignInProvider, SocialSignIn } from "@/components/social-sign-in";
 import { WelcomeArt, WelcomeScreen } from "@/components/welcome";
 import { authClient } from "@/lib/auth-client";
@@ -18,6 +19,9 @@ export const Route = createFileRoute("/login")({
 function Login() {
   const { error: callbackError, billing } = Route.useSearch();
   const [pending, setPending] = useState<SignInProvider | null>(null);
+  // A recipe shared from another app while signed out.
+  const [shared, setShared] = useState(false);
+  useEffect(() => setShared(!!readPendingShare()), []);
   const [error, setError] = useState(() =>
     callbackError === "account_not_linked" ||
     callbackError === "account not linked"
@@ -42,7 +46,11 @@ function Login() {
     try {
       const result = await authClient.signIn.social({
         provider,
-        callbackURL: billing ? "/settings?billing=1" : "/",
+        callbackURL: billing
+          ? "/settings?billing=1"
+          : readPendingShare()
+            ? "/share"
+            : "/",
         errorCallbackURL: billing ? "/login?billing=1" : "/login",
       });
 
@@ -69,7 +77,9 @@ function Login() {
       lead={
         billing
           ? "Sign in to choose Pro and check if you can start a free trial."
-          : "Paste a link, some text, or just “nan’s pie”. We’ll do the tidying."
+          : shared
+            ? "Sign in and we'll add the recipe you shared."
+            : "Paste a link, some text, or just “nan’s pie”. We’ll do the tidying."
       }
       footer={
         <>
