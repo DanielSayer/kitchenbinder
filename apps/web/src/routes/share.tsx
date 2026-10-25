@@ -12,6 +12,10 @@ import {
   sharedRecipeInput,
   writePendingShare,
 } from "@/components/home/shared-recipe";
+import {
+  readSavedHousehold,
+  useHousehold,
+} from "@/components/households/household-context";
 import { authClient } from "@/lib/auth-client";
 
 const text = (value: unknown) =>
@@ -33,11 +37,14 @@ function Share() {
   const navigate = useNavigate();
   const { data: session, isPending } = authClient.useSession();
   const userId = session?.user.id;
+  const { households } = useHousehold();
   const handled = useRef(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (isPending || handled.current) return;
+    // The selected household must be checked against the user's households.
+    if (userId && households.isPending) return;
     handled.current = true;
     const input = sharedRecipeInput(search) ?? readPendingShare();
     if (!input) {
@@ -54,15 +61,27 @@ function Share() {
       return;
     }
     const key = importDraftKey(userId);
-    // Saved as "Just me"; the ready sheet can share it with a household.
-    const next = { id: crypto.randomUUID(), input, householdId: null };
+    // Read storage directly: the household selection loads after this effect.
+    // As in the composer, a household the user left or a personal one is "Just me".
+    const saved = readSavedHousehold(userId);
+    const household = households.data?.find((item) => item.id === saved);
+    const householdId =
+      households.data && (!household || household.personal) ? null : saved;
+    const next = { id: crypto.randomUUID(), input, householdId };
     if (!writeImportQueue(key, [...readImportQueue(key), next])) {
       setError("Couldn't add this recipe in this browser. Try again.");
       return;
     }
     writePendingShare(null);
     void navigate({ to: "/", replace: true });
-  }, [isPending, userId, search, navigate]);
+  }, [
+    isPending,
+    userId,
+    households.isPending,
+    households.data,
+    search,
+    navigate,
+  ]);
 
   return (
     <main id="main-content" className="page-width">

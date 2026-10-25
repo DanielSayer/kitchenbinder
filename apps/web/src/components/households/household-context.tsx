@@ -57,6 +57,17 @@ export function useHouseholdSheet() {
   return useContext(HouseholdSheetContext);
 }
 
+/** The household this user last selected, read straight from storage. */
+export function readSavedHousehold(userId: string) {
+  try {
+    const saved = localStorage.getItem(`prep-sheet-household:${userId}`);
+    return saved && /^[a-f0-9-]{36}$/i.test(saved) ? saved : null;
+  } catch {
+    /* Browsing with storage disabled still supports household switching. */
+    return null;
+  }
+}
+
 function Selection({
   children,
   userId,
@@ -67,12 +78,8 @@ function Selection({
   const [householdId, setHouseholdId] = useState<string | null>(null);
   useEffect(() => {
     if (!userId) return;
-    try {
-      const saved = localStorage.getItem(`prep-sheet-household:${userId}`);
-      if (saved && /^[a-f0-9-]{36}$/i.test(saved)) setHouseholdId(saved);
-    } catch {
-      /* Browsing with storage disabled still supports household switching. */
-    }
+    const saved = readSavedHousehold(userId);
+    if (saved) setHouseholdId(saved);
   }, [userId]);
   function selectHousehold(id: string | null) {
     setHouseholdId(id);
