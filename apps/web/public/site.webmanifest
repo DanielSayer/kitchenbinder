@@ -1,6 +1,6 @@
 {
-  "name": "Kitchenbinder",
-  "short_name": "Kitchenbinder",
+  "name": "kitchenbinder",
+  "short_name": "kitchenbinder",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f7f0e3",
@@ -24,5 +24,14 @@
       "type": "image/png",
       "purpose": "maskable"
     }
-  ]
+  ],
+  "share_target": {
+    "action": "/share",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
 }
