@@ -171,7 +171,7 @@ checkout as part of this checklist without separate explicit authorisation.
 | Check | Action and required result |
 | --- | --- |
 | Product and checkout | Inspect the configured product/organisation in sandbox. Compare advertised A$4.99/month, recurrence, tax presentation and seven-day trial terms with checkout. Complete authorised sandbox checkout and return to Settings. The signed-in user's external ID must match the customer; another product cannot grant Pro. |
-| Trial | Verify eligible trialing access, three lifetime trial credits and displayed end date. Abandoned issued checkout reserves trial eligibility. A later checkout/account refresh must not offer a second trial. Use the provider's supported sandbox lifecycle controls or wait for expiry. |
+| Trial | Verify eligible trialing access, ten lifetime trial credits and displayed end date. Abandoned issued checkout reserves trial eligibility. A later checkout/account refresh must not offer a second trial. Use the provider's supported sandbox lifecycle controls or wait for expiry. |
 | Conversion and renewal | Complete trial conversion and monthly renewal in sandbox. Check active status, verified period end, 50 credits per UTC calendar month and no duplicate subscription on repeated checkout. Record actual events/state; a mocked timestamp is not provider evidence. |
 | Coupon | Use a sandbox recurring 100% coupon. Confirm price and active Pro access with unchanged AI caps. Check finite/expired/invalid coupon handling as applicable. |
 | Cancellation | Cancel at period end. Pro remains until verified expiry and then returns to remaining Free usage without deleting recipes. No new trial. |
