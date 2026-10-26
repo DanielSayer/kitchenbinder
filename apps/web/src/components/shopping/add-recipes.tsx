@@ -1,7 +1,12 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Check, Search, ShoppingBasket } from "lucide-react";
-import { useDeferredValue, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   useHousehold,
@@ -16,6 +21,7 @@ import {
   useRecipePage,
 } from "../recipes/pagination";
 import { formatServings } from "../recipes/scale-ingredients";
+import { useDebouncedValue } from "../use-debounced-value";
 
 export function AddRecipesButton({
   recipeIds,
@@ -101,17 +107,20 @@ export function RecipePicker({
   const collections = useQuery(trpc.collections.list.queryOptions());
   const list = useQuery(trpc.shopping.list.queryOptions({ householdId }));
   const [query, setQuery] = useState("");
-  const search = useDeferredValue(query);
+  const search = useDebouncedValue(query);
   const searchInput = useRef<HTMLInputElement>(null);
   const [collection, setCollection] = useState("all");
   const { page, setPage } = useRecipePage(JSON.stringify([search, collection]));
   const recipes = useQuery(
-    trpc.shopping.recipes.queryOptions({
-      search,
-      collectionId: collection === "all" ? undefined : collection,
-      page,
-      pageSize: recipePageSize,
-    }),
+    trpc.shopping.recipes.queryOptions(
+      {
+        search,
+        collectionId: collection === "all" ? undefined : collection,
+        page,
+        pageSize: recipePageSize,
+      },
+      { placeholderData: keepPreviousData },
+    ),
   );
   const [selected, setSelected] = useState<string[]>([]);
   const existing = new Set(list.data?.map((item) => item.recipeId));
