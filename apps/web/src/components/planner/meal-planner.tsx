@@ -14,6 +14,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { useHouseholdScope } from "@/components/households/household-context";
 import { RecipeCover, StickyCta, undoToast } from "@/components/pantry";
+import { useWeekStartsOn } from "@/components/preferences";
 import { PageBar } from "@/components/shell/page-bar";
 import { useTRPC, useTRPCClient } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
@@ -26,7 +27,6 @@ import {
   weekday,
   weekRangeLabel,
   weekStart,
-  weeksBetween,
 } from "./dates";
 import { MealEditor } from "./meal-editor";
 import { MealListNotice, mealTitle, PlanShop } from "./plan-shop";
@@ -55,8 +55,10 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
   const client = useQueryClient();
   const query = useQuery(trpc.planner.get.queryOptions({ householdId }));
   const today = localDate();
-  const thisWeek = weekStart(today);
-  const [week, setWeek] = useState(thisWeek);
+  const thisWeek = weekStart(today, useWeekStartsOn());
+  // Relative, so a late-loading week start preference still lands on this week.
+  const [offset, setOffset] = useState(0);
+  const week = addDays(thisWeek, offset * 7);
   const [editor, setEditor] = useState<Editor | null>(
     recipeId ? { key: 0, date: today, recipeId } : null,
   );
@@ -116,7 +118,6 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
       },
     );
   };
-  const offset = weeksBetween(thisWeek, week);
   const days = weekDays(week);
   const meals = (query.data?.meals ?? []).filter(
     (meal) => !removing.has(meal.id),
@@ -270,7 +271,7 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
             type="button"
             className="icon-button plan-nav-button"
             aria-label="Previous week"
-            onClick={() => setWeek(addDays(week, -7))}
+            onClick={() => setOffset(offset - 1)}
           >
             <ChevronLeft size={18} />
           </button>
@@ -286,7 +287,7 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
                   <button
                     type="button"
                     className="plan-today"
-                    onClick={() => setWeek(thisWeek)}
+                    onClick={() => setOffset(0)}
                   >
                     {relativeTitle ? "This week" : "Back to this week"}
                   </button>
@@ -298,7 +299,7 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
             type="button"
             className="icon-button plan-nav-button"
             aria-label="Next week"
-            onClick={() => setWeek(addDays(week, 7))}
+            onClick={() => setOffset(offset + 1)}
           >
             <ChevronRight size={18} />
           </button>

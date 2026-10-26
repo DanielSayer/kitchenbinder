@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allowance, pricing } from "./policy";
+import { allowance } from "./policy";
 
 describe("plan allowances", () => {
   const now = new Date("2026-12-31T23:59:59Z");
@@ -28,7 +28,7 @@ describe("plan allowances", () => {
       tier: "pro",
       bucket: "trial",
       since: null,
-      credits: pricing.trial.aiCredits,
+      credits: 10,
     });
     expect(allowance("trialing", later, later).tier).toBe("free");
   });
