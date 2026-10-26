@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { getRouteApi, Link } from "@tanstack/react-router";
 import {
   ArrowUpDown,
@@ -63,6 +63,7 @@ import { useLibraryView } from "./use-library-view";
 const collectionRoute = getRouteApi("/_auth/recipes/");
 const allTab = "all";
 const longPressMs = 500;
+const searchDebounceMs = 250;
 const plural = (count: number) =>
   `${count} ${count === 1 ? "recipe" : "recipes"}`;
 
@@ -184,7 +185,10 @@ export function Collection() {
   const query = useQuery(
     trpc.recipes.list.queryOptions(
       { ...listFilters, page, pageSize: recipePageSize },
-      { enabled: tags.isSuccess && !waitingForCollection },
+      {
+        enabled: tags.isSuccess && !waitingForCollection,
+        placeholderData: keepPreviousData,
+      },
     ),
   );
   const filterCount =
@@ -232,6 +236,23 @@ export function Collection() {
       replace: true,
       resetScroll: false,
     });
+
+  // The input stays instant; the URL (and so the query) follows a typing pause.
+  const [searchText, setSearchText] = useState(search);
+  const searchTimer = useRef<number | undefined>(undefined);
+  const typeSearch = (text: string) => {
+    setSearchText(text);
+    window.clearTimeout(searchTimer.current);
+    searchTimer.current = window.setTimeout(() => {
+      searchTimer.current = undefined;
+      updateFilters({ q: text || undefined });
+    }, searchDebounceMs);
+  };
+  useEffect(() => () => window.clearTimeout(searchTimer.current), []);
+  // Clearing filters or navigating back changes the URL out from under the input.
+  useEffect(() => {
+    if (searchTimer.current === undefined) setSearchText(search);
+  }, [search]);
   const clearFilters = () =>
     updateFilters({
       favourites: undefined,
@@ -402,10 +423,8 @@ export function Collection() {
             <span className="pantry-visually-hidden">Search recipes</span>
             <input
               type="search"
-              value={search}
-              onChange={(event) =>
-                updateFilters({ q: event.target.value || undefined })
-              }
+              value={searchText}
+              onChange={(event) => typeSearch(event.target.value)}
               placeholder="Search names or ingredients"
             />
           </label>
