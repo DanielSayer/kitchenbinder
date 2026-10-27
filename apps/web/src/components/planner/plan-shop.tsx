@@ -9,6 +9,7 @@ import { RefreshCw, ShoppingBasket } from "lucide-react";
 import { useId, useState } from "react";
 import { useHouseholdScope } from "@/components/households/household-context";
 import { Sheet } from "@/components/pantry";
+import { useWeekStartsOn } from "@/components/preferences";
 import { useTRPC } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
 import { addDays, localDate, shortDate, weekday, weekStart } from "./dates";
@@ -80,11 +81,12 @@ export function PlanShop({
   const navigate = useNavigate();
   const planner = useQuery(trpc.planner.get.queryOptions({ householdId }));
   const datesId = useId();
+  const thisWeek = weekStart(localDate(), useWeekStartsOn());
   const [coverage, setCoverage] = useState<Coverage>(
     initial ?? {
-      shoppingDate: weekStart(localDate()),
-      start: weekStart(localDate()),
-      end: addDays(weekStart(localDate()), 6),
+      shoppingDate: thisWeek,
+      start: thisWeek,
+      end: addDays(thisWeek, 6),
     },
   );
   const [changeDates, setChangeDates] = useState(false);

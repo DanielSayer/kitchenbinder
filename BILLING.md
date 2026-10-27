@@ -4,7 +4,7 @@
 
 Edit `packages/api/src/billing/policy.ts` for recipe limits, AI credits, household permissions, trial duration, queue limits and the service AI cutoff. Restart both the web app and import worker after changing it. Free and Pro are the only tiers. A trial uses Pro features with a separate, lifetime trial credit allowance.
 
-Defaults are 10 recipes and 3 lifetime AI credits for Free, unlimited recipes and 50 monthly AI credits for Pro, and a 7-day trial with 3 total credits. Pro credits reset on the first of each calendar month at 00:00 UTC, independently of the payment date. Unused credits do not roll over. Coupons, including 100% discounts, never bypass these limits.
+Defaults are 10 recipes and 3 lifetime AI credits for Free, unlimited recipes and 50 monthly AI credits for Pro, and a 7-day trial with 10 total credits. Pro credits reset on the first of each calendar month at 00:00 UTC, independently of the payment date. Unused credits do not roll over. Coupons, including 100% discounts, never bypass these limits.
 
 The public pricing page advertises A$4.99/month with a 7-day trial. Configure the Polar monthly product to match before enabling checkout. Updating the UI does not change the Polar product.
 
