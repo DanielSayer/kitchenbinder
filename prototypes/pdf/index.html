@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>PDF style prototypes</title>
+<style>
+body{margin:0;font:14px/1.4 system-ui,sans-serif;background:#eee3cf;color:#2b1d14}
+header{display:flex;gap:16px;align-items:center;padding:12px 20px}
+header button{padding:6px 14px;border-radius:999px;border:1px solid #c9b79b;background:#fffbf4;cursor:pointer}
+header button[aria-pressed=true]{background:#c2412d;color:#fff7ee;border-color:#c2412d}
+main{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:0 12px 12px;height:calc(100vh - 60px)}
+section{display:flex;flex-direction:column;min-width:0}
+h2{font-size:14px;margin:0 0 6px}
+iframe{flex:1;border:0;background:#fff;width:100%}
+</style>
+</head>
+<body>
+<header>
+  <b>Kitchenbinder PDF prototypes</b>
+  <button data-r="short" aria-pressed="true">Short recipe</button>
+  <button data-r="long" aria-pressed="false">Long recipe (2 pages)</button>
+</header>
+<main>
+  <section><h2>D · Binder + Pantry (combined)</h2><iframe data-v="d"></iframe></section>
+  <section><h2>B · Binder page</h2><iframe data-v="b"></iframe></section>
+  <section><h2>C · Pantry label</h2><iframe data-v="c"></iframe></section>
+</main>
+<script>
+const show=r=>{
+  document.querySelectorAll("iframe").forEach(f=>f.src=`out/${f.dataset.v}-${r}.pdf#view=FitH`);
+  document.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.r===r));
+};
+document.querySelectorAll("button").forEach(b=>b.onclick=()=>show(b.dataset.r));
+show("short");
+</script>
+</body>
+</html>
