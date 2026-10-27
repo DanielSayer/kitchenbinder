@@ -1,4 +1,5 @@
 import nunitoRegular from "@fontsource/nunito/files/nunito-latin-400-normal.woff?inline";
+import nunitoSemiBold from "@fontsource/nunito/files/nunito-latin-700-normal.woff?inline";
 import nunitoBold from "@fontsource/nunito/files/nunito-latin-800-normal.woff?inline";
 import type { RecipeContent } from "@prep-sheet/db/recipe-content";
 import {
@@ -7,8 +8,10 @@ import {
   Image,
   Link,
   Page,
+  Path,
   renderToBuffer,
   StyleSheet,
+  Svg,
   Text,
   View,
 } from "@react-pdf/renderer";
@@ -22,6 +25,10 @@ Font.register({
       fontWeight: 400,
     },
     {
+      src: nunitoSemiBold,
+      fontWeight: 700,
+    },
+    {
       src: nunitoBold,
       fontWeight: 800,
     },
@@ -29,99 +36,139 @@ Font.register({
 });
 Font.registerHyphenationCallback((word) => [word]);
 
+// Pantry tokens (DESIGN.md). Mostly white page so it is cheap to print.
+const ink = "#2b1d14";
+const ink2 = "#6e5a49";
+const ink3 = "#a08b77";
+const line = "#e3d5be";
+const rule = "#cfd8e3";
+const tomato = "#c2412d";
+const olive = "#5e6b2f";
+
+// lineHeight on Page stops render() page numbers drawing, so body text
+// sets it per style. A percentage needs an explicit fontSize alongside it.
+const body = { fontSize: 10.5, lineHeight: "145%" };
+
 const s = StyleSheet.create({
   page: {
-    paddingTop: 32,
-    paddingLeft: 34,
-    paddingRight: 34,
-    paddingBottom: 36,
+    paddingTop: 40,
+    paddingLeft: 80,
+    paddingRight: 40,
+    paddingBottom: 52,
     fontFamily: "Nunito",
     fontSize: 10.5,
-    color: "#334451",
-    lineHeight: 1.4,
+    color: ink,
   },
-  brand: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 22,
-    gap: 9,
+  margin: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 58,
+    borderLeftWidth: 0.9,
+    borderLeftColor: tomato,
   },
-  brandLogo: { width: 150, height: 50, objectFit: "contain" },
+  hole: {
+    position: "absolute",
+    left: 22,
+    width: 15,
+    height: 15,
+    borderRadius: 7.5,
+    borderWidth: 0.9,
+    borderColor: line,
+  },
+  brandLogo: { width: 100, height: 18, objectFit: "contain", marginTop: 4 },
   title: {
-    fontSize: 30,
+    fontSize: 28,
     fontWeight: 800,
-    color: "#063338",
-    lineHeight: 1.12,
-    marginBottom: 10,
-  },
-  description: { fontSize: 12, color: "#63747b", marginBottom: 16 },
-  meta: {
-    flexDirection: "row",
-    backgroundColor: "#eff3ee",
-    paddingVertical: 13,
+    lineHeight: 1.1,
+    letterSpacing: -0.4,
+    marginTop: 24,
     marginBottom: 6,
-    borderRadius: 10,
   },
-  metaItem: { flex: 1, paddingHorizontal: 20 },
-  metaDivider: { borderLeftWidth: 0.5, borderLeftColor: "#9eafaa" },
-  metaLabel: { fontSize: 10, color: "#334451" },
-  metaValue: { fontSize: 14, fontWeight: 800, color: "#063338" },
+  description: { ...body, fontSize: 11.5, color: ink2, marginBottom: 14 },
+  meta: { flexDirection: "row", gap: 8, marginTop: 4, marginBottom: 26 },
+  metaItem: {
+    flex: 1,
+    borderWidth: 0.9,
+    borderColor: line,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  metaLabel: {
+    fontSize: 7.5,
+    fontWeight: 700,
+    letterSpacing: 1.1,
+    textTransform: "uppercase",
+    color: ink3,
+  },
+  metaValue: { fontSize: 15, fontWeight: 800 },
   heading: {
     fontSize: 20,
-    color: "#063338",
     fontWeight: 800,
-    marginTop: 16,
-    marginBottom: 16,
+    letterSpacing: -0.4,
+    marginBottom: 12,
   },
   ingredientRow: { flexDirection: "row", gap: 22 },
-  ingredient: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: 7,
-    gap: 10,
-  },
+  ingredient: { flex: 1, flexDirection: "row", gap: 9, marginBottom: 8 },
   checkbox: {
-    width: 11,
-    height: 11,
+    width: 10,
+    height: 10,
     marginTop: 2,
-    borderWidth: 0.7,
-    borderColor: "#164449",
-    borderRadius: 2,
+    borderWidth: 1,
+    borderColor: olive,
+    borderRadius: 3,
   },
-  ingredientText: { flex: 1 },
-  step: { flexDirection: "row", marginBottom: 13, gap: 12 },
+  ingredientText: { ...body, flex: 1 },
+  step: { flexDirection: "row", gap: 14, marginBottom: 14 },
   number: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: "#dce7d6",
-    textAlign: "center",
-    paddingTop: 3,
-    fontSize: 14,
+    width: 28,
+    fontSize: 16,
     fontWeight: 800,
-    color: "#063338",
+    color: tomato,
+    lineHeight: 1,
+    marginTop: -2,
   },
-  stepText: { flex: 1 },
-  note: {
-    marginTop: 8,
-    padding: 12,
-    backgroundColor: "#fff5dd",
-    borderRadius: 8,
-  },
-  noteHeading: {
-    fontSize: 13,
-    fontWeight: 800,
-    color: "#063338",
-    marginBottom: 5,
-  },
-  noteLine: {
-    height: 18,
+  stepText: { ...body, flex: 1, fontSize: 11 },
+  notes: { marginTop: 20 },
+  notesHeading: { fontSize: 15, fontWeight: 800, marginBottom: 2 },
+  notesText: {
+    fontSize: 10.5,
+    lineHeight: 2,
     borderBottomWidth: 0.5,
-    borderBottomColor: "#d6cdb6",
+    borderBottomColor: rule,
   },
-  source: { fontSize: 9, marginTop: 20, color: "#5f665c" },
+  noteLine: { height: 21, borderBottomWidth: 0.5, borderBottomColor: rule },
+  source: { fontSize: 8.5, color: ink3, marginTop: 12 },
+  sourceLink: { color: ink2 },
+  footer: {
+    position: "absolute",
+    left: 80,
+    right: 40,
+    bottom: 22,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    fontSize: 8,
+    color: ink3,
+  },
+  pageNumber: {
+    position: "absolute",
+    right: 40,
+    bottom: 22,
+    width: 80,
+    textAlign: "right",
+    fontSize: 8,
+    color: ink3,
+  },
 });
+
+function minutes(value: number | null) {
+  if (value === null) return null;
+  if (value < 60) return `${value} min`;
+  const hours = Math.floor(value / 60);
+  return value % 60 ? `${hours} h ${value % 60} min` : `${hours} h`;
+}
 
 export async function recipePdf(
   content: RecipeContent,
@@ -130,38 +177,28 @@ export async function recipePdf(
 ) {
   const meta = [
     { label: "Serves", value: content.servings },
-    {
-      label: "Prep time",
-      value: content.prepMinutes !== null ? `${content.prepMinutes} min` : null,
-    },
-    {
-      label: "Cook time",
-      value: content.cookMinutes !== null ? `${content.cookMinutes} min` : null,
-    },
-    {
-      label: "Elapsed time",
-      value:
-        content.totalMinutes != null ? `${content.totalMinutes} min` : null,
-    },
+    { label: "Prep", value: minutes(content.prepMinutes) },
+    { label: "Cook", value: minutes(content.cookMinutes) },
+    { label: "Total", value: minutes(content.totalMinutes) },
   ].filter((item) => item.value !== null && item.value !== "");
   const columnLength = Math.ceil(content.ingredients.length / 2);
   return renderToBuffer(
     <Document title={content.title} author="Kitchenbinder">
       <Page size="A4" style={s.page}>
-        <View style={s.brand}>
-          <Image src={logo} style={s.brandLogo} />
-        </View>
+        {/* Loose-leaf binder page: margin rule and punched holes. */}
+        <View style={s.margin} fixed />
+        {[120, 421, 722].map((top) => (
+          <View key={top} style={[s.hole, { top }]} fixed />
+        ))}
+        <Image src={logo} style={s.brandLogo} />
         <Text style={s.title}>{content.title}</Text>
         {content.description && (
           <Text style={s.description}>{content.description}</Text>
         )}
         {meta.length > 0 && (
           <View style={s.meta} wrap={false}>
-            {meta.map((item, index) => (
-              <View
-                key={item.label}
-                style={index > 0 ? [s.metaItem, s.metaDivider] : s.metaItem}
-              >
+            {meta.map((item) => (
+              <View key={item.label} style={s.metaItem}>
                 <Text style={s.metaLabel}>{item.label}</Text>
                 <Text style={s.metaValue}>{item.value}</Text>
               </View>
@@ -187,18 +224,28 @@ export async function recipePdf(
             )}
           </View>
         ))}
-        <Text style={s.heading} minPresenceAhead={50}>
-          Let's make it
+        <Text style={[s.heading, { marginTop: 16 }]} minPresenceAhead={50}>
+          Method
         </Text>
         {content.steps.map((step, index) => (
           <View key={`${index}-${step}`} style={s.step} wrap={false}>
-            <Text style={s.number}>{index + 1}</Text>
+            <Text style={s.number}>{String(index + 1).padStart(2, "0")}</Text>
             <Text style={s.stepText}>{step}</Text>
           </View>
         ))}
+        <View style={s.notes} wrap={false}>
+          <Text style={s.notesHeading}>Kitchen notes</Text>
+          {content.notes && <Text style={s.notesText}>{content.notes}</Text>}
+          <View style={s.noteLine} />
+          <View style={s.noteLine} />
+          {!content.notes && <View style={s.noteLine} />}
+        </View>
         {sourceUrl && (
           <Text style={s.source}>
-            Original recipe: <Link src={sourceUrl}>{sourceUrl}</Link>
+            Original recipe:{" "}
+            <Link src={sourceUrl} style={s.sourceLink}>
+              {sourceUrl}
+            </Link>
           </Text>
         )}
         {origin === "generated" && (
@@ -207,19 +254,23 @@ export async function recipePdf(
             cooking.
           </Text>
         )}
-        <View style={s.note}>
-          <Text style={s.noteHeading} minPresenceAhead={36}>
-            Kitchen notes
-          </Text>
-          {content.notes ? (
-            <Text>{content.notes}</Text>
-          ) : (
-            <View wrap={false}>
-              <View style={s.noteLine} />
-              <View style={s.noteLine} />
-            </View>
-          )}
+        <View style={s.footer} fixed>
+          <Svg viewBox="0 0 64 64" style={{ width: 10, height: 10 }}>
+            <Path
+              fill={tomato}
+              fillRule="evenodd"
+              d="M10 13Q10 6 17 6H21Q28 6 28 13V29L42 17Q46 13 50 16L52 18Q55 21 51 25L39 35L53 49Q58 54 53 57Q49 61 44 56L28 40V51Q28 58 21 58H17Q10 58 10 51ZM23.5 20a4.5 4.5 0 1 0 -9.0 0a4.5 4.5 0 1 0 9.0 0ZM23.5 44a4.5 4.5 0 1 0 -9.0 0a4.5 4.5 0 1 0 9.0 0Z"
+            />
+          </Svg>
+          <Text>kitchenbinder.app</Text>
         </View>
+        <Text
+          style={s.pageNumber}
+          fixed
+          render={({ pageNumber, totalPages }) =>
+            totalPages > 1 ? `Page ${pageNumber} of ${totalPages}` : ""
+          }
+        />
       </Page>
     </Document>,
   );
