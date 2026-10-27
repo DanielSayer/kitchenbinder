@@ -78,6 +78,13 @@
       "when": 1792844245792,
       "tag": "0010_remove_browser_extension",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792898997761,
+      "tag": "0011_user_preference",
+      "breakpoints": true
     }
   ]
 }

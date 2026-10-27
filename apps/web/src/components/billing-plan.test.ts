@@ -25,7 +25,7 @@ const free: Plan = {
   pricing: {
     free: { recipes: 10, aiCredits: 3, createHousehold: false },
     pro: { recipes: null, aiCredits: 50, createHousehold: true },
-    trial: { days: 7, aiCredits: 3 },
+    trial: { days: 7, aiCredits: 10 },
     ai: {
       enabled: true,
       dailyAttemptsPerAccount: 50,
@@ -72,6 +72,7 @@ it("gives unlimited trial storage no meter and distinguishes its credit allowanc
     tier: "pro",
     bucket: "trial",
     recipes: null,
+    credits: 10,
     createHousehold: true,
     saved: 34,
     used: 0,
@@ -80,8 +81,11 @@ it("gives unlimited trial storage no meter and distinguishes its credit allowanc
   expect(screen.queryByRole("meter", { name: "Recipes" })).toBeNull();
   expect(
     screen.getByRole("meter", { name: "AI credits" }).getAttribute("max"),
-  ).toBe("3");
+  ).toBe("10");
   expect(screen.getByText("Trial allowance")).toBeTruthy();
+  expect(
+    screen.getByText("The 7-day Pro trial includes 10 AI credits total."),
+  ).toBeTruthy();
   expect(screen.queryByText(/Resets/)).toBeNull();
 });
 
@@ -91,6 +95,7 @@ it("shows cancellation instead of trial renewal copy and ignores stale Free canc
     tier: "pro",
     bucket: "trial",
     recipes: null,
+    credits: 10,
     createHousehold: true,
     cancelAtPeriodEnd: true,
     validUntil: "2026-10-26T00:00:00.000Z",

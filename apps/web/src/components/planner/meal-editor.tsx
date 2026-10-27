@@ -1,15 +1,13 @@
 import type { Meal } from "@prep-sheet/db/meal-planner";
 import { mealInput } from "@prep-sheet/db/meal-planner";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { NotebookPen, RotateCcw, Search } from "lucide-react";
 import {
-  useCallback,
-  useDeferredValue,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-} from "react";
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { NotebookPen, RotateCcw, Search } from "lucide-react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useHousehold } from "@/components/households/household-context";
 import {
   Chip,
@@ -18,6 +16,7 @@ import {
   Segmented,
   Sheet,
 } from "@/components/pantry";
+import { useWeekStartsOn } from "@/components/preferences";
 import { authClient } from "@/lib/auth-client";
 import { useTRPC } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
@@ -27,6 +26,7 @@ import {
   useRecipePage,
 } from "../recipes/pagination";
 import { formatServings } from "../recipes/scale-ingredients";
+import { useDebouncedValue } from "../use-debounced-value";
 import {
   dateLabel,
   dayOfMonth,
@@ -91,6 +91,7 @@ export function MealEditor({
   onRemove?: (meal: Meal) => void;
 }) {
   const trpc = useTRPC();
+  const weekStartsOn = useWeekStartsOn();
   const client = useQueryClient();
   const { data: session } = authClient.useSession();
   const key = `meal-draft:${session?.user.id ?? "guest"}:${duplicate ? "copy" : "edit"}:${meal?.id ?? date}`;
@@ -148,19 +149,22 @@ export function MealEditor({
   const [query, setQuery] = useState(() =>
     draft.kind === "out" ? draft.description : "",
   );
-  const search = useDeferredValue(query.trim());
+  const search = useDebouncedValue(query.trim());
   const [detailsOpen, setDetailsOpen] = useState(
     Boolean(meal) || Boolean(recipeId),
   );
   const [collection, setCollection] = useState("all");
   const { page, setPage } = useRecipePage(JSON.stringify([search, collection]));
   const recipes = useQuery(
-    trpc.shopping.recipes.queryOptions({
-      search,
-      collectionId: collection === "all" ? undefined : collection,
-      page,
-      pageSize: recipePageSize,
-    }),
+    trpc.shopping.recipes.queryOptions(
+      {
+        search,
+        collectionId: collection === "all" ? undefined : collection,
+        page,
+        pageSize: recipePageSize,
+      },
+      { placeholderData: keepPreviousData },
+    ),
   );
   const selected = useQuery(
     trpc.shopping.recipe.queryOptions(
@@ -393,7 +397,7 @@ export function MealEditor({
           ? `Add ${dishName} to ${day}`
           : "Choose a dish";
   const radioName = `${formId}-dish`;
-  const days = weekDays(weekStart(draft.date));
+  const days = weekDays(weekStart(draft.date, weekStartsOn));
   return (
     <Sheet
       open={open}

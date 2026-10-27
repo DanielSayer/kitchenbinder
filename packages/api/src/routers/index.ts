@@ -4,6 +4,7 @@ import { billingRouter } from "./billing";
 import { collectionsRouter } from "./collections";
 import { householdsRouter } from "./households";
 import { plannerRouter } from "./planner";
+import { preferencesRouter } from "./preferences";
 import { recipesRouter } from "./recipes";
 import { shoppingRouter } from "./shopping";
 import { supportRouter } from "./support";
@@ -18,6 +19,7 @@ export const appRouter = router({
   tags: tagsRouter,
   shopping: shoppingRouter,
   planner: plannerRouter,
+  preferences: preferencesRouter,
   households: householdsRouter,
   collections: collectionsRouter,
   support: supportRouter,

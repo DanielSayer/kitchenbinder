@@ -177,15 +177,20 @@ describe("billing enforcement with PostgreSQL", () => {
       credits: 3,
     });
   });
-  it("does not reset trial allowance across subscriptions", async () => {
+  it("admits ten trial credits without resetting the allowance across subscriptions", async () => {
     await pro(id, "trialing");
-    await Promise.all(
-      Array.from({ length: 3 }, () => submitWebsiteImport(id, ai())),
-    );
-    await db
-      .update(recipeImport)
-      .set({ state: "failed", createdAt: new Date(Date.now() - 120000) })
-      .where(eq(recipeImport.userId, id));
+    for (let attempt = 0; attempt < 10; attempt++) {
+      await submitWebsiteImport(id, ai());
+      await db
+        .update(recipeImport)
+        .set({ state: "failed", createdAt: new Date(Date.now() - 120000) })
+        .where(eq(recipeImport.userId, id));
+    }
+    expect(await usageSummary(db, id)).toMatchObject({
+      bucket: "trial",
+      used: 10,
+      credits: 10,
+    });
     await pro(id, "trialing");
     await expect(submitWebsiteImport(id, ai())).rejects.toMatchObject({
       code: "FORBIDDEN",

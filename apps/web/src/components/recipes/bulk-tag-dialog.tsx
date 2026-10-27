@@ -1,9 +1,15 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { Check, Search } from "lucide-react";
 import { type ComponentProps, useState } from "react";
 import { toast } from "sonner";
 import { useTRPC } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
+import { useDebouncedValue } from "../use-debounced-value";
 import { OrganiseDialog } from "./organise-dialog";
 import { RecipePagination, recipePageSize, useRecipePage } from "./pagination";
 import { TagChoices } from "./tag-choices";
@@ -94,15 +100,19 @@ export function ApplyTagDialog({
 }) {
   const trpc = useTRPC();
   const client = useQueryClient();
-  const [search, setSearch] = useState("");
+  const [query, setQuery] = useState("");
+  const search = useDebouncedValue(query);
   const { page, setPage } = useRecipePage(JSON.stringify([search, tag.id]));
   const recipes = useQuery(
-    trpc.recipes.taggingList.queryOptions({
-      search,
-      excludeTagId: tag.id,
-      page,
-      pageSize: recipePageSize,
-    }),
+    trpc.recipes.taggingList.queryOptions(
+      {
+        search,
+        excludeTagId: tag.id,
+        page,
+        pageSize: recipePageSize,
+      },
+      { placeholderData: keepPreviousData },
+    ),
   );
   const [selected, setSelected] = useState<string[]>([]);
   const shown = recipes.isError ? [] : (recipes.data?.items ?? []);
@@ -126,8 +136,8 @@ export function ApplyTagDialog({
         <Search size={18} aria-hidden="true" />
         <span className="sr-only">Search recipes</span>
         <input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
           placeholder="Search recipes..."
         />
       </label>

@@ -9,6 +9,7 @@ import {
   LogOut,
   Plus,
   Shield,
+  SlidersHorizontal,
   Sparkles,
   Tag,
   Trash2,
@@ -32,6 +33,7 @@ import {
   useLinkedAccounts,
 } from "@/components/linked-accounts";
 import { Sheet } from "@/components/pantry";
+import { useWeekStartsOn, weekDayNames } from "@/components/preferences";
 import { ReportForm } from "@/components/report-form";
 import { initialsOf } from "@/components/shell/destinations";
 import { SupportContact } from "@/components/support-contact";
@@ -69,6 +71,7 @@ function You() {
     search.billing ? "plan" : null,
   );
   const providers = linkedProviderNames(accounts.data);
+  const weekStartsOn = useWeekStartsOn();
 
   function close() {
     setSheet(null);
@@ -116,6 +119,13 @@ function You() {
 
       <p className="grouped-label">App</p>
       <div className="pantry-list">
+        <YouRow
+          icon={<SlidersHorizontal size={20} />}
+          sub={`Week starts ${weekDayNames[weekStartsOn]}`}
+          to="/settings/preferences"
+        >
+          Preferences
+        </YouRow>
         <InstallButton className="pantry-row">
           <span className="pantry-row-icon">
             <Download size={20} aria-hidden="true" />
@@ -200,6 +210,7 @@ function YouRow({
     | "/recipes/deleted"
     | "/privacy"
     | "/settings/tags"
+    | "/settings/preferences"
     | "/settings/delete-account";
   onClick?: () => void;
 }) {
