@@ -12,6 +12,8 @@ Only ingredient-affecting changes make a trip stale. Moving a meal within its co
 
 Planner writes use household-scoped locks and revisions. Applying a preview checks a server-computed token against both planner state and current shopping rows. A concurrent meal edit, purchase or grocery edit requires another preview. No change is applied before that check passes.
 
+Planned: suggestion rows in the dish step. See [meal suggestions](meal-suggestions.md).
+
 ## Database setup
 
 The versioned schema includes `meal_planner`, keyed by household, with revision, JSON meal entries and the active trip snapshot. With the direct migration credential injected as `DATABASE_URL`, run `pnpm db:migrate` and `pnpm db:verify` while web and worker are stopped, then start both from the same candidate image with runtime credentials. An unversioned database needs a backup, restored-copy rehearsal and explicitly reviewed `pnpm db:adopt`, followed by verification. Follow the [deployment runbook](deployment.md); schema push is not a deployment step. Resetting the shopping list also clears the active planner-trip link, while retaining planned meals.
