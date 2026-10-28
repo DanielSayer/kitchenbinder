@@ -3,7 +3,12 @@ import { db } from "@prep-sheet/db";
 import type { MealInput } from "@prep-sheet/db/meal-planner";
 import { user } from "@prep-sheet/db/schema/auth";
 import { household, householdMember } from "@prep-sheet/db/schema/household";
-import { recipe } from "@prep-sheet/db/schema/recipe";
+import {
+  recipe,
+  recipeCooking,
+  recipeRating,
+  recipeShare,
+} from "@prep-sheet/db/schema/recipe";
 import { eq, inArray } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Context } from "./context";
@@ -368,5 +373,91 @@ describe("personal meal planner with PostgreSQL", () => {
     expect(await owner.shopping.list()).toEqual([]);
     await owner.shopping.clear({ householdId: sharedId, scope: "all" });
     expect(await other.shopping.list({ householdId: sharedId })).toEqual([]);
+  });
+  it("suggests meals from household signals and recipe access", async () => {
+    const secretId = randomUUID();
+    const week = { weekStart: "2026-10-26", today: "2026-10-28" };
+    await db
+      .insert(household)
+      .values({ id: sharedId, name: "Family", ownerId: ownerId });
+    await db.insert(householdMember).values([
+      { householdId: sharedId, userId: ownerId },
+      { householdId: sharedId, userId: otherId },
+    ]);
+    await db.insert(recipeShare).values({ recipeId, householdId: sharedId });
+    await db.insert(recipe).values({
+      id: secretId,
+      userId: ownerId,
+      title: "Secret stew",
+      origin: "manual",
+      content: sampleRecipe,
+    });
+    try {
+      const row = async (
+        who: typeof owner,
+        key: string,
+        input: Partial<typeof week> = {},
+      ) =>
+        (
+          await who.planner.suggestions({
+            householdId: sharedId,
+            ...week,
+            ...input,
+          })
+        ).find((item) => item.key === key)?.items ?? [];
+      // Another member's rating and cooking count for the household.
+      await db
+        .insert(recipeRating)
+        .values({ userId: otherId, recipeId, rating: 5 });
+      await db.insert(recipeCooking).values({
+        id: randomUUID(),
+        userId: otherId,
+        recipeId,
+        cookedOn: "2026-08-01",
+      });
+      expect(await row(owner, "favourites")).toEqual([
+        expect.objectContaining({
+          id: recipeId,
+          rating: 5,
+          favourite: false,
+          lastHad: "2026-08-01",
+        }),
+      ]);
+      // Members only see recipes they can access.
+      expect((await row(owner, "untried")).map((item) => item.id)).toEqual([
+        secretId,
+      ]);
+      expect(await row(other, "untried")).toEqual([]);
+      // Earlier planned meals count as had; the viewed week is excluded.
+      await owner.planner.save({
+        householdId: sharedId,
+        revision: 0,
+        meal: { ...meal, date: "2026-10-12" },
+      });
+      expect(await row(owner, "favourites")).toEqual([]);
+      expect(
+        await row(owner, "favourites", { weekStart: "2026-10-05" }),
+      ).toHaveLength(1);
+      await owner.planner.save({
+        householdId: sharedId,
+        revision: 1,
+        meal: { ...meal, id: randomUUID(), date: "2026-11-30" },
+      });
+      expect(
+        await row(owner, "favourites", { weekStart: "2026-11-30" }),
+      ).toEqual([]);
+      await expect(
+        outsider.planner.suggestions({ householdId: sharedId, ...week }),
+      ).rejects.toMatchObject({ code: "NOT_FOUND" });
+      await expect(
+        owner.planner.suggestions({ ...week, collectionId: randomUUID() }),
+      ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    } finally {
+      await db.delete(recipeRating).where(eq(recipeRating.recipeId, recipeId));
+      await db
+        .delete(recipeCooking)
+        .where(eq(recipeCooking.recipeId, recipeId));
+      await db.delete(recipe).where(eq(recipe.id, secretId));
+    }
   });
 });
