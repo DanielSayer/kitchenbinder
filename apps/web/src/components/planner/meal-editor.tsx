@@ -49,6 +49,7 @@ import {
   readMealDraft,
   type StoredMealDraft,
 } from "./meal-draft";
+import { SuggestionRows } from "./suggestion-rows";
 
 type Review = {
   base: MealBaseline;
@@ -257,6 +258,12 @@ export function MealEditor({
       return;
     onClose();
   };
+  const pickRecipe = (id: string) =>
+    set({
+      kind: "recipe",
+      recipeId: id,
+      baseServings: draft.recipeId === id ? draft.baseServings : "",
+    });
   const shown = recipes.isError ? [] : (recipes.data?.items ?? []);
   const sources =
     planner.data?.meals.filter(
@@ -601,6 +608,18 @@ export function MealEditor({
                   ))}
                 </ChipRow>
               )}
+              {!query.trim() && !editing && (
+                <SuggestionRows
+                  householdId={householdId}
+                  weekStart={days[0] ?? draft.date}
+                  collectionId={collection === "all" ? undefined : collection}
+                  radioName={radioName}
+                  selectedId={
+                    draft.kind === "recipe" ? draft.recipeId : undefined
+                  }
+                  onPick={pickRecipe}
+                />
+              )}
               <div
                 className="pick-list"
                 role="radiogroup"
@@ -683,16 +702,7 @@ export function MealEditor({
                         checked={
                           draft.kind === "recipe" && draft.recipeId === entry.id
                         }
-                        onChange={() =>
-                          set({
-                            kind: "recipe",
-                            recipeId: entry.id,
-                            baseServings:
-                              draft.recipeId === entry.id
-                                ? draft.baseServings
-                                : "",
-                          })
-                        }
+                        onChange={() => pickRecipe(entry.id)}
                       />
                       <RecipeCover
                         id={entry.id}
