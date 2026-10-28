@@ -1,10 +1,11 @@
 // Planner meal suggestions: pure ranking over household signals.
 // See docs/meal-suggestions.md.
+import type { RecipePhoto } from "@prep-sheet/db/recipe-photo";
 
 export type SuggestionCandidate = {
   id: string;
   title: string;
-  photo: unknown;
+  photo: RecipePhoto | null;
   ownerId: string | null;
   servings: string | null;
   createdAt: string;

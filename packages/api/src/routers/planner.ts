@@ -26,6 +26,7 @@ import {
   resolveHousehold,
 } from "../households/access";
 import { protectedProcedure, router } from "../index";
+import { mealSuggestions, suggestionsInput } from "../recipes/suggestions";
 
 // Omitted householdId = the caller's personal household.
 const householdInput = { householdId: z.uuid().optional() };
@@ -289,6 +290,23 @@ export const plannerRouter = router({
         issues: mealIssues(saved.meals),
         stale: saved.trip ? tripIsStale(saved.meals, saved.trip) : false,
       };
+    }),
+  suggestions: protectedProcedure
+    .input(suggestionsInput)
+    .query(async ({ ctx, input }) => {
+      const householdId = await resolveHousehold(
+        db,
+        ctx.session.user.id,
+        input.householdId,
+      );
+      const saved = await state(db, householdId);
+      return mealSuggestions(
+        db,
+        ctx.session.user.id,
+        householdId,
+        saved.meals,
+        input,
+      );
     }),
   save: protectedProcedure
     .input(
