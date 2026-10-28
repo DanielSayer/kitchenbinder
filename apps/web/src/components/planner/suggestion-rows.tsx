@@ -110,8 +110,10 @@ export function SuggestionRows({
                     photo={item.photo}
                     size="thumb"
                   />
-                  <b>{item.title}</b>
-                  <small>{reason(item, today)}</small>
+                  <span className="pick-text">
+                    <b className="pick-title">{item.title}</b>
+                    <small>{reason(item, today)}</small>
+                  </span>
                 </label>
               ))}
               {row.items.length < rowSize && (
@@ -119,8 +121,10 @@ export function SuggestionRows({
                   <span className="pick-icon" aria-hidden="true">
                     <Plus size={20} />
                   </span>
-                  <b>Import recipes</b>
-                  <small>More recipes, better ideas</small>
+                  <span className="pick-text">
+                    <b className="pick-title">Import recipes</b>
+                    <small>More recipes, better ideas</small>
+                  </span>
                 </Link>
               )}
             </div>
