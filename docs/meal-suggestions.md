@@ -1,6 +1,6 @@
 # Planner meal suggestions
 
-Status: planned (v1 spec). Not yet implemented. Extends the [household meal planner](meal-planner.md).
+Extends the [household meal planner](meal-planner.md).
 
 ## Problem
 
@@ -52,3 +52,13 @@ Rows always show. A row with too few candidates shows one card fewer and ends wi
 - AI auto-tagging (cuisine, main protein) to improve the tag cap.
 - User-adjustable thresholds.
 - Suggestions outside the planner.
+
+## Implementation
+
+`planner.suggestions` (`packages/api/src/recipes/suggestions.ts`) loads signals for up to 2000 accessible recipes and the household plan. Ranking, the seeded shuffle and the tag cap are pure (`packages/api/src/recipes/suggest.ts`). The client sends `today` and the viewed week's start, which follows the user's week-start preference. The rows (`apps/web/src/components/planner/suggestion-rows.tsx`) refresh with the planner query when a meal is saved.
+
+```sh
+pnpm test packages/api/src/recipes/suggest.test.ts
+pnpm test packages/api/src/planner.integration.test.ts
+pnpm test apps/web/src/components/planner
+```
