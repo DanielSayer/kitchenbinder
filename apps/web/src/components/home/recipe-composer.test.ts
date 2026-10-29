@@ -461,6 +461,48 @@ it("discards a ready recipe with undo instead of a confirmation", async () => {
   expect(readImportQueue(importDraftKey("viewer"))).toEqual([]);
 });
 
+it("keeps a multi-recipe card until each recipe is saved or discarded", async () => {
+  const pasta = "00000000-0000-4000-8000-000000000001";
+  const soup = "00000000-0000-4000-8000-000000000005";
+  createImport.mockResolvedValue({
+    kind: "saved",
+    id: pasta,
+    recipeId: pasta,
+    title: "Lemon pasta",
+    recipes: [
+      { id: pasta, title: "Lemon pasta" },
+      { id: soup, title: "Tomato soup" },
+    ],
+  });
+  readStatus.mockImplementation(() => createImport.mock.results[0]?.value);
+  showComposer();
+  expect(await screen.findByText("2 recipes")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Open Tomato soup" }));
+  fireEvent.click(
+    await within(await screen.findByRole("dialog")).findByRole("button", {
+      name: "Discard",
+    }),
+  );
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("button", { name: "Open Tomato soup" }),
+    ).toBeNull(),
+  );
+  expect(readImportQueue(importDraftKey("viewer"))[0]?.done).toEqual([soup]);
+  act(() => undo.mock.calls[0]?.[1].onCommit());
+  await waitFor(() => expect(deleteRecipe).toHaveBeenCalledOnce());
+  expect(deleteRecipe.mock.calls[0]?.[0]).toEqual({ id: soup });
+  fireEvent.click(screen.getByRole("button", { name: "Open Lemon pasta" }));
+  const sheet = await screen.findByRole("dialog", {
+    name: "Ready to save: Lemon pasta",
+  });
+  fireEvent.click(
+    await within(sheet).findByRole("button", { name: "Save recipe" }),
+  );
+  await waitFor(() => expect(screen.queryByRole("article")).toBeNull());
+  expect(readImportQueue(importDraftKey("viewer"))).toEqual([]);
+});
+
 it("recovers every request with the same ID and destination without consuming the next draft", async () => {
   const queue = [
     {

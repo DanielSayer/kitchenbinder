@@ -50,9 +50,11 @@ function AccountComposer({
   const key = importDraftKey(userId ?? "guest");
   const trpc = useTRPC();
   const client = useQueryClient();
-  const [ready, setReady] = useState<{ id: string; recipeId: string } | null>(
-    null,
-  );
+  const [ready, setReady] = useState<{
+    id: string;
+    recipeId: string;
+    recipeIds: string[];
+  } | null>(null);
   const [readyOpen, setReadyOpen] = useState(false);
   const deleteRecipe = useMutation(
     trpc.recipes.delete.mutationOptions({
@@ -157,13 +159,24 @@ function AccountComposer({
     return true;
   }
 
+  // Mark the open recipe handled; the card goes once all its recipes are.
+  function withoutReady(current: NonNullable<typeof ready>) {
+    return queueRef.current.flatMap((item) => {
+      if (item.id !== current.id) return [item];
+      const done = [...(item.done ?? []), current.recipeId];
+      return current.recipeIds.every((id) => done.includes(id))
+        ? []
+        : [{ ...item, done }];
+    });
+  }
+
   function finishReady() {
     if (!ready) return;
     setReadyOpen(false);
-    persist(queueRef.current.filter((item) => item.id !== ready.id));
+    persist(withoutReady(ready));
   }
 
-  // Undo, not "are you sure?": hide the card now, delete when the toast goes.
+  // Undo, not "are you sure?": hide the recipe now, delete when the toast goes.
   function discardReady() {
     if (!ready) return;
     const index = queueRef.current.findIndex((item) => item.id === ready.id);
@@ -171,11 +184,10 @@ function AccountComposer({
     if (!original) return;
     const recipeId = ready.recipeId;
     setReadyOpen(false);
-    if (!persist(queueRef.current.filter((item) => item.id !== original.id)))
-      return;
+    if (!persist(withoutReady(ready))) return;
     undoToast("Recipe discarded", {
       onUndo: () => {
-        const next = [...queueRef.current];
+        const next = queueRef.current.filter((item) => item.id !== original.id);
         next.splice(Math.min(index, next.length), 0, original);
         persist(next);
       },
@@ -233,8 +245,8 @@ function AccountComposer({
                   }
                   canEdit={!manual && !input.trim()}
                   onRemove={remove}
-                  onOpen={(recipeId) => {
-                    setReady({ id: item.id, recipeId });
+                  onOpen={(recipeId, recipeIds) => {
+                    setReady({ id: item.id, recipeId, recipeIds });
                     setReadyOpen(true);
                   }}
                 />
