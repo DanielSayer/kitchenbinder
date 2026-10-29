@@ -13,6 +13,8 @@ const pendingImportSchema = z.preprocess(
     id: z.uuid(),
     input: z.string().trim().min(3).max(20000),
     householdId: z.uuid().nullable(),
+    // Recipes from this import already saved or discarded in the ready sheet.
+    done: z.array(z.uuid()).max(5).optional(),
   }),
 );
 export type PendingImport = z.infer<typeof pendingImportSchema>;

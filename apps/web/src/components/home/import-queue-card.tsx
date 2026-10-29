@@ -18,8 +18,8 @@ export function ImportQueueCard({
   collectionName: string;
   canEdit: boolean;
   onRemove: (id: string, restoreInput?: string) => boolean;
-  /** Opens the ready-to-save sheet for the saved recipe. */
-  onOpen: (recipeId: string) => void;
+  /** Opens the ready-to-save sheet for one recipe; recipeIds lists the rest. */
+  onOpen: (recipeId: string, recipeIds: string[]) => void;
 }) {
   const trpc = useTRPC();
   const client = useQueryClient();
@@ -65,10 +65,18 @@ export function ImportQueueCard({
   const rejected = admissionRejected && !result;
   const busy = !terminal && !rejected;
   const saved = result?.kind === "saved" ? result : undefined;
+  // Imports admitted before multi-recipe imports report only recipeId and title.
+  const savedRecipes =
+    saved?.recipes ??
+    (saved ? [{ id: saved.recipeId, title: saved.title }] : []);
+  const remaining = savedRecipes.filter(
+    (item) => !request.done?.includes(item.id),
+  );
+  const single = remaining.length === 1 ? remaining[0] : undefined;
   const recipe = useQuery(
     trpc.recipes.get.queryOptions(
-      { id: saved?.recipeId ?? "" },
-      { enabled: !!saved, meta: { errorToast: false } },
+      { id: single?.id ?? "" },
+      { enabled: !!single, meta: { errorToast: false } },
     ),
   );
 
@@ -103,7 +111,7 @@ export function ImportQueueCard({
         : 0.06;
   const ingredients = recipe.data?.content.ingredients.length;
   const label = saved
-    ? ingredients
+    ? ingredients && single
       ? `Ready · ${ingredients} ingredients`
       : "Ready"
     : result?.kind === "failed"
@@ -128,7 +136,11 @@ export function ImportQueueCard({
       : undefined);
   const summary = request.input.replace(/\s+/g, " ");
   const excerpt = summary.length > 110 ? `${summary.slice(0, 110)}…` : summary;
-  const title = saved?.title ?? excerpt;
+  const title = saved
+    ? remaining.length > 1
+      ? `${remaining.length} recipes`
+      : (single?.title ?? saved.title)
+    : excerpt;
   const failed = result?.kind === "failed" || rejected;
 
   async function editOrCancel(edit: boolean) {
@@ -153,53 +165,68 @@ export function ImportQueueCard({
       data-state={saved ? "ready" : failed ? "failed" : "busy"}
       aria-label={`Recipe request: ${excerpt}`}
     >
-      <div className="qcard-main">
-        {saved ? (
-          <RecipeCover
-            id={saved.recipeId}
-            title={saved.title}
-            size="list"
-            className="qcard-cover"
-          />
-        ) : failed ? (
-          <span className="qcard-thumb qcard-thumb-failed" aria-hidden="true">
-            <AlertCircle size={22} />
-          </span>
-        ) : (
-          <span className="qcard-thumb" aria-hidden="true" />
-        )}
-        <div className="qcard-body">
-          <h3>{title}</h3>
-          <p className="qcard-state" role="status">
-            {saved ? (
-              <span className="qcard-ready" aria-hidden="true">
-                <Check size={10} strokeWidth={3} />
-              </span>
-            ) : busy ? (
-              <span className="qcard-pulse" aria-hidden="true" />
-            ) : null}
-            {label}
-            {!saved && collectionName !== "Just me" && (
-              <span className="qcard-destination">{collectionName}</span>
-            )}
-          </p>
-          {busy && (
-            <span className="qcard-bar" aria-hidden="true">
-              <i style={{ width: `${Math.round(stage * 100)}%` }} />
+      {saved && remaining.length > 1 && (
+        <h3 className="qcard-group">{title}</h3>
+      )}
+      {saved &&
+        remaining.map((item) => (
+          <div className="qcard-main" key={item.id}>
+            <RecipeCover
+              id={item.id}
+              title={item.title}
+              size="list"
+              className="qcard-cover"
+            />
+            <div className="qcard-body">
+              {remaining.length > 1 ? <h4>{item.title}</h4> : <h3>{title}</h3>}
+              <p className="qcard-state" role="status">
+                <span className="qcard-ready" aria-hidden="true">
+                  <Check size={10} strokeWidth={3} />
+                </span>
+                {label}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="qcard-open"
+              aria-label={`Open ${item.title}`}
+              onClick={() =>
+                onOpen(
+                  item.id,
+                  savedRecipes.map((recipe) => recipe.id),
+                )
+              }
+            >
+              Open
+            </button>
+          </div>
+        ))}
+      {!saved && (
+        <div className="qcard-main">
+          {failed ? (
+            <span className="qcard-thumb qcard-thumb-failed" aria-hidden="true">
+              <AlertCircle size={22} />
             </span>
+          ) : (
+            <span className="qcard-thumb" aria-hidden="true" />
           )}
+          <div className="qcard-body">
+            <h3>{title}</h3>
+            <p className="qcard-state" role="status">
+              {busy && <span className="qcard-pulse" aria-hidden="true" />}
+              {label}
+              {collectionName !== "Just me" && (
+                <span className="qcard-destination">{collectionName}</span>
+              )}
+            </p>
+            {busy && (
+              <span className="qcard-bar" aria-hidden="true">
+                <i style={{ width: `${Math.round(stage * 100)}%` }} />
+              </span>
+            )}
+          </div>
         </div>
-        {saved && (
-          <button
-            type="button"
-            className="qcard-open"
-            aria-label={`Open ${saved.title}`}
-            onClick={() => onOpen(saved.recipeId)}
-          >
-            Open
-          </button>
-        )}
-      </div>
+      )}
       {busy && <p className="qcard-hint">{progress}</p>}
       <ErrorNotice message={error} />
       {!saved && (

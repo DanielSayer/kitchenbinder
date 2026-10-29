@@ -87,7 +87,16 @@
   flex: 1;
   min-width: 0;
 }
-.qcard-body h3 {
+.qcard-main + .qcard-main {
+  margin-top: 10px;
+}
+/* An import that produced several recipes */
+.qcard-group {
+  margin: 0 2px 10px;
+  font: 800 16px / 1.25 var(--sans);
+}
+.qcard-body h3,
+.qcard-body h4 {
   font: 800 16px / 1.25 var(--sans);
   white-space: nowrap;
   overflow: hidden;

@@ -74,9 +74,11 @@ function AccountImports({ userId }: { userId: string }) {
             <li key={job.id}>
               <div className="recent-imports-detail">
                 <strong>
-                  {job.state === "saved" && job.title
-                    ? job.title
-                    : job.sourceUrl || "Recipe import"}
+                  {job.state === "saved" && job.recipes.length > 1
+                    ? `${job.recipes.length} recipes`
+                    : job.state === "saved" && job.title
+                      ? job.title
+                      : job.sourceUrl || "Recipe import"}
                 </strong>
                 <time dateTime={new Date(job.createdAt).toISOString()}>
                   {new Date(job.createdAt).toLocaleString()}
@@ -99,15 +101,19 @@ function AccountImports({ userId }: { userId: string }) {
                     ? "Waiting to start"
                     : labels[job.state]}
                 </span>
-                {job.state === "saved" && job.recipeId && (
-                  <Link
-                    className="text-button"
-                    to="/recipes/$recipeId"
-                    params={{ recipeId: job.recipeId }}
-                  >
-                    Open recipe <ArrowRight size={17} aria-hidden="true" />
-                  </Link>
-                )}
+                {job.state === "saved" &&
+                  job.recipes.map((saved) => (
+                    <Link
+                      key={saved.id}
+                      className="text-button"
+                      to="/recipes/$recipeId"
+                      params={{ recipeId: saved.id }}
+                      aria-label={`Open ${saved.title}`}
+                    >
+                      {job.recipes.length > 1 ? saved.title : "Open recipe"}{" "}
+                      <ArrowRight size={17} aria-hidden="true" />
+                    </Link>
+                  ))}
               </div>
             </li>
           ))}
