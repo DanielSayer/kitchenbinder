@@ -317,11 +317,15 @@ describe("recipes API with PostgreSQL", () => {
     const foreign = await other.tags.create({ name: "Private" });
     const id = randomUUID();
     vi.mocked(generateRecipe).mockResolvedValueOnce({
-      content: sampleRecipe,
+      recipes: [
+        {
+          content: sampleRecipe,
+          tagIds: [custom.id, foreign.id, randomUUID()],
+        },
+      ],
       origin: "generated",
       sourceUrl: null,
       imageUrl: null,
-      tagIds: [custom.id, foreign.id, randomUUID()],
     });
     await createAndWait(owner, { id, input: "Make lunch" });
     expect(generateRecipe).toHaveBeenLastCalledWith(
@@ -416,11 +420,10 @@ describe("recipes API with PostgreSQL", () => {
     expect(memberTag).toMatchObject({ userId: ids[1] });
     expect(await owner.tags.list()).not.toContainEqual(memberTag);
     vi.mocked(generateRecipe).mockResolvedValueOnce({
-      content: sampleRecipe,
+      recipes: [{ content: sampleRecipe, tagIds: [memberTag.id, ownerTag.id] }],
       origin: "generated",
       sourceUrl: null,
       imageUrl: null,
-      tagIds: [memberTag.id, ownerTag.id],
     });
     const imported = await createAndWait(member, {
       id: randomUUID(),
@@ -520,11 +523,10 @@ describe("recipes API with PostgreSQL", () => {
     const other = caller(ids[1]);
     const id = randomUUID();
     vi.mocked(generateRecipe).mockResolvedValue({
-      content: sampleRecipe,
+      recipes: [{ content: sampleRecipe, tagIds: [] }],
       origin: "generated",
       sourceUrl: null,
       imageUrl: null,
-      tagIds: [],
     });
     const saved = await createAndWait(owner, { id, input: "Make lemon pasta" });
     expect(saved.content.ingredients).toEqual(sampleRecipe.ingredients);
@@ -782,11 +784,10 @@ describe("recipes API with PostgreSQL", () => {
 
   it("shares recipes with households and collections by the three access rules", async () => {
     vi.mocked(generateRecipe).mockResolvedValue({
-      content: sampleRecipe,
+      recipes: [{ content: sampleRecipe, tagIds: [] }],
       origin: "generated",
       sourceUrl: null,
       imageUrl: null,
-      tagIds: [],
     });
     const owner = caller(ids[0]);
     const member = caller(ids[1]);
@@ -1072,11 +1073,10 @@ describe("recipes API with PostgreSQL", () => {
     const invite = await owner.households.invite({ householdId: target.id });
     await member.households.acceptInvite({ token: invite.token });
     vi.mocked(generateRecipe).mockResolvedValue({
-      content: sampleRecipe,
+      recipes: [{ content: sampleRecipe, tagIds: [] }],
       origin: "generated",
       sourceUrl: null,
       imageUrl: null,
-      tagIds: [],
     });
     const saved = await createAndWait(member, {
       id: randomUUID(),
@@ -1089,11 +1089,10 @@ describe("recipes API with PostgreSQL", () => {
         userId: ids[3],
       });
       return {
-        content: sampleRecipe,
+        recipes: [{ content: sampleRecipe, tagIds: [] }],
         origin: "generated",
         sourceUrl: null,
         imageUrl: null,
-        tagIds: [],
       };
     });
     await expect(
@@ -1177,11 +1176,10 @@ describe("recipes API with PostgreSQL", () => {
       owner.households.details({ householdId: target.id }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
     vi.mocked(generateRecipe).mockResolvedValue({
-      content: sampleRecipe,
+      recipes: [{ content: sampleRecipe, tagIds: [] }],
       origin: "generated",
       sourceUrl: null,
       imageUrl: null,
-      tagIds: [],
     });
     const shared = await createAndWait(member, {
       id: randomUUID(),

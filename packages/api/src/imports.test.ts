@@ -35,8 +35,7 @@ const input = () => ({
   householdId: null,
 });
 const generated = {
-  content: sampleRecipe,
-  tagIds: [],
+  recipes: [{ content: sampleRecipe, tagIds: [] as string[] }],
   sourceUrl: null,
   origin: "generated" as const,
 };
@@ -125,6 +124,45 @@ describe("durable import concurrency and recovery with PostgreSQL", () => {
     expect((await importStatus(owner, item.id)).kind).toBe("saved");
     await db.insert(householdMember).values({ householdId, userId: owner });
   });
+  it("saves every recipe from one import with the same placement", async () => {
+    const item = { ...input(), householdId };
+    await submitWebsiteImport(owner, item);
+    const titles = ["Soup", "Bread", "Salad"];
+    await processNextImport(
+      vi.fn().mockResolvedValue({
+        ...generated,
+        origin: "imported",
+        recipes: titles.map((title) => ({
+          content: { ...sampleRecipe, title },
+          tagIds: [],
+        })),
+      }),
+    );
+    const status = await importStatus(owner, item.id);
+    if (status.kind !== "saved") throw new Error(`Import ${status.kind}`);
+    expect(status.recipeId).toBe(item.id);
+    expect(status.recipes.map((saved) => saved.title)).toEqual(titles);
+    const ids = status.recipes.map((saved) => saved.id);
+    expect(new Set(ids).size).toBe(3);
+    expect(
+      await db
+        .select({ id: recipeShare.recipeId })
+        .from(recipeShare)
+        .where(inArray(recipeShare.recipeId, ids)),
+    ).toHaveLength(3);
+    const [job] = await db
+      .select({ recipeIds: recipeImport.recipeIds })
+      .from(recipeImport)
+      .where(eq(recipeImport.id, item.id));
+    expect(job?.recipeIds).toEqual(ids);
+    // Deleting the first recipe leaves the rest reachable from the import.
+    await db.delete(recipe).where(eq(recipe.id, item.id));
+    expect(await importStatus(owner, item.id)).toMatchObject({
+      kind: "saved",
+      recipeId: ids[1],
+      recipes: [{ title: "Bread" }, { title: "Salad" }],
+    });
+  });
   it("concurrent retries produce one AI call and one imported recipe with valid tags", async () => {
     const item = input();
     const tagId = randomUUID();
@@ -146,9 +184,10 @@ describe("durable import concurrency and recovery with PostgreSQL", () => {
     await expect(importStatus(other, item.id)).rejects.toMatchObject({
       code: "NOT_FOUND",
     });
-    const generate = vi
-      .fn()
-      .mockResolvedValue({ ...generated, tagIds: [tagId, foreignTagId] });
+    const generate = vi.fn().mockResolvedValue({
+      ...generated,
+      recipes: [{ content: sampleRecipe, tagIds: [tagId, foreignTagId] }],
+    });
     await Promise.all([
       processNextImport(generate),
       processNextImport(generate),
@@ -211,7 +250,14 @@ describe("durable import concurrency and recovery with PostgreSQL", () => {
     await submitWebsiteImport(owner, interrupted);
     await db
       .update(recipeImport)
-      .set({ state: "ready", generated, input: "" })
+      .set({
+        state: "ready",
+        generated: {
+          recipes: [{ id: ready.id, content: sampleRecipe, tagIds: [] }],
+          origin: "generated",
+        },
+        input: "",
+      })
       .where(eq(recipeImport.id, ready.id));
     await db
       .update(recipeImport)

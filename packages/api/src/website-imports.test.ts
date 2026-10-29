@@ -44,8 +44,7 @@ const input = () => ({
   householdId: null,
 });
 const output = {
-  content: sampleRecipe,
-  tagIds: [],
+  recipes: [{ content: sampleRecipe, tagIds: [] }],
   origin: "generated" as const,
   sourceUrl: null,
   imageUrl: null,
@@ -506,7 +505,10 @@ describe("website durable imports", () => {
     await submitWebsiteImport(account, item);
     await db
       .update(recipeImport)
-      .set({ state: "ready", generated: output })
+      .set({
+        state: "ready",
+        generated: { content: sampleRecipe, tagIds: [], origin: "generated" },
+      })
       .where(eq(recipeImport.id, item.id));
     const generate = vi.fn();
     await processNextImport(generate);

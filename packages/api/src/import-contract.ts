@@ -19,6 +19,8 @@ export const imageCandidateSchema = z.strictObject({
   source: z.enum(["recipe", "page", "content"]),
 });
 export type ImageCandidate = z.infer<typeof imageCandidateSchema>;
+// Pasted input may hold several recipes; a web page gives one.
+export const recipesPerImport = 5;
 export type ImportStatus =
   | { kind: "queued"; id: string; queuedForMs?: number }
   | {
@@ -26,7 +28,14 @@ export type ImportStatus =
       id: string;
       stage?: "fetching" | "generating" | "saving";
     }
-  | { kind: "saved"; id: string; recipeId: string; title: string }
+  | {
+      kind: "saved";
+      id: string;
+      // The first saved recipe; "recipes" lists every recipe from this import.
+      recipeId: string;
+      title: string;
+      recipes: { id: string; title: string }[];
+    }
   | { kind: "failed"; id: string; message: string };
 export const websiteImportSchema = z.object({
   id: z.uuid(),
