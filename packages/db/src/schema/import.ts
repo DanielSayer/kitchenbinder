@@ -42,12 +42,21 @@ export const recipeImport = pgTable(
     })
       .notNull()
       .default("queued"),
-    generated: jsonb("generated").$type<{
-      content: RecipeContent;
-      tagIds: string[];
-      origin?: "imported" | "generated";
-      imageUrl?: string | null;
-    }>(),
+    // Checkpoints written before multi-recipe imports hold content and tagIds.
+    generated: jsonb("generated").$type<
+      (
+        | {
+            recipes: { id: string; content: RecipeContent; tagIds: string[] }[];
+          }
+        | { content: RecipeContent; tagIds: string[] }
+      ) & {
+        origin?: "imported" | "generated";
+        imageUrl?: string | null;
+      }
+    >(),
+    // Recipes saved by this import, first is the import ID. Null before
+    // multi-recipe imports, when the only recipe shared the import ID.
+    recipeIds: uuid("recipe_ids").array(),
     error: text("error"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

@@ -117,13 +117,13 @@ async function seed(client: pg.Client) {
   `);
 }
 // Stable projections across 0008, which moves personal plans/lists to households,
-// and 0009, which adds empty photo columns.
+// 0009, which adds empty photo columns, and 0012, which adds empty recipe IDs.
 const projections: [string, string][] = [
   ["user", "row_to_json(t)::jsonb"],
   ["recipe", "row_to_json(t)::jsonb - 'group_id' - 'photo'"],
   [
     "recipe_import",
-    "row_to_json(t)::jsonb - 'group_id' - 'household_id' - 'collection_id' - 'image_candidates'",
+    "row_to_json(t)::jsonb - 'group_id' - 'household_id' - 'collection_id' - 'image_candidates' - 'recipe_ids'",
   ],
   ["meal_planner", "row_to_json(t)::jsonb - 'user_id' - 'household_id' - 'id'"],
   [
@@ -158,7 +158,7 @@ it("provisions a clean database with ICU and preserves all data on repeated migr
           "SELECT count(*)::int AS total FROM prep_sheet_migration",
         )
       ).rows[0].total,
-    ).toBe(12);
+    ).toBe(13);
     expect(
       (
         await client.query(

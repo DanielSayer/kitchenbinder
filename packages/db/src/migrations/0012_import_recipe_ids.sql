@@ -1,0 +1,1 @@
+ALTER TABLE "recipe_import" ADD COLUMN "recipe_ids" uuid[];
