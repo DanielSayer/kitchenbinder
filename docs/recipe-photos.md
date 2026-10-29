@@ -1,8 +1,10 @@
 # Recipe photos
 
 Imported recipes get a cover photo copied from the source page. Recipes without
-one (pasted text, generated recipes, pages without photos) keep the tinted
-placeholder cover. There are no user uploads and no backfill of existing recipes.
+one (pasted text, generated recipes, photo imports, pages without photos) keep
+the tinted placeholder cover. There are no cover uploads and no backfill of
+existing recipes. Photos uploaded for a photo import are only AI input; see
+[Photo imports](#photo-imports).
 
 ## How a photo is chosen
 
@@ -43,6 +45,34 @@ The worker sweeps the bucket every six hours and deletes objects older than a da
 whose key no `recipe.photo` references. This covers every way a recipe row is
 removed (account deletion, household deletion, expired soft deletes). Soft-deleted
 recipes keep their photo until the row is gone.
+
+## Photo imports
+
+Users can import 1–5 recipes from up to five photos (cookbook pages, cards,
+screenshots, handwriting), with an optional note. Extraction only: a photo of a
+dish without a written recipe fails the import.
+
+1. The browser decodes each photo with EXIF orientation, scales the longest edge
+   to 1600 px and re-encodes JPEG (quality 0.82, lower until at most 1.5 MiB).
+   Formats the browser can't decode (e.g. HEIC outside Safari) are rejected
+   with a message. Photos are held in tab memory only; the sessionStorage queue
+   keeps `photoCount`. A reload before admission asks the user to add them again.
+2. `POST /api/recipes/imports/photos` (multipart: `request` JSON plus `photo`
+   files) requires a session and a same-origin `Origin`, allows 10 requests per
+   minute per account per process, and an 8 MiB body. It checks the count, size
+   and JPEG/PNG/WebP magic bytes, then admits like `recipes.create`. The
+   fingerprint includes each photo's SHA-256: an identical retry is idempotent,
+   different photos under the same ID conflict.
+3. Photos are stored in `recipe_import_photo` (bytea) only while the import is
+   queued or being fetched. The worker re-encodes them with sharp (JPEG/PNG/WebP,
+   40 MP limit, first frame, EXIF orientation applied, metadata dropped, at most
+   1600 px, JPEG 82) before reserving AI spend, so an unreadable photo fails with
+   usage released. They are sent as image parts with `sourceKind: "photo"`.
+4. Rows are deleted at checkpoint, in `failImport`, by the interrupted-processing
+   sweep and on discard. Each worker tick also deletes photos of any import no
+   longer queued, fetching or processing. Account deletion cascades.
+
+Uploaded photos are never stored in the bucket or as `recipe.photo`.
 
 ## Lightsail setup
 

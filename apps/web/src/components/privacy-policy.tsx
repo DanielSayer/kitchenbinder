@@ -28,6 +28,13 @@ export function PrivacyPolicy({ embedded = false }: { embedded?: boolean }) {
           content.
         </p>
         <p>
+          Photos you upload are shrunk in your browser, re-encoded on our server
+          to remove location and camera details, and sent to OpenAI to read the
+          recipe. We keep them only until processing finishes or fails, then
+          delete them. They are never used as recipe covers. OpenAI may retain
+          API data for up to 30 days for abuse monitoring.
+        </p>
+        <p>
           Imports are stored with their source URL, processing status and result
           so you can return to them. Input text is cleared after processing or
           failure. Saved recipes retain their content and source link. Manually
