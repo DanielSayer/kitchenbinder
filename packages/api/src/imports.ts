@@ -725,13 +725,14 @@ export async function processNextImport(
     stageStarted = Date.now();
     logImport({ event: "import_stage_started", importId: job.id, stage });
     generationStarted = true;
-    const result = await generate(
+    const args: Parameters<Generate> = [
       prepared.content,
       tags,
       prepared.sourceUrl ?? undefined,
       prepared.images,
-      photos && { photos },
-    );
+    ];
+    if (photos) args.push({ photos });
+    const result = await generate(...args);
     logImport({
       event: "import_stage_completed",
       importId: job.id,
