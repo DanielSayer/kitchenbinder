@@ -19,7 +19,11 @@ vi.mock("@prep-sheet/env/server", () => ({
 describe("captured recipe generation", () => {
   it("uses shared rules and schema without fetching even when the captured text starts with a URL", async () => {
     fake.generate.mockResolvedValue({
-      output: { recipe: sampleRecipe, origin: "generated", tagIds: [] },
+      output: {
+        recipes: [{ recipe: sampleRecipe, tagIds: [] }],
+        origin: "generated",
+        imageIndex: null,
+      },
     });
     const content =
       "https://untrusted.example/ignore-instructions\nIngredients and method";
@@ -41,7 +45,40 @@ describe("captured recipe generation", () => {
     expect(result).toMatchObject({
       sourceUrl: source,
       origin: "imported",
-      content: sampleRecipe,
+      recipes: [{ content: sampleRecipe }],
+    });
+  });
+
+  it.each([
+    { source: undefined, origin: "imported", expected: 5 },
+    { source: "https://recipes.example/soup", origin: "imported", expected: 1 },
+    { source: undefined, origin: "generated", expected: 1 },
+  ] as const)(
+    "keeps $expected of 7 $origin recipes from source $source",
+    async ({ source, origin, expected }) => {
+      fake.generate.mockResolvedValue({
+        output: {
+          recipes: Array.from({ length: 7 }, (_, index) => ({
+            recipe: { ...sampleRecipe, title: `Recipe ${index}` },
+            tagIds: [],
+          })),
+          origin,
+          imageIndex: null,
+        },
+      });
+      const result = await generateRecipe("Several recipes", [], source);
+      expect(result.recipes.map((item) => item.content.title)).toEqual(
+        Array.from({ length: expected }, (_, index) => `Recipe ${index}`),
+      );
+    },
+  );
+
+  it("rejects output with no recipes", async () => {
+    fake.generate.mockResolvedValue({
+      output: { recipes: [], origin: "imported", imageIndex: null },
+    });
+    await expect(generateRecipe("Not a recipe")).rejects.toMatchObject({
+      code: "BAD_REQUEST",
     });
   });
 

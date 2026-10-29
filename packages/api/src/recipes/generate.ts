@@ -5,15 +5,20 @@ import { env } from "@prep-sheet/env/server";
 import { TRPCError } from "@trpc/server";
 import { generateText, Output } from "ai";
 import { z } from "zod";
-import type { ImageCandidate } from "../import-contract";
+import { type ImageCandidate, recipesPerImport } from "../import-contract";
 import { extractImages, extractPage } from "./extract-page";
 import { fetchPage, PAGE_ERROR, recipeUrl } from "./fetch-page";
 import { buildRecipeSystemPrompt } from "./prompt";
 
+// No maxItems: extra recipes are dropped below rather than failing the import.
 const resultSchema = z.object({
-  recipe: recipeContentSchema.nullable(),
+  recipes: z.array(
+    z.object({
+      recipe: recipeContentSchema,
+      tagIds: z.array(z.string()).max(105),
+    }),
+  ),
   origin: z.enum(["imported", "generated"]),
-  tagIds: z.array(z.string()).max(105),
   imageIndex: z.number().int().nullable(),
 });
 
@@ -61,18 +66,23 @@ export async function generateRecipe(
       maxOutputTokens: aiPolicy.maxOutputTokens,
       maxRetries: 0,
       providerOptions: { openai: { serviceTier: "default" } },
-      abortSignal: AbortSignal.timeout(90000),
+      // Several recipes take longer; stay under the worker's 180 s claim timeout.
+      abortSignal: AbortSignal.timeout(150_000),
       system,
       prompt: content,
     });
-    if (!output.recipe)
+    const origin = sourceUrl ? ("imported" as const) : output.origin;
+    const found = output.recipes.slice(
+      0,
+      sourceUrl || origin === "generated" ? 1 : recipesPerImport,
+    );
+    if (!found.length)
       throw new TRPCError({
         code: "BAD_REQUEST",
         message: sourceUrl
           ? PAGE_ERROR
           : "I couldn't find one complete recipe. Paste ingredients and steps, or describe a dish you'd like to make.",
       });
-    const origin = sourceUrl ? ("imported" as const) : output.origin;
     const imageUrl =
       origin === "imported"
         ? (preferredImage(images)?.url ??
@@ -82,10 +92,12 @@ export async function generateRecipe(
           null)
         : null;
     return {
-      content: output.recipe,
-      tagIds: [...new Set(output.tagIds)].filter((id) =>
-        tags.some((tag) => tag.id === id),
-      ),
+      recipes: found.map(({ recipe, tagIds }) => ({
+        content: recipe,
+        tagIds: [...new Set(tagIds)].filter((id) =>
+          tags.some((tag) => tag.id === id),
+        ),
+      })),
       sourceUrl,
       origin,
       imageUrl,

@@ -26,9 +26,15 @@ import {
 import { sampleRecipe } from "./recipes/fixtures";
 
 const owner = randomUUID();
+// A checkpoint written before multi-recipe imports.
 const generated = {
   content: sampleRecipe,
   tagIds: [],
+  sourceUrl: null,
+  origin: "imported" as const,
+};
+const output = {
+  recipes: [{ content: sampleRecipe, tagIds: [] }],
   sourceUrl: null,
   origin: "imported" as const,
 };
@@ -149,7 +155,7 @@ it("releases usage and reserves no spend for an oversized durable input", async 
     fingerprint: id,
     input: "x".repeat(aiPolicy.maxContentBytes + 1),
   });
-  const generate = vi.fn().mockResolvedValue(generated);
+  const generate = vi.fn().mockResolvedValue(output);
   await processNextImport(generate);
   expect(generate).not.toHaveBeenCalled();
   expect(await job(id)).toMatchObject({ state: "failed", usageReleased: true });
@@ -191,7 +197,7 @@ it("lets healthy ready and queued jobs finish beside a persistently failing chec
       createdAt: new Date(Date.now() - 1000),
     },
   ]);
-  const generate = vi.fn().mockResolvedValue(generated);
+  const generate = vi.fn().mockResolvedValue(output);
   await Promise.all([processNextImport(generate), processNextImport(generate)]);
   await processNextImport(generate);
   expect(
@@ -218,7 +224,7 @@ it("lets healthy ready and queued jobs finish beside a persistently failing chec
 it("retries only after backoff, then saves the checkpoint without another AI call or charge", async () => {
   const now = clock();
   const id = await enqueue({ fingerprint: "fail-save" });
-  const generate = vi.fn().mockResolvedValue(generated);
+  const generate = vi.fn().mockResolvedValue(output);
   const write = vi.spyOn(process.stdout, "write");
   await processNextImport(generate);
   const spent = await db.select().from(aiSpend).where(eq(aiSpend.importId, id));
@@ -230,7 +236,7 @@ it("retries only after backoff, then saves the checkpoint without another AI cal
     state: "ready",
     saveAttempts: 1,
     nextSaveAttemptAt: new Date(now + 5000),
-    generated: { content: sampleRecipe },
+    generated: { recipes: [{ content: sampleRecipe }] },
   });
   expect(
     write.mock.calls.some(
@@ -290,7 +296,7 @@ it("stops after five failed saves, retains output and spent credits, and dedupli
     .update(recipeImport)
     .set({ fingerprint: "fail-save" })
     .where(eq(recipeImport.id, input.id));
-  const generate = vi.fn().mockResolvedValue(generated);
+  const generate = vi.fn().mockResolvedValue(output);
   await processNextImport(generate);
   for (const delayMs of [5000, 10000, 20000, 40000]) {
     const previous = await job(input.id);
@@ -302,7 +308,7 @@ it("stops after five failed saves, retains output and spent credits, and dedupli
   expect(await job(input.id)).toMatchObject({
     state: "failed",
     saveAttempts: 5,
-    generated: { content: sampleRecipe },
+    generated: { recipes: [{ content: sampleRecipe }] },
     usageReleased: false,
     workerToken: null,
     saveClaimedAt: null,
@@ -351,7 +357,7 @@ it("recovers abandoned save and fetch claims even with eligible ready work, with
     createdAt: new Date(now - 2000),
   });
   const healthy = await enqueue({ state: "ready", generated });
-  const generate = vi.fn().mockResolvedValue(generated);
+  const generate = vi.fn().mockResolvedValue(output);
   await processNextImport(generate);
   expect(await job(abandoned)).toMatchObject({
     state: "ready",
@@ -439,14 +445,14 @@ function deferred() {
 it("retains the claim and import diagnostic if persisting the retry itself fails, then recovers it", async () => {
   const now = clock();
   const id = await enqueue({ fingerprint: "fail-retry-state" });
-  const generate = vi.fn().mockResolvedValue(generated);
+  const generate = vi.fn().mockResolvedValue(output);
   const write = vi.spyOn(process.stdout, "write");
   await expect(processNextImport(generate)).rejects.toThrow();
   const claimed = await job(id);
   expect(claimed).toMatchObject({
     state: "ready",
     saveAttempts: 1,
-    generated: { content: sampleRecipe },
+    generated: { recipes: [{ content: sampleRecipe }] },
     usageReleased: false,
   });
   expect(claimed.workerToken).not.toBeNull();
@@ -501,7 +507,7 @@ it("skips a live locked save during stale recovery and lets the second worker fi
     await release.promise;
   });
   await held.promise;
-  const generate = vi.fn().mockResolvedValue(generated);
+  const generate = vi.fn().mockResolvedValue(output);
   const saver = processNextImport(generate);
   try {
     await vi.waitFor(

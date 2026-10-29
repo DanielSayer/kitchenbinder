@@ -32,7 +32,12 @@ type ImportEvent =
       usageReleased: boolean;
       failure: Failure;
     }
-  | { event: "import_saved"; importId: string; elapsedMs: number }
+  | {
+      event: "import_saved";
+      importId: string;
+      recipes: number;
+      elapsedMs: number;
+    }
   | {
       event: "import_save_retry";
       importId: string;

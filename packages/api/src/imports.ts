@@ -33,7 +33,11 @@ import {
   type Placement,
   preparePlacement,
 } from "./households/placement";
-import { type ImportStatus, websiteImportSchema } from "./import-contract";
+import {
+  type ImportStatus,
+  recipesPerImport,
+  websiteImportSchema,
+} from "./import-contract";
 import { importFailure, logImport } from "./import-diagnostics";
 import {
   generateRecipe,
@@ -46,8 +50,12 @@ import { persistRecipe } from "./recipes/persist";
 import { checkRecipeUsage } from "./recipes/usage";
 import { availableTags } from "./routers/tags";
 
+// Imports before multi-recipe imports saved one recipe with the import ID.
+const savedRecipeIds = (job: { id: string; recipeIds: string[] | null }) =>
+  job.recipeIds?.length ? job.recipeIds : [job.id];
+
 export async function recentImports(userId: string) {
-  return db
+  const jobs = await db
     .select({
       id: recipeImport.id,
       state: recipeImport.state,
@@ -55,15 +63,9 @@ export async function recentImports(userId: string) {
       sourceUrl: recipeImport.sourceUrl,
       createdAt: recipeImport.createdAt,
       error: recipeImport.error,
-      recipeId: recipe.id,
-      title: recipe.title,
-      photo: recipe.photo,
+      recipeIds: recipeImport.recipeIds,
     })
     .from(recipeImport)
-    .leftJoin(
-      recipe,
-      and(eq(recipe.id, recipeImport.id), accessibleRecipe(userId)),
-    )
     .where(eq(recipeImport.userId, userId))
     .orderBy(
       desc(
@@ -78,6 +80,30 @@ export async function recentImports(userId: string) {
       desc(recipeImport.id),
     )
     .limit(50);
+  const ids = jobs
+    .filter((job) => job.state === "saved")
+    .flatMap(savedRecipeIds);
+  const recipes = ids.length
+    ? await db
+        .select({ id: recipe.id, title: recipe.title, photo: recipe.photo })
+        .from(recipe)
+        .where(and(inArray(recipe.id, ids), accessibleRecipe(userId)))
+    : [];
+  return jobs.map(({ recipeIds, ...job }) => {
+    const saved =
+      job.state === "saved"
+        ? savedRecipeIds({ id: job.id, recipeIds }).flatMap((id) =>
+            recipes.filter((item) => item.id === id),
+          )
+        : [];
+    return {
+      ...job,
+      recipeId: saved[0]?.id ?? null,
+      title: saved[0]?.title ?? null,
+      photo: saved[0]?.photo ?? null,
+      recipes: saved.map(({ id, title }) => ({ id, title })),
+    };
+  });
 }
 
 export async function importStatus(
@@ -112,23 +138,37 @@ export async function importStatus(
       };
     case "saved": {
       // Imported recipes are owned by the importer; a deleted recipe is not exposed.
-      const [saved] = await db
-        .select({ title: recipe.title })
+      const ids = savedRecipeIds(job);
+      const found = await db
+        .select({ id: recipe.id, title: recipe.title })
         .from(recipe)
         .where(
           and(
-            eq(recipe.id, id),
+            inArray(recipe.id, ids),
             eq(recipe.userId, userId),
             isNull(recipe.deletedAt),
           ),
         );
-      if (!saved)
+      const recipes = ids.flatMap((recipeId) =>
+        found.filter((item) => item.id === recipeId),
+      );
+      const [first] = recipes;
+      if (!first)
         return {
           kind: "failed",
           id,
-          message: "The saved recipe has been deleted.",
+          message:
+            ids.length > 1
+              ? "The saved recipes have been deleted."
+              : "The saved recipe has been deleted.",
         };
-      return { kind: "saved", id, recipeId: id, title: saved.title };
+      return {
+        kind: "saved",
+        id,
+        recipeId: first.id,
+        title: first.title,
+        recipes,
+      };
     }
   }
 }
@@ -330,12 +370,36 @@ async function submitJob(userId: string, input: JobInput) {
 
 const saveAttemptLimit = 5;
 const claimTimeoutMs = 180_000;
-const checkpointSchema = z.object({
+const checkpointRecipeSchema = z.object({
   content: recipeContentSchema,
   tagIds: z.array(z.string().uuid()),
-  origin: z.enum(["imported", "generated"]).optional(),
-  imageUrl: z.string().url().nullable().optional(),
 });
+const checkpointSchema = z
+  .union([
+    z.object({
+      recipes: z
+        .array(checkpointRecipeSchema.extend({ id: z.string().uuid() }))
+        .min(1)
+        .max(recipesPerImport),
+    }),
+    // Written before multi-recipe imports; the recipe uses the import ID.
+    checkpointRecipeSchema,
+  ])
+  .and(
+    z.object({
+      origin: z.enum(["imported", "generated"]).optional(),
+      imageUrl: z.string().url().nullable().optional(),
+    }),
+  );
+
+function checkpointRecipes(
+  id: string,
+  checkpoint: z.infer<typeof checkpointSchema>,
+) {
+  return "recipes" in checkpoint
+    ? checkpoint.recipes
+    : [{ id, content: checkpoint.content, tagIds: checkpoint.tagIds }];
+}
 
 type SaveClaim = Pick<
   typeof recipeImport.$inferSelect,
@@ -612,9 +676,13 @@ export async function processNextImport(
         input: "",
         sourceUrl: result.sourceUrl,
         imageCandidates: null,
+        // IDs are fixed here so save retries never duplicate a recipe.
         generated: {
-          content: result.content,
-          tagIds: result.tagIds,
+          recipes: result.recipes.map((item, index) => ({
+            id: index ? randomUUID() : job.id,
+            content: item.content,
+            tagIds: item.tagIds,
+          })),
           origin: result.origin,
           imageUrl: result.imageUrl ?? null,
         },
@@ -724,10 +792,12 @@ async function saveReady(claim: SaveClaim) {
           .where(eq(recipeImport.id, id));
         return { kind: "failed", failure: importFailure(error) } as const;
       }
+      const recipes = checkpointRecipes(id, checkpoint.data);
+      const ids = recipes.map((item) => item.id);
       const [existing] = await tx
         .select({ id: recipe.id })
         .from(recipe)
-        .where(eq(recipe.id, id));
+        .where(inArray(recipe.id, ids));
       if (existing) {
         await tx
           .update(recipeImport)
@@ -744,19 +814,26 @@ async function saveReady(claim: SaveClaim) {
           failure: { type: "RecipeIdConflict" },
         } as const;
       }
-      const inserted = await persistRecipe(
-        tx,
-        {
-          id,
-          userId: job.userId,
-          title: checkpoint.data.content.title,
-          content: checkpoint.data.content,
-          sourceUrl: job.sourceUrl,
-          origin: checkpoint.data.origin ?? "imported",
-        },
-        checkpoint.data.tagIds,
-      );
-      if (inserted) await applyPlacement(tx, id, placement);
+      let inserted = true;
+      for (const [index, item] of recipes.entries()) {
+        inserted = await persistRecipe(
+          tx,
+          {
+            id: item.id,
+            userId: job.userId,
+            title: item.content.title,
+            content: item.content,
+            sourceUrl: job.sourceUrl,
+            origin: checkpoint.data.origin ?? "imported",
+          },
+          item.tagIds,
+        );
+        // Roll back earlier inserts; the retry finds the conflict and fails cleanly.
+        if (!inserted && index)
+          throw Object.assign(new Error(), { name: "RecipeIdConflict" });
+        if (!inserted) break;
+        await applyPlacement(tx, item.id, placement);
+      }
       await tx
         .update(recipeImport)
         .set({
@@ -764,6 +841,7 @@ async function saveReady(claim: SaveClaim) {
           saveClaimedAt: null,
           workerToken: null,
           generated: null,
+          recipeIds: inserted ? ids : null,
           error: inserted
             ? null
             : "This recipe ID is already in use. Start another import.",
@@ -774,6 +852,7 @@ async function saveReady(claim: SaveClaim) {
             kind: "saved",
             imageUrl: checkpoint.data.imageUrl ?? null,
             sourceUrl: job.sourceUrl,
+            count: ids.length,
           } as const)
         : ({ kind: "failed", failure: { type: "RecipeIdConflict" } } as const);
     })
@@ -785,6 +864,7 @@ async function saveReady(claim: SaveClaim) {
     logImport({
       event: "import_saved",
       importId: id,
+      recipes: saved.count,
       elapsedMs: Date.now() - started,
     });
     if (saved.imageUrl)

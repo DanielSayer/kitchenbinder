@@ -4,7 +4,8 @@ export const aiPolicy = {
   model: "gpt-6-luna",
   maxContentBytes: 160_000,
   maxSystemBytes: 160_000,
-  maxOutputTokens: 7000,
+  // Up to five recipes per import.
+  maxOutputTokens: 20_000,
   reserveCentsPerAttempt: 25,
   dailyBudgetCents: 2500,
 };

@@ -29,13 +29,15 @@ it.skipIf(process.env.LIVE_AI_TEST !== "1")(
       "Tomato toast. Serves 1. Prep 5 minutes, cook 2 minutes, total 7 minutes. Ingredients: 1 slice bread, 1 tomato, 1 tsp olive oil. Steps: Toast the bread for 2 minutes. Slice the tomato. Put tomato on toast and drizzle with oil.",
       tags,
     );
-    expect(result.tagIds).toEqual(
+    expect(result.recipes[0]?.tagIds).toEqual(
       expect.arrayContaining(tags.slice(0, 2).map((tag) => tag.id)),
     );
-    expect(result.tagIds).toHaveLength(2);
-    expect(result.tagIds.every((id) => tags.some((tag) => tag.id === id))).toBe(
-      true,
-    );
+    expect(result.recipes[0]?.tagIds).toHaveLength(2);
+    expect(
+      result.recipes[0]?.tagIds.every((id) =>
+        tags.some((tag) => tag.id === id),
+      ),
+    ).toBe(true);
   },
   100000,
 );
@@ -80,8 +82,8 @@ it.skipIf(process.env.LIVE_AI_TEST !== "1").each([
       `{"@type":"Recipe","name":"Tomato rice",${times},"recipeIngredient":["1 cup rice","2 cups water","1 tomato, chopped"],"recipeInstructions":["Combine the rice, water and tomato in a saucepan.","Bring to a boil, then cover and simmer until the rice is tender."]}`,
     );
     expect(imported.origin).toBe("imported");
-    expect(prep).toContain(imported.content.prepMinutes);
-    expect(imported.content.cookMinutes).toBe(cook);
+    expect(prep).toContain(imported.recipes[0]?.content.prepMinutes);
+    expect(imported.recipes[0]?.content.cookMinutes).toBe(cook);
   },
   100000,
 );
@@ -93,19 +95,21 @@ it.skipIf(process.env.LIVE_AI_TEST !== "1")(
       const generated = await generateRecipe(
         "Generate a simple lemon pasta recipe for two people.",
       );
-      expect(recipeContentSchema.safeParse(generated.content).success).toBe(
-        true,
-      );
+      expect(
+        recipeContentSchema.safeParse(generated.recipes[0]?.content).success,
+      ).toBe(true);
       expect(generated.origin).toBe("generated");
       const imported = await generateRecipe(
         "Tomato toast. Serves 1. Ingredients: 1 slice bread, 1 tomato, 1 tsp olive oil. Steps: Toast the bread. Slice the tomato. Put tomato on toast and drizzle with oil.",
       );
       expect(imported.origin).toBe("imported");
-      expect(imported.content.ingredients).toHaveLength(3);
+      expect(imported.recipes[0]?.content.ingredients).toHaveLength(3);
+      const [first] = generated.recipes;
+      if (!first) throw new Error("No generated recipe");
       await mkdir("tmp/pdfs", { recursive: true });
       await writeFile(
         "tmp/pdfs/live-recipe.pdf",
-        await recipePdf(generated.content, null, generated.origin),
+        await recipePdf(first.content, null, generated.origin),
       );
     } catch (error) {
       // Print only the cause message; never request headers or credentials.
