@@ -9,13 +9,17 @@ const withHousehold = (value: unknown) => {
 };
 const pendingImportSchema = z.preprocess(
   withHousehold,
-  z.object({
-    id: z.uuid(),
-    input: z.string().trim().min(3).max(20000),
-    householdId: z.uuid().nullable(),
-    // Recipes from this import already saved or discarded in the ready sheet.
-    done: z.array(z.uuid()).max(5).optional(),
-  }),
+  z
+    .object({
+      id: z.uuid(),
+      input: z.string().trim().max(20000),
+      householdId: z.uuid().nullable(),
+      // Recipes from this import already saved or discarded in the ready sheet.
+      done: z.array(z.uuid()).max(5).optional(),
+      // Photos stay in memory (import-photos.ts); only their count is stored.
+      photoCount: z.number().int().min(1).max(5).optional(),
+    })
+    .refine((item) => item.photoCount || item.input.length >= 3),
 );
 export type PendingImport = z.infer<typeof pendingImportSchema>;
 export const importDraftKey = (userId: string) =>

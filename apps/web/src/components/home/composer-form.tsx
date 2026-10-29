@@ -1,5 +1,7 @@
-import { ArrowUp, Pencil, Sparkles } from "lucide-react";
-import type { Ref, SubmitEvent } from "react";
+import { ArrowUp, Camera, Pencil, Sparkles, X } from "lucide-react";
+import { type Ref, type SubmitEvent, useRef } from "react";
+import { ErrorNotice } from "../feedback";
+import { maxPhotos } from "./import-photos";
 
 export function ComposerForm({
   input,
@@ -9,6 +11,11 @@ export function ComposerForm({
   onSubmit,
   onManual,
   manualDisabled,
+  photos = [],
+  photoBusy = false,
+  photoError,
+  onAddPhotos,
+  onRemovePhoto,
 }: {
   input: string;
   inputRef?: Ref<HTMLTextAreaElement>;
@@ -17,7 +24,13 @@ export function ComposerForm({
   onSubmit: (event: SubmitEvent) => void;
   onManual: () => void;
   manualDisabled: boolean;
+  photos?: { id: string; url: string }[];
+  photoBusy?: boolean;
+  photoError?: string;
+  onAddPhotos?: (files: File[]) => void;
+  onRemovePhoto?: (id: string) => void;
 }) {
+  const fileRef = useRef<HTMLInputElement>(null);
   return (
     <>
       <form className="add-composer" onSubmit={onSubmit}>
@@ -38,23 +51,82 @@ export function ComposerForm({
             }
           }}
           maxLength={20000}
-          placeholder="Paste a link, recipe, or describe a dish…"
+          placeholder={
+            photos.length
+              ? "Add a note about these photos (optional)…"
+              : "Paste a link, recipe, or describe a dish…"
+          }
         />
+        {photos.length > 0 && (
+          <ul className="add-photos" aria-label="Photos to import">
+            {photos.map((photo, index) => (
+              <li key={photo.id}>
+                <img src={photo.url} alt={`Recipe page ${index + 1}`} />
+                <button
+                  type="button"
+                  className="add-photo-remove"
+                  aria-label={`Remove photo ${index + 1}`}
+                  onClick={() => onRemovePhoto?.(photo.id)}
+                >
+                  <X size={14} aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         <div className="add-composer-foot">
           <span>
             <Sparkles size={14} aria-hidden="true" />
-            We'll tidy it into a recipe
+            {photos.length
+              ? `${photos.length} of ${maxPhotos} photos`
+              : "We'll tidy it into a recipe"}
           </span>
-          <button
-            type="submit"
-            className="add-send"
-            aria-label="Make a recipe"
-            title="Make a recipe"
-            disabled={disabled}
-          >
-            <ArrowUp size={22} aria-hidden="true" />
-          </button>
+          <div className="add-composer-actions">
+            {onAddPhotos && (
+              <>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                  multiple
+                  hidden
+                  aria-label="Add recipe photos"
+                  onChange={(event) => {
+                    const files = [...(event.target.files ?? [])];
+                    // Allow picking the same file again after removing it.
+                    event.target.value = "";
+                    if (files.length) onAddPhotos(files);
+                  }}
+                />
+                <button
+                  type="button"
+                  className="add-photo"
+                  aria-label="Add photos (up to 5)"
+                  title="Up to 5 photos"
+                  disabled={photoBusy || photos.length >= maxPhotos}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  <Camera size={20} aria-hidden="true" />
+                </button>
+              </>
+            )}
+            <button
+              type="submit"
+              className="add-send"
+              aria-label="Make a recipe"
+              title="Make a recipe"
+              disabled={disabled}
+            >
+              <ArrowUp size={22} aria-hidden="true" />
+            </button>
+          </div>
         </div>
+        {photoBusy && (
+          <p className="add-photo-hint" role="status">
+            Preparing photos…
+          </p>
+        )}
+        <ErrorNotice message={photoError} />
       </form>
       <button
         type="button"

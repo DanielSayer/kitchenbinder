@@ -15,9 +15,12 @@ import {
   readImportQueue,
   writeImportQueue,
 } from "./import-draft";
+import { downscalePhoto, maxPhotos, photoBlobs } from "./import-photos";
 import { ImportQueueCard } from "./import-queue-card";
 import { ImportReadySheet } from "./import-ready";
 import { ManualRecipe } from "./manual-recipe";
+
+type PickedPhoto = { id: string; blob: Blob; url: string };
 
 export function RecipeComposer() {
   const { data: session, isPending } = authClient.useSession();
@@ -40,6 +43,11 @@ function AccountComposer({
   const [manual, setManual] = useState(false);
   const [input, setInput] = useState("");
   const [queue, setQueue] = useState<PendingImport[]>([]);
+  const [photos, setPhotos] = useState<PickedPhoto[]>([]);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoError, setPhotoError] = useState<string>();
+  const photosRef = useRef(photos);
+  photosRef.current = photos;
   const queueRef = useRef(queue);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [loaded, setLoaded] = useState(false);
@@ -87,6 +95,53 @@ function AccountComposer({
     setLoaded(true);
   }, [key, userId]);
 
+  // Thumbnails hold object URLs; release them when the composer goes.
+  useEffect(
+    () => () => {
+      for (const photo of photosRef.current) URL.revokeObjectURL(photo.url);
+    },
+    [],
+  );
+
+  function showPhotos(next: Blob[]) {
+    for (const photo of photosRef.current) URL.revokeObjectURL(photo.url);
+    setPhotos(
+      next.map((blob) => ({
+        id: crypto.randomUUID(),
+        blob,
+        url: URL.createObjectURL(blob),
+      })),
+    );
+  }
+
+  async function addPhotos(files: File[]) {
+    const room = maxPhotos - photosRef.current.length;
+    setPhotoError(
+      files.length > room ? `Add up to ${maxPhotos} photos.` : undefined,
+    );
+    if (room <= 0) return;
+    setPhotoBusy(true);
+    const added: Blob[] = [];
+    try {
+      for (const file of files.slice(0, room))
+        added.push(await downscalePhoto(file));
+    } catch (error) {
+      setPhotoError(
+        error instanceof Error ? error.message : "Couldn't add this photo.",
+      );
+    } finally {
+      showPhotos([...photosRef.current.map((photo) => photo.blob), ...added]);
+      setPhotoBusy(false);
+    }
+  }
+
+  function removePhoto(id: string) {
+    const photo = photosRef.current.find((item) => item.id === id);
+    if (photo) URL.revokeObjectURL(photo.url);
+    setPhotos(photosRef.current.filter((item) => item.id !== id));
+    setPhotoError(undefined);
+  }
+
   function change(value: string) {
     setInput(value);
     try {
@@ -105,6 +160,8 @@ function AccountComposer({
     }
     queueRef.current = next;
     setQueue(next);
+    for (const id of photoBlobs.keys())
+      if (!next.some((item) => item.id === id)) photoBlobs.delete(id);
     setStorageError(undefined);
     return true;
   }
@@ -112,7 +169,9 @@ function AccountComposer({
   function submit(event: SubmitEvent) {
     event.preventDefault();
     const value = inputRef.current?.value.trim() ?? input.trim();
-    if (!loaded || sessionPending || value.length < 3) return;
+    const picked = photosRef.current.map((photo) => photo.blob);
+    if (!loaded || sessionPending || photoBusy) return;
+    if (value.length < 3 && !picked.length) return;
     if (!userId) {
       void navigate({ to: "/login" });
       return;
@@ -123,8 +182,15 @@ function AccountComposer({
       input: value,
       // A household the user has left falls back to "Just me".
       householdId: households.data && !available ? null : householdId,
+      ...(picked.length ? { photoCount: picked.length } : {}),
     };
-    if (!persist([...queueRef.current, next])) return;
+    if (picked.length) photoBlobs.set(next.id, picked);
+    if (!persist([...queueRef.current, next])) {
+      photoBlobs.delete(next.id);
+      return;
+    }
+    showPhotos([]);
+    setPhotoError(undefined);
     change("");
     // Clear immediately as well, so a second submit cannot reuse the old text.
     if (inputRef.current) inputRef.current.value = "";
@@ -134,10 +200,14 @@ function AccountComposer({
   function remove(id: string, restoreInput?: string) {
     if (
       restoreInput !== undefined &&
-      (!inputRef.current || inputRef.current.value.trim())
+      (!inputRef.current ||
+        inputRef.current.value.trim() ||
+        photosRef.current.length)
     )
       return false;
     const original = queueRef.current.find((item) => item.id === id);
+    // Photos survive an edit only while this tab still holds them.
+    const restorePhotos = photoBlobs.get(id);
     if (restoreInput !== undefined) {
       try {
         // Keep the original card recoverable until its input draft is stored.
@@ -153,6 +223,7 @@ function AccountComposer({
       return false;
     if (restoreInput !== undefined) {
       if (original) selectHousehold(original.householdId);
+      if (restorePhotos) showPhotos(restorePhotos);
       setInput(restoreInput);
       inputRef.current?.focus();
     }
@@ -207,7 +278,23 @@ function AccountComposer({
           <ComposerForm
             input={input}
             inputRef={inputRef}
-            disabled={!loaded || sessionPending || input.trim().length < 3}
+            disabled={
+              !loaded ||
+              sessionPending ||
+              photoBusy ||
+              (input.trim().length < 3 && !photos.length)
+            }
+            photos={photos}
+            photoBusy={photoBusy}
+            photoError={photoError}
+            onAddPhotos={(files) => {
+              if (!userId) {
+                void navigate({ to: "/login" });
+                return;
+              }
+              void addPhotos(files);
+            }}
+            onRemovePhoto={removePhoto}
             onChange={change}
             onSubmit={submit}
             manualDisabled={sessionPending}
@@ -243,7 +330,7 @@ function AccountComposer({
                         )?.name ?? "Original household")
                       : "Just me"
                   }
-                  canEdit={!manual && !input.trim()}
+                  canEdit={!manual && !input.trim() && !photos.length}
                   onRemove={remove}
                   onOpen={(recipeId, recipeIds) => {
                     setReady({ id: item.id, recipeId, recipeIds });

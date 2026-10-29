@@ -63,3 +63,20 @@ it("rejects invalid or duplicate requests in browser storage", () => {
   sessionStorage.setItem(`${key}:queue`, "not JSON");
   expect(readImportQueue(key)).toEqual([]);
 });
+
+it("stores photo imports by count, with or without a note", () => {
+  const key = importDraftKey("viewer");
+  const photos = { ...first, input: "", photoCount: 3 };
+  expect(writeImportQueue(key, [photos])).toBe(true);
+  expect(readImportQueue(key)).toEqual([photos]);
+  sessionStorage.setItem(
+    `${key}:queue`,
+    JSON.stringify([{ ...first, input: "" }]),
+  );
+  expect(readImportQueue(key)).toEqual([]);
+  sessionStorage.setItem(
+    `${key}:queue`,
+    JSON.stringify([{ ...first, photoCount: 6 }]),
+  );
+  expect(readImportQueue(key)).toEqual([]);
+});
