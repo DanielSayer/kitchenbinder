@@ -10,13 +10,14 @@ actual TLS proxy and host against the same budgets before public traffic.
 | --- | ---: |
 | `/api/trpc/*` | 1,572,864, or 1.5 MiB |
 | `/api/polar/webhooks` | 262,144, or 256 KiB |
+| `/api/recipes/imports/photos` | 8,388,608, or 8 MiB |
 | Auth and all other routes | 16,384, or 16 KiB |
 
 The listener rejects an excessive declared `Content-Length` before dispatch.
 The Fetch entry counts actual streamed bytes before any application parser or
 authentication handler runs, including when a length is absent or misleading.
 It returns 413 on overflow and 408 if the complete body has not arrived within
-15 seconds. It cancels reading on rejection. These are byte budgets, so JSON
+15 seconds, or 60 seconds for photo uploads. It cancels reading on rejection. These are byte budgets, so JSON
 escaping and multi-byte characters count towards the total.
 GET and HEAD requests with a declared or chunked body are rejected by the
 listener with 413, including requests for static assets.
@@ -32,6 +33,13 @@ The tRPC budget accommodates a single full recipe with 100 ingredient and
 100 method lines of 2,000 characters, including ordinary UTF-8 multilingual
 text. A batch shares one body budget. Exceptionally escaped JSON or several
 maximum-size recipes may need separate requests or smaller content.
+
+The photo upload route accepts one multipart request with at most five
+photos of 1.5 MiB each, already downscaled in the browser. It requires a session
+and a same-origin `Origin` header. Each account can send 10 uploads per minute
+per web process, and admission still applies the import limits (five per minute,
+pending queue, AI allowance). Uploads are held in PostgreSQL only until generation
+ends, so storage is bounded by the pending queue.
 
 The tRPC adapter accepts at most five operations per batch. The web client
 splits batches at five operations and limits query URLs to 8,000 characters.
@@ -87,7 +95,8 @@ does not decompress request bodies. Preserve webhook payload bytes and
 signature headers exactly. Check trailing-slash and encoded-path routing as
 well as the ordinary route names when applying proxy rules.
 
-Set a total request-body read deadline of 15 seconds or less and a bounded
+Set a total request-body read deadline of 15 seconds or less (60 seconds for
+photo uploads) and a bounded
 header-read deadline. A timeout between successive bytes alone permits an
 indefinite trickle. Configure a PDF upstream response timeout greater than the
 10-second worker deadline plus the chosen database lookup budget, so the
