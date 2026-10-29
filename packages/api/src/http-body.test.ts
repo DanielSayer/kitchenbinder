@@ -2,7 +2,11 @@ import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
-import { bodyByteLimit, boundedRequest } from "../../../scripts/http-body.mjs";
+import {
+  bodyByteLimit,
+  bodyReadTimeoutMs,
+  boundedRequest,
+} from "../../../scripts/http-body.mjs";
 
 function streamingRequest(
   path: string,
@@ -182,6 +186,7 @@ describe("body admission before parsers", () => {
       "/api/auth/callback",
       "/api/polar/webhooks",
       "/api/trpc/recipes.createManual",
+      "/api/recipes/imports/photos",
     ]) {
       const result = await boundedRequest(
         new Request(`http://localhost${path}`, {
@@ -191,5 +196,19 @@ describe("body admission before parsers", () => {
       );
       expect(result instanceof Response && result.status).toBe(413);
     }
+  });
+
+  it("allows five full photos and a longer read on the photo upload route", async () => {
+    const path = "/api/recipes/imports/photos";
+    expect(bodyByteLimit(path)).toBeGreaterThan(5 * 1_572_864 + 65_536);
+    expect(bodyReadTimeoutMs(path)).toBe(60_000);
+    expect(bodyReadTimeoutMs("/api/trpc/recipes.create")).toBe(15_000);
+    const body = new Uint8Array(bodyByteLimit(path));
+    const result = await boundedRequest(
+      new Request(`http://localhost${path}`, { method: "POST", body }),
+    );
+    expect(result).toBeInstanceOf(Request);
+    if (result instanceof Request)
+      expect((await result.arrayBuffer()).byteLength).toBe(body.byteLength);
   });
 });

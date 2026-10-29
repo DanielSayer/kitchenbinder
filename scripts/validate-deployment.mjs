@@ -331,6 +331,7 @@ createServer(async (req, res) => {
     ["/api/auth/sign-in/social", 16384],
     ["/api/trpc/save", 1572864],
     ["/api/polar/webhooks", 262144],
+    ["/api/recipes/imports/photos", 8388608],
     ["/api/polar/webhooks/", 16384],
   ]) {
     assert.equal(
