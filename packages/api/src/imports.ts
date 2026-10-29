@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { db } from "@prep-sheet/db";
 import { recipeContentSchema } from "@prep-sheet/db/recipe-content";
 import { user } from "@prep-sheet/db/schema/auth";
-import { recipeImport } from "@prep-sheet/db/schema/import";
+import { recipeImport, recipeImportPhoto } from "@prep-sheet/db/schema/import";
 import { recipe } from "@prep-sheet/db/schema/recipe";
 import { TRPCError } from "@trpc/server";
 import {
@@ -35,10 +35,13 @@ import {
 } from "./households/placement";
 import {
   type ImportStatus,
+  photoDiscardSchema,
+  photoImportSchema,
   recipesPerImport,
   websiteImportSchema,
 } from "./import-contract";
 import { importFailure, logImport } from "./import-diagnostics";
+import type { UploadedPhoto } from "./photo-upload";
 import {
   generateRecipe,
   prepareRecipeInput,
@@ -177,26 +180,46 @@ type JobInput = Placement & {
   id: string;
   content: string;
   sourceUrl: string | null;
-  sourceKind: "website";
+  sourceKind: "website" | "photo";
+  photos?: UploadedPhoto[];
 };
+
+const sha256 = (data: string | Buffer) =>
+  createHash("sha256").update(data).digest("hex");
 
 function fingerprintOf(input: JobInput) {
   // "groupId" keeps fingerprints of imports admitted before households stable.
-  return createHash("sha256")
-    .update(
-      JSON.stringify({
-        content: input.content,
-        sourceUrl: input.sourceUrl,
-        groupId: input.householdId,
-        ...(input.collectionId ? { collectionId: input.collectionId } : {}),
-        sourceKind: input.sourceKind,
-      }),
-    )
-    .digest("hex");
+  return sha256(
+    JSON.stringify({
+      content: input.content,
+      sourceUrl: input.sourceUrl,
+      groupId: input.householdId,
+      ...(input.collectionId ? { collectionId: input.collectionId } : {}),
+      sourceKind: input.sourceKind,
+      // A retry must resend the same photos; different photos conflict.
+      ...(input.photos
+        ? { photos: input.photos.map(({ data }) => sha256(data)) }
+        : {}),
+    }),
+  );
 }
 
-async function discardJob(userId: string, input: JobInput) {
-  const fingerprint = fingerprintOf(input);
+// Uploaded photos are only kept while generation may still start.
+async function deletePhotos(database: Database, ids: string[]) {
+  if (ids.length)
+    await database
+      .delete(recipeImportPhoto)
+      .where(inArray(recipeImportPhoto.importId, ids));
+}
+
+// Photo discards match by ID only: a reloaded page no longer has the photos.
+type DiscardInput =
+  | JobInput
+  | { id: string; sourceKind: "photo"; fingerprint: null };
+
+async function discardJob(userId: string, input: DiscardInput) {
+  const fingerprint =
+    "fingerprint" in input ? input.fingerprint : fingerprintOf(input);
   await db.transaction(async (tx) => {
     await tx
       .select({ id: user.id })
@@ -208,7 +231,10 @@ async function discardJob(userId: string, input: JobInput) {
       .from(recipeImport)
       .where(eq(recipeImport.id, input.id));
     if (existing) {
-      if (existing.userId !== userId || existing.fingerprint !== fingerprint)
+      if (
+        existing.userId !== userId ||
+        (fingerprint !== null && existing.fingerprint !== fingerprint)
+      )
         throw new TRPCError({
           code: "CONFLICT",
           message: "This import ID has already been used.",
@@ -218,6 +244,7 @@ async function discardJob(userId: string, input: JobInput) {
           code: "CONFLICT",
           message: "Your import is still processing. Check it again shortly.",
         });
+      await deletePhotos(tx, [input.id]);
       return;
     }
     const [recent] = await tx
@@ -238,10 +265,11 @@ async function discardJob(userId: string, input: JobInput) {
     await tx.insert(recipeImport).values({
       id: input.id,
       userId,
-      householdId: input.householdId,
-      collectionId: input.collectionId,
-      fingerprint,
-      sourceUrl: input.sourceUrl,
+      householdId: "householdId" in input ? input.householdId : null,
+      collectionId: "collectionId" in input ? input.collectionId : null,
+      // Never a real fingerprint, so a delayed upload with this ID conflicts.
+      fingerprint: fingerprint ?? "discarded",
+      sourceUrl: "sourceUrl" in input ? input.sourceUrl : null,
       input: "",
       state: "failed",
       usageReleased: true,
@@ -269,7 +297,31 @@ export function submitWebsiteImport(userId: string, value: unknown) {
 }
 
 export function discardWebsiteImport(userId: string, value: unknown) {
-  return discardJob(userId, websiteInput(value));
+  const photo = photoDiscardSchema.safeParse(value);
+  return discardJob(
+    userId,
+    photo.success
+      ? { id: photo.data.id, sourceKind: "photo", fingerprint: null }
+      : websiteInput(value),
+  );
+}
+
+/** Photos must already be checked by readPhotoUpload. */
+export function submitPhotoImport(
+  userId: string,
+  value: unknown,
+  photos: UploadedPhoto[],
+) {
+  const input = photoImportSchema.parse(value);
+  return submitJob(userId, {
+    id: input.id,
+    content: input.input,
+    householdId: input.householdId ?? null,
+    collectionId: input.collectionId ?? null,
+    sourceUrl: null,
+    sourceKind: "photo",
+    photos,
+  });
 }
 
 async function submitJob(userId: string, input: JobInput) {
@@ -357,6 +409,15 @@ async function submitJob(userId: string, input: JobInput) {
       fingerprint,
       usageBucket,
     });
+    if (input.photos?.length)
+      await tx.insert(recipeImportPhoto).values(
+        input.photos.map((photo, position) => ({
+          importId: input.id,
+          position,
+          mediaType: photo.mediaType,
+          data: photo.data,
+        })),
+      );
     return true;
   });
   if (admitted)
@@ -480,7 +541,7 @@ export async function processNextImport(
     : () => {},
 ) {
   // Do not replay an AI call whose outcome was lost with its worker. Keep the ID terminal.
-  await db
+  const interrupted = await db
     .update(recipeImport)
     .set({
       state: "failed",
@@ -494,7 +555,16 @@ export async function processNextImport(
         eq(recipeImport.state, "processing"),
         lt(recipeImport.startedAt, new Date(Date.now() - claimTimeoutMs)),
       ),
-    );
+    )
+    .returning({ id: recipeImport.id });
+  await deletePhotos(
+    db,
+    interrupted.map(({ id }) => id),
+  );
+  // Backstop for any path that ended generation without deleting its photos.
+  await db.execute(
+    sql`delete from ${recipeImportPhoto} using ${recipeImport} where ${recipeImportPhoto.importId} = ${recipeImport.id} and ${recipeImport.state} not in ('queued', 'fetching', 'processing')`,
+  );
   // Fetching is safe to repeat; a call that reached AI is never replayed.
   await db
     .update(recipeImport)
@@ -605,11 +675,12 @@ export async function processNextImport(
   let saveClaim: SaveClaim | undefined;
   try {
     await preparePlacement(db, job.userId, job, { lock: false });
-    const prepared = await prepareRecipeInput(
-      job.input,
-      job.sourceUrl ?? undefined,
-      job.id,
-    );
+    const photos =
+      job.sourceKind === "photo" ? await promptPhotos(job.id) : undefined;
+    // Photo imports never fetch, even when the text holds a URL.
+    const prepared = photos
+      ? { content: job.input, sourceUrl: null, images: [] }
+      : await prepareRecipeInput(job.input, job.sourceUrl ?? undefined, job.id);
     if (!prepared.images.length && job.imageCandidates)
       prepared.images = job.imageCandidates;
     const tags = await availableTags(job.userId);
@@ -619,6 +690,7 @@ export async function processNextImport(
       withImageChoices(prepared.content, prepared.images),
       tags,
       prepared.sourceUrl,
+      !!photos,
     );
     // Persist the exact input before crossing the AI boundary.
     const claimed = await db.transaction(async (tx) => {
@@ -658,6 +730,7 @@ export async function processNextImport(
       tags,
       prepared.sourceUrl ?? undefined,
       prepared.images,
+      photos && { photos },
     );
     logImport({
       event: "import_stage_completed",
@@ -666,35 +739,42 @@ export async function processNextImport(
       elapsedMs: Date.now() - stageStarted,
     });
     // A save failure retries this checkpoint, never generation.
-    const [checkpointed] = await db
-      .update(recipeImport)
-      .set({
-        state: "ready",
-        saveAttempts: 1,
-        saveClaimedAt: new Date(),
-        nextSaveAttemptAt: new Date(),
-        input: "",
-        sourceUrl: result.sourceUrl,
-        imageCandidates: null,
-        // IDs are fixed here so save retries never duplicate a recipe.
-        generated: {
-          recipes: result.recipes.map((item, index) => ({
-            id: index ? randomUUID() : job.id,
-            content: item.content,
-            tagIds: item.tagIds,
-          })),
-          origin: result.origin,
-          imageUrl: result.imageUrl ?? null,
-        },
-      })
-      .where(
-        and(
-          eq(recipeImport.id, job.id),
-          eq(recipeImport.workerToken, job.workerToken),
-          eq(recipeImport.state, "processing"),
-        ),
-      )
-      .returning({ id: recipeImport.id });
+    const [checkpointed] = await db.transaction(async (tx) => {
+      const checkpointed = await tx
+        .update(recipeImport)
+        .set({
+          state: "ready",
+          saveAttempts: 1,
+          saveClaimedAt: new Date(),
+          nextSaveAttemptAt: new Date(),
+          input: "",
+          sourceUrl: result.sourceUrl,
+          imageCandidates: null,
+          // IDs are fixed here so save retries never duplicate a recipe.
+          generated: {
+            recipes: result.recipes.map((item, index) => ({
+              id: index ? randomUUID() : job.id,
+              content: item.content,
+              tagIds: item.tagIds,
+            })),
+            origin: result.origin,
+            imageUrl: result.imageUrl ?? null,
+          },
+        })
+        .where(
+          and(
+            eq(recipeImport.id, job.id),
+            eq(recipeImport.workerToken, job.workerToken),
+            eq(recipeImport.state, "processing"),
+          ),
+        )
+        .returning({ id: recipeImport.id });
+      await deletePhotos(
+        tx,
+        checkpointed.map(({ id }) => id),
+      );
+      return checkpointed;
+    });
     if (checkpointed)
       saveClaim = { id: job.id, workerToken: job.workerToken, saveAttempts: 1 };
   } catch (error) {
@@ -713,13 +793,44 @@ export async function processNextImport(
   return true;
 }
 
+// Re-encode uploads before they reach the provider, dropping metadata and
+// anything that is not a plain raster image.
+async function promptPhotos(id: string) {
+  const rows = await db
+    .select({ data: recipeImportPhoto.data })
+    .from(recipeImportPhoto)
+    .where(eq(recipeImportPhoto.importId, id))
+    .orderBy(asc(recipeImportPhoto.position));
+  if (!rows.length)
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "The photos for this import are missing. Add them again.",
+    });
+  // Loaded lazily: sharp's native binary must stay out of the web server bundle.
+  const { promptPhoto } = await import("./recipes/media");
+  const photos = [];
+  for (const row of rows) {
+    try {
+      photos.push(await promptPhoto(row.data));
+    } catch (cause) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message:
+          "One of the photos couldn't be read. Try a JPEG, PNG or WebP photo.",
+        cause,
+      });
+    }
+  }
+  return photos;
+}
+
 async function failImport(
   id: string,
   workerToken: string,
   error: unknown,
   release = false,
 ) {
-  await db
+  const failed = await db
     .update(recipeImport)
     .set({
       state: "failed",
@@ -737,7 +848,12 @@ async function failImport(
         eq(recipeImport.workerToken, workerToken),
         inArray(recipeImport.state, ["fetching", "processing"]),
       ),
-    );
+    )
+    .returning({ id: recipeImport.id });
+  await deletePhotos(
+    db,
+    failed.map(({ id }) => id),
+  );
 }
 
 async function saveReady(claim: SaveClaim) {

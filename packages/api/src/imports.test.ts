@@ -198,6 +198,7 @@ describe("durable import concurrency and recovery with PostgreSQL", () => {
       expect.any(Array),
       undefined,
       [],
+      undefined,
     );
     const [saved] = await db
       .select()

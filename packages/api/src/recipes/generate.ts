@@ -47,18 +47,26 @@ export function requireRecipeProvider(apiKey = env.OPENAI_API_KEY) {
   return apiKey.trim();
 }
 
+/** A sanitised upload, re-encoded by the worker before it reaches the provider. */
+export type PromptPhoto = { mediaType: string; data: Buffer };
+
 export async function generateRecipe(
   input: string,
   tags: { id: string; name: string; description: string }[] = [],
   capturedSourceUrl?: string,
   capturedImages: ImageCandidate[] = [],
+  { photos = [] }: { photos?: PromptPhoto[] } = {},
 ) {
   const apiKey = requireRecipeProvider();
-  const prepared = await prepareRecipeInput(input, capturedSourceUrl);
+  const fromPhotos = photos.length > 0;
+  // Photo imports never fetch, even when the note holds a URL.
+  const prepared = fromPhotos
+    ? { content: input, sourceUrl: null, images: [] }
+    : await prepareRecipeInput(input, capturedSourceUrl);
   const { sourceUrl } = prepared;
   const images = capturedSourceUrl ? capturedImages : prepared.images;
   const content = withImageChoices(prepared.content, images);
-  const system = recipeSystemPrompt(content, tags, sourceUrl);
+  const system = recipeSystemPrompt(content, tags, sourceUrl, fromPhotos);
   try {
     const { output } = await generateText({
       model: createOpenAI({ apiKey })(env.OPENAI_MODEL),
@@ -69,22 +77,32 @@ export async function generateRecipe(
       // Several recipes take longer; stay under the worker's 180 s claim timeout.
       abortSignal: AbortSignal.timeout(150_000),
       system,
-      prompt: content,
+      ...(fromPhotos
+        ? { messages: photoMessages(content, photos) }
+        : { prompt: content }),
     });
-    const origin = sourceUrl ? ("imported" as const) : output.origin;
-    const found = output.recipes.slice(
-      0,
-      sourceUrl || origin === "generated" ? 1 : recipesPerImport,
-    );
+    const origin =
+      sourceUrl || fromPhotos ? ("imported" as const) : output.origin;
+    // Photo imports only extract; a generated answer means no recipe was found.
+    const found =
+      fromPhotos && output.origin === "generated"
+        ? []
+        : output.recipes.slice(
+            0,
+            sourceUrl || origin === "generated" ? 1 : recipesPerImport,
+          );
     if (!found.length)
       throw new TRPCError({
         code: "BAD_REQUEST",
         message: sourceUrl
           ? PAGE_ERROR
-          : "I couldn't find one complete recipe. Paste ingredients and steps, or describe a dish you'd like to make.",
+          : fromPhotos
+            ? "I couldn't find a complete recipe in these photos. Try clearer photos that show the ingredients and method."
+            : "I couldn't find one complete recipe. Paste ingredients and steps, or describe a dish you'd like to make.",
       });
+    // Uploaded photos are never used as a cover.
     const imageUrl =
-      origin === "imported"
+      origin === "imported" && !fromPhotos
         ? (preferredImage(images)?.url ??
           (output.imageIndex === null
             ? undefined
@@ -125,12 +143,37 @@ export async function generateRecipe(
   }
 }
 
+export function photoMessages(note: string, photos: readonly PromptPhoto[]) {
+  return [
+    {
+      role: "user" as const,
+      content: [
+        {
+          type: "text" as const,
+          text: note
+            ? `Note from the user: ${note}`
+            : "Extract the recipes in these photos.",
+        },
+        ...photos.map((photo) => ({
+          type: "image" as const,
+          image: photo.data,
+          mediaType: photo.mediaType,
+        })),
+      ],
+    },
+  ];
+}
+
 export function recipeSystemPrompt(
   content: string,
   tags: { id: string; name: string; description: string }[],
   sourceUrl?: string | null,
+  fromPhotos = false,
 ) {
-  const system = buildRecipeSystemPrompt(sourceUrl ? "web" : "input", tags);
+  const system = buildRecipeSystemPrompt(
+    fromPhotos ? "photo" : sourceUrl ? "web" : "input",
+    tags,
+  );
   if (
     Buffer.byteLength(content, "utf8") > aiPolicy.maxContentBytes ||
     Buffer.byteLength(system, "utf8") > aiPolicy.maxSystemBytes

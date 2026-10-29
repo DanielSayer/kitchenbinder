@@ -39,7 +39,7 @@ Paid access expires at the verified period end even if a webhook is missed. Canc
 
 The default cutoff is 2,500 US cents of reserved cost per UTC day, at 25 cents per provider attempt. `aiSpend` persists reservations before calls under a global PostgreSQL lock across workers. Failed calls still count and account deletion does not erase reservations. Set `AI_ENABLED=false` and remove `OPENAI_API_KEY` on the web and worker, then restart both, to stop new AI calls while keeping manual entry and checkpoint saves available.
 
-This is reservation accounting, not measured provider invoicing. `packages/env/src/ai-policy.ts` binds the approved model, UTF-8 input/system bounds, output limit and reservation amounts. Startup rejects an enabled model outside that policy. Generation disables automatic retries and caps output at 20,000 tokens. Review the [cost calculation and provider controls](docs/provider-acceptance.md#ai-reservations-and-provider-controls) whenever prices, model, schema or bounds change. Provider-side controls remain necessary.
+This is reservation accounting, not measured provider invoicing. `packages/env/src/ai-policy.ts` binds the approved model, UTF-8 input/system bounds, uploaded photo budget, output limit and reservation amounts. Startup rejects an enabled model outside that policy. Generation disables automatic retries and caps output at 20,000 tokens. Review the [cost calculation and provider controls](docs/provider-acceptance.md#ai-reservations-and-provider-controls) whenever prices, model, schema or bounds change. Provider-side controls remain necessary.
 
 ## Launch verification
 

@@ -31,7 +31,7 @@ import {
   requireHousehold,
 } from "../households/access";
 import { applyPlacement, preparePlacement } from "../households/placement";
-import { websiteImportSchema } from "../import-contract";
+import { photoDiscardSchema, websiteImportSchema } from "../import-contract";
 import {
   discardWebsiteImport,
   importStatus,
@@ -356,7 +356,7 @@ export const recipesRouter = router({
     .input(idInput)
     .query(({ input, ctx }) => importStatus(ctx.session.user.id, input.id)),
   discardImport: protectedProcedure
-    .input(websiteImportSchema)
+    .input(z.union([photoDiscardSchema, websiteImportSchema]))
     .mutation(({ input, ctx }) =>
       discardWebsiteImport(ctx.session.user.id, input),
     ),
