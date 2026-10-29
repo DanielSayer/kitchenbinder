@@ -700,3 +700,90 @@ it("preserves the composer input and sends nothing if durable queue storage fail
   expect(createImport).not.toHaveBeenCalled();
   storage.mockRestore();
 });
+
+it("asks for photos again when a reload lost them before admission", async () => {
+  writeImportQueue(importDraftKey("viewer"), [
+    {
+      id: "00000000-0000-4000-8000-000000000001",
+      input: "",
+      householdId: null,
+      photoCount: 2,
+    },
+  ]);
+  showComposer();
+
+  await waitFor(() =>
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Photos weren't sent. Add them again.",
+    ),
+  );
+  expect(screen.getByRole("heading", { name: "2 photos" })).toBeTruthy();
+  expect(createImport).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+  await waitFor(() =>
+    expect(discardImport).toHaveBeenCalledWith(
+      { id: "00000000-0000-4000-8000-000000000001", kind: "photo" },
+      expect.anything(),
+    ),
+  );
+});
+
+it("sends picked photos without text and keeps only their count in storage", async () => {
+  sessionStorage.clear();
+  const send = vi.fn(async (_url: string, init: RequestInit) => {
+    const request = JSON.parse(
+      (init.body as FormData).get("request") as string,
+    );
+    return Response.json({ kind: "queued", id: request.id });
+  });
+  vi.stubGlobal("fetch", send);
+  vi.stubGlobal("createImageBitmap", async () => ({
+    width: 3200,
+    height: 2400,
+    close: vi.fn(),
+  }));
+  URL.createObjectURL = () => "blob:thumbnail";
+  URL.revokeObjectURL = () => {};
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+    fillRect: vi.fn(),
+    drawImage: vi.fn(),
+  } as unknown as CanvasRenderingContext2D);
+  vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((done) =>
+    done(new Blob(["jpeg"], { type: "image/jpeg" })),
+  );
+  try {
+    showComposer();
+    const sendButton = screen.getByRole("button", { name: "Make a recipe" });
+    expect(sendButton).toHaveProperty("disabled", true);
+    fireEvent.change(screen.getByLabelText("Add recipe photos"), {
+      target: {
+        files: [
+          new File(["a"], "page-1.jpg", { type: "image/jpeg" }),
+          new File(["b"], "page-2.jpg", { type: "image/jpeg" }),
+        ],
+      },
+    });
+    await waitFor(() =>
+      expect(
+        within(
+          screen.getByRole("list", { name: "Photos to import" }),
+        ).getAllByRole("img"),
+      ).toHaveLength(2),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Remove photo 2" }));
+    await waitFor(() => expect(sendButton).toHaveProperty("disabled", false));
+    fireEvent.click(sendButton);
+
+    await waitFor(() => expect(send).toHaveBeenCalledOnce());
+    const form = send.mock.calls[0]?.[1].body as FormData;
+    expect(form.getAll("photo")).toHaveLength(1);
+    expect(createImport).not.toHaveBeenCalled();
+    expect(readImportQueue(importDraftKey("viewer"))).toEqual([
+      expect.objectContaining({ input: "", photoCount: 1 }),
+    ]);
+    expect(screen.queryByRole("list", { name: "Photos to import" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "1 photo" })).toBeTruthy();
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

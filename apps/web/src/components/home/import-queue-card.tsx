@@ -1,3 +1,4 @@
+import type { ImportStatus } from "@prep-sheet/api/import-contract";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Check, Pencil, RefreshCw, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -6,6 +7,7 @@ import { useTRPC } from "@/utils/trpc";
 import { ErrorNotice } from "../feedback";
 import { OrganiseDialog } from "../recipes/organise-dialog";
 import type { PendingImport } from "./import-draft";
+import { type PhotoImportError, sendPhotoImport } from "./import-photos";
 
 export function ImportQueueCard({
   request,
@@ -27,7 +29,20 @@ export function ImportQueueCard({
   const completed = useRef(false);
   const viewInput = useRef<HTMLButtonElement>(null);
   const [showInput, setShowInput] = useState(false);
-  const create = useMutation(trpc.recipes.create.mutationOptions());
+  const photos = request.photoCount ?? 0;
+  const createText = useMutation(trpc.recipes.create.mutationOptions());
+  const upload = useMutation<ImportStatus, PhotoImportError, PendingImport>({
+    mutationFn: (item) =>
+      sendPhotoImport(item, () =>
+        client.fetchQuery(
+          trpc.recipes.importStatus.queryOptions(
+            { id: item.id },
+            { retry: false, staleTime: 0 },
+          ),
+        ),
+      ),
+  });
+  const create = photos ? upload : createText;
   const discard = useMutation(trpc.recipes.discardImport.mutationOptions());
   const rejectionCode = create.error?.data?.code;
   const admissionRejected =
@@ -92,11 +107,15 @@ export function ImportQueueCard({
         ? `Still waiting to start after ${Math.floor((result.queuedForMs ?? 0) / 1000)} seconds. This is taking longer than expected. You can leave this page and check Recent imports later.`
         : "Your recipe is queued. You can leave this page and return later."
       : result?.kind === "processing" && result.stage === "fetching"
-        ? "Reading the recipe page. Your progress is saved."
+        ? photos
+          ? "Reading your photos. Your progress is saved."
+          : "Reading the recipe page. Your progress is saved."
         : result?.kind === "processing" && result.stage === "saving"
           ? "Saving your recipe. Your progress is saved."
           : !result && create.isPending
-            ? "Sending your request. You can keep adding recipes."
+            ? photos
+              ? "Sending your photos. Keep this page open until they're sent."
+              : "Sending your request. You can keep adding recipes."
             : "Creating your recipe. You can refresh or return later to check progress.";
   // Rough stage position for the progress bar.
   const stage =
@@ -122,7 +141,9 @@ export function ImportQueueCard({
           ? "Queued"
           : result?.kind === "processing"
             ? result.stage === "fetching"
-              ? "Reading recipe"
+              ? photos
+                ? "Reading photos"
+                : "Reading recipe"
               : result.stage === "saving"
                 ? "Saving recipe"
                 : "Creating recipe"
@@ -134,7 +155,9 @@ export function ImportQueueCard({
     (status.error && status.error.data?.code !== "NOT_FOUND"
       ? "Couldn't check progress. Your import is still saved; reconnect to check again."
       : undefined);
-  const summary = request.input.replace(/\s+/g, " ");
+  const photoLabel = `${photos} ${photos === 1 ? "photo" : "photos"}`;
+  const summary =
+    request.input.replace(/\s+/g, " ") || (photos ? photoLabel : "");
   const excerpt = summary.length > 110 ? `${summary.slice(0, 110)}…` : summary;
   const title = saved
     ? remaining.length > 1
@@ -147,7 +170,9 @@ export function ImportQueueCard({
     if (edit && !canEdit) return;
     try {
       // Tombstone an uncertain submission before forgetting its ID.
-      await discard.mutateAsync(request);
+      await discard.mutateAsync(
+        photos ? { id: request.id, kind: "photo" } : request,
+      );
       onRemove(request.id, edit ? request.input : undefined);
     } catch {
       /* Keep this card and its request ID recoverable. */
@@ -292,7 +317,12 @@ export function ImportQueueCard({
           className="import-input-dialog"
           onClose={closeInput}
         >
-          <p className="import-input-content">{request.input}</p>
+          {request.input && (
+            <p className="import-input-content">{request.input}</p>
+          )}
+          {photos > 0 && (
+            <p className="import-card-destination">{photoLabel}</p>
+          )}
           <p className="import-card-destination">Save to {collectionName}</p>
           <p className="import-card-reference">
             Import reference: {request.id}
