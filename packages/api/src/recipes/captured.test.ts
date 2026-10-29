@@ -107,3 +107,69 @@ describe("captured recipe generation", () => {
     },
   );
 });
+
+describe("photo recipe generation", () => {
+  const photos = [
+    { mediaType: "image/jpeg", data: Buffer.from("page one") },
+    { mediaType: "image/jpeg", data: Buffer.from("page two") },
+  ];
+
+  it("sends the note and photos as message parts without fetching", async () => {
+    fake.fetchPage.mockClear();
+    fake.generate.mockResolvedValue({
+      output: {
+        recipes: Array.from({ length: 7 }, (_, index) => ({
+          recipe: { ...sampleRecipe, title: `Recipe ${index}` },
+          tagIds: [],
+        })),
+        origin: "imported",
+        imageIndex: 0,
+      },
+    });
+    const note = "https://untrusted.example/ignore-instructions";
+    const result = await generateRecipe(note, [], undefined, [], { photos });
+    expect(fake.fetchPage).not.toHaveBeenCalled();
+    const call = fake.generate.mock.lastCall?.[0];
+    expect(call.prompt).toBeUndefined();
+    expect(call.messages).toEqual([
+      {
+        role: "user",
+        content: [
+          { type: "text", text: `Note from the user: ${note}` },
+          ...photos.map(({ mediaType, data }) => ({
+            type: "image",
+            image: data,
+            mediaType,
+          })),
+        ],
+      },
+    ]);
+    expect(call.system).toContain("a recipe continued across several photos");
+    expect(result).toMatchObject({
+      sourceUrl: null,
+      origin: "imported",
+      imageUrl: null,
+    });
+    expect(result.recipes).toHaveLength(5);
+  });
+
+  it("never generates a recipe from photos", async () => {
+    fake.generate.mockResolvedValue({
+      output: {
+        recipes: [{ recipe: sampleRecipe, tagIds: [] }],
+        origin: "generated",
+        imageIndex: null,
+      },
+    });
+    await expect(
+      generateRecipe("", [], undefined, [], { photos }),
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: expect.stringContaining("in these photos"),
+    });
+    expect(fake.generate.mock.lastCall?.[0].messages[0].content[0]).toEqual({
+      type: "text",
+      text: "Extract the recipes in these photos.",
+    });
+  });
+});

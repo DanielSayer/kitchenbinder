@@ -6,6 +6,9 @@ export const aiPolicy = {
   maxSystemBytes: 160_000,
   // Up to five recipes per import.
   maxOutputTokens: 20_000,
+  // Up to five uploaded photos, re-encoded to at most 1600 px.
+  maxPhotos: 5,
+  tokensPerPhoto: 2_000,
   reserveCentsPerAttempt: 25,
   dailyBudgetCents: 2500,
 };
@@ -14,7 +17,10 @@ export const aiPolicy = {
 // Include long-context and cache-write uplifts, plus schema/protocol allowance.
 export function estimatedAttemptCents() {
   const inputTokens =
-    aiPolicy.maxContentBytes + aiPolicy.maxSystemBytes + 16_384;
+    aiPolicy.maxContentBytes +
+    aiPolicy.maxSystemBytes +
+    aiPolicy.maxPhotos * aiPolicy.tokensPerPhoto +
+    16_384;
   return (
     (inputTokens * 0.1 * 2 * 1.25 + aiPolicy.maxOutputTokens * 0.5 * 1.5) /
     10_000

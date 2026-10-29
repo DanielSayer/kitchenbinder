@@ -43,3 +43,20 @@ export const websiteImportSchema = z.object({
   householdId: z.uuid().nullable().optional(),
   collectionId: z.uuid().nullable().optional(),
 });
+// Photo imports upload multipart to /api/recipes/imports/photos.
+export const photoImportLimits = {
+  count: 5,
+  bytes: 1_572_864,
+  types: ["image/jpeg", "image/png", "image/webp"],
+} as const;
+export const photoImportSchema = z.object({
+  id: z.uuid(),
+  input: z.string().trim().max(20000).default(""),
+  householdId: z.uuid().nullable().optional(),
+  collectionId: z.uuid().nullable().optional(),
+});
+// The browser keeps photos in memory only, so a reloaded page discards by ID.
+export const photoDiscardSchema = z.object({
+  id: z.uuid(),
+  kind: z.literal("photo"),
+});

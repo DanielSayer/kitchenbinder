@@ -80,6 +80,28 @@ export async function processPhoto(input: Buffer) {
   return { variants, width: largest.width, height: largest.height, color };
 }
 
+const promptPhotoFormats = new Set(["jpeg", "png", "webp"]);
+
+// Re-encode an uploaded photo before sending it to the model: same untrusted
+// byte handling as above, at most 1600 px on the longest edge, JPEG.
+export async function promptPhoto(input: Buffer) {
+  const image = sharp(input, { limitInputPixels: 40_000_000 }).rotate();
+  const { format } = await image.metadata();
+  if (!format || !promptPhotoFormats.has(format))
+    throw new Error(`Unsupported upload format: ${format}`);
+  const data = await image
+    .resize({
+      width: 1600,
+      height: 1600,
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+    .flatten({ background: "#ffffff" })
+    .jpeg({ quality: 82 })
+    .toBuffer();
+  return { mediaType: "image/jpeg", data };
+}
+
 async function storePhoto(
   storage: Media,
   recipeId: string,

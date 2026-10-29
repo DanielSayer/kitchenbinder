@@ -103,8 +103,9 @@ wildcards or substitute a synthetic session for this check.
 
 `packages/env/src/ai-policy.ts` is the reviewed envelope, not an invoice model.
 It currently approves `gpt-6-luna`, 160,000 UTF-8 bytes of content, 160,000 bytes
-of complete system prompt including tags, and 20,000 output tokens (up to five
-recipes per import). Both source
+of complete system prompt including tags, up to five uploaded photos re-encoded
+to at most 1600 px (budgeted at 2,000 input tokens each), and 20,000 output tokens
+(up to five recipes per import). Both source
 paths and direct generation use the same byte check. Worker validation runs
 before reservation; an oversized input releases usage and makes no provider call.
 Fetched text is additionally truncated to 40,000 characters; captured content is
@@ -114,11 +115,13 @@ multibyte text. SDK automatic retries are zero and service tier is `default`.
 The [official model documentation](https://developers.openai.com/api/docs/models/gpt-6-luna)
 checked 19 October 2026 lists standard pricing of US$0.10 per million input tokens
 and US$0.50 output. For a conservative review, count up to one token per UTF-8 byte,
-allow 16,384 further tokens for schema/protocol overhead, and price the entire
-336,384-token input at twice the input rate plus a 25% cache-write allowance.
+add 10,000 tokens for photos and 16,384 for schema/protocol overhead, and price
+the entire 346,384-token input at twice the input rate plus a 25% cache-write
+allowance. Recheck the per-photo token figure against the provider's image
+pricing at acceptance.
 Price all 20,000 output tokens at 1.5 times the output rate. This deliberately
 includes the documented long-context multipliers even for smaller requests.
-The resulting estimate is US$0.099096 per attempt, below the US$0.25 reservation.
+The resulting estimate is US$0.101596 per attempt, below the US$0.25 reservation.
 Startup rejects enabled AI if this reviewed estimate exceeds the reservation.
 This is an estimate under those assumptions, not a guaranteed invoice ceiling.
 Review schema/protocol growth against that overhead allowance, and recheck
