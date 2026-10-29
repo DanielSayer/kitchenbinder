@@ -1,9 +1,11 @@
 import {
   boolean,
+  customType,
   index,
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uuid,
@@ -30,7 +32,7 @@ export const recipeImport = pgTable(
       jsonb("image_candidates").$type<
         { url: string; alt: string; source: "recipe" | "page" | "content" }[]
       >(),
-    sourceKind: text("source_kind", { enum: ["captured", "website"] })
+    sourceKind: text("source_kind", { enum: ["captured", "website", "photo"] })
       .notNull()
       .default("website"),
     usageReleased: boolean("usage_released").notNull().default(false),
@@ -74,4 +76,23 @@ export const recipeImport = pgTable(
     index("recipe_import_user_idx").on(t.userId, t.createdAt),
     index("recipe_import_save_retry_idx").on(t.state, t.nextSaveAttemptAt),
   ],
+);
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType: () => "bytea",
+});
+
+// Uploaded photos for a pending import. Deleted once generation ends; never
+// kept as a recipe cover.
+export const recipeImportPhoto = pgTable(
+  "recipe_import_photo",
+  {
+    importId: uuid("import_id")
+      .notNull()
+      .references(() => recipeImport.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    mediaType: text("media_type").notNull(),
+    data: bytea("data").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.importId, t.position] })],
 );
