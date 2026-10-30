@@ -12,6 +12,8 @@ Only ingredient-affecting changes make a trip stale. Moving a meal within its co
 
 Planner writes use household-scoped locks and revisions. Applying a preview checks a server-computed token against both planner state and current shopping rows. A concurrent meal edit, purchase or grocery edit requires another preview. No change is applied before that check passes.
 
+Before typing, the dish step suggests recipes in three rows: favourites not had lately, forgotten dishes and never-tried recipes, scored from household plans, cook logs, ratings and favourites. Shuffle rerolls them. See [meal suggestions](meal-suggestions.md).
+
 ## Database setup
 
 The versioned schema includes `meal_planner`, keyed by household, with revision, JSON meal entries and the active trip snapshot. With the direct migration credential injected as `DATABASE_URL`, run `pnpm db:migrate` and `pnpm db:verify` while web and worker are stopped, then start both from the same candidate image with runtime credentials. An unversioned database needs a backup, restored-copy rehearsal and explicitly reviewed `pnpm db:adopt`, followed by verification. Follow the [deployment runbook](deployment.md); schema push is not a deployment step. Resetting the shopping list also clears the active planner-trip link, while retaining planned meals.
@@ -24,4 +26,4 @@ pnpm check-types
 pnpm test packages/api/src/planner.integration.test.ts
 ```
 
-Run from the repository root. The build generates web routes before type checking on a clean checkout. The `pnpm test` wrapper provisions and removes a disposable PostgreSQL 18 database; never invoke Vitest directly or use the development/production database. The planner integration suite creates isolated accounts and cleans them up. It covers authentication, recipe access, privacy, competing edits, repeated cooking sessions, leftover validation, stale previews, preserving groceries and purchased portions, removing covered meals, empty trips and resetting the active-trip link.
+Run from the repository root. The build generates web routes before type checking on a clean checkout. The `pnpm test` wrapper provisions and removes a disposable PostgreSQL 18 database; never invoke Vitest directly or use the development/production database. The planner integration suite creates isolated accounts and cleans them up. It covers authentication, recipe access, meal suggestions, privacy, competing edits, repeated cooking sessions, leftover validation, stale previews, preserving groceries and purchased portions, removing covered meals, empty trips and resetting the active-trip link.

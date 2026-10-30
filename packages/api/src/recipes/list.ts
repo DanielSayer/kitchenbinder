@@ -86,7 +86,7 @@ const ownerNameOf = () =>
   sql<
     string | null
   >`(select ${user.name} from ${user} where ${user.id} = ${recipe}.${sql.identifier("user_id")})`;
-const inCollection = (collectionId: string) => sql<boolean>`exists (
+export const inCollection = (collectionId: string) => sql<boolean>`exists (
   select 1 from ${collectionRecipe}
   where ${collectionRecipe.collectionId} = ${collectionId} and ${collectionRecipe.recipeId} = ${recipe}.${sql.identifier("id")}
 )`;
@@ -226,7 +226,7 @@ export async function listRecipes(
   );
 }
 
-const pickerFields = {
+export const pickerFields = {
   id: recipe.id,
   title: recipe.title,
   photo: recipe.photo,
