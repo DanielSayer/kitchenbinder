@@ -1,5 +1,5 @@
-import { ArrowUp, Camera, ImagePlus, Pencil, Sparkles, X } from "lucide-react";
-import { type ChangeEvent, type Ref, type SubmitEvent, useRef } from "react";
+import { ArrowUp, Camera, Pencil, Sparkles, X } from "lucide-react";
+import { type Ref, type SubmitEvent, useRef } from "react";
 import { ErrorNotice } from "../feedback";
 import { maxPhotos } from "./import-photos";
 
@@ -31,14 +31,6 @@ export function ComposerForm({
   onRemovePhoto?: (id: string) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const cameraRef = useRef<HTMLInputElement>(null);
-  const picked = (event: ChangeEvent<HTMLInputElement>) => {
-    const files = [...(event.target.files ?? [])];
-    // Allow picking the same file again after removing it.
-    event.target.value = "";
-    if (files.length) onAddPhotos?.(files);
-  };
-  const full = photoBusy || photos.length >= maxPhotos;
   return (
     <>
       <form className="add-composer" onSubmit={onSubmit}>
@@ -95,39 +87,25 @@ export function ComposerForm({
                 <input
                   ref={fileRef}
                   type="file"
-                  accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                  // image/* makes phones offer the camera alongside the library.
+                  accept="image/*"
                   multiple
                   hidden
                   aria-label="Add recipe photos"
-                  onChange={picked}
-                />
-                {/* capture opens the camera on phones; desktops show a file picker. */}
-                <input
-                  ref={cameraRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  hidden
-                  aria-label="Take a recipe photo"
-                  onChange={picked}
+                  onChange={(event) => {
+                    const files = [...(event.target.files ?? [])];
+                    // Allow picking the same file again after removing it.
+                    event.target.value = "";
+                    if (files.length) onAddPhotos(files);
+                  }}
                 />
                 <button
                   type="button"
                   className="add-photo"
-                  aria-label="Choose photos (up to 5)"
-                  title="Choose photos"
-                  disabled={full}
+                  aria-label="Add photos (up to 5)"
+                  title="Up to 5 photos"
+                  disabled={photoBusy || photos.length >= maxPhotos}
                   onClick={() => fileRef.current?.click()}
-                >
-                  <ImagePlus size={20} aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  className="add-photo"
-                  aria-label="Take a photo"
-                  title="Take a photo"
-                  disabled={full}
-                  onClick={() => cameraRef.current?.click()}
                 >
                   <Camera size={20} aria-hidden="true" />
                 </button>
