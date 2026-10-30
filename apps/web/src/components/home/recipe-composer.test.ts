@@ -787,3 +787,14 @@ it("sends picked photos without text and keeps only their count in storage", asy
     vi.unstubAllGlobals();
   }
 });
+
+it("offers a camera input that opens the rear camera on phones", () => {
+  showComposer();
+  const camera = screen.getByLabelText("Take a recipe photo");
+  expect(camera.getAttribute("capture")).toBe("environment");
+  expect(camera.getAttribute("accept")).toBe("image/*");
+  expect(screen.getByRole("button", { name: "Take a photo" })).toBeTruthy();
+  expect(
+    screen.getByRole("button", { name: "Choose photos (up to 5)" }),
+  ).toBeTruthy();
+});
