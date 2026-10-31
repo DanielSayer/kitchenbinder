@@ -2,7 +2,7 @@ import { setTimeout } from "node:timers/promises";
 import { db } from "@prep-sheet/db";
 import { z } from "zod";
 import { importFailure, logImport } from "./import-diagnostics";
-import { nextImportDelay, processNextImport } from "./imports";
+import { inspectImportQueue, processNextImport } from "./imports";
 import { sweepRecipeMedia } from "./recipes/media";
 import {
   clearWorkerHeartbeat,
@@ -23,6 +23,7 @@ let progress: WorkerProgress = {
   mode: "processing",
   progressAt: Date.now(),
   failureSince: null,
+  queue: null,
 };
 const shutdownTimeout = Number(
   process.env.WORKER_SHUTDOWN_TIMEOUT_MS ?? 180_000,
@@ -78,6 +79,12 @@ async function heartbeat() {
   await writingHeartbeat;
 }
 let sweeping: Promise<void> | undefined;
+async function refreshQueue() {
+  const scan = await inspectImportQueue(reconcileMs);
+  progress = { ...progress, queue: scan.queue };
+  await heartbeat();
+  return scan.delayMs;
+}
 function sweep() {
   if (sweeping || stopping) return;
   sweeping = sweepRecipeMedia()
@@ -108,14 +115,35 @@ try {
       const previous = await readWorkerWakeup();
       progress = { ...progress, mode: "processing", progressAt: Date.now() };
       await heartbeat();
-      const processed = await processNextImport();
+      await refreshQueue();
+      const processed = await processNextImport(
+        undefined,
+        undefined,
+        async () => {
+          progress = {
+            ...progress,
+            mode: "processing",
+            progressAt: Date.now(),
+          };
+          await heartbeat();
+          // Stage boundaries already use the database. Keep cached queue state
+          // current without adding queries to the periodic local heartbeat.
+          await refreshQueue().catch((error: unknown) => {
+            logImport({
+              event: "import_queue_observation_failed",
+              failure: importFailure(error),
+            });
+          });
+        },
+      );
       progress = {
+        ...progress,
         mode: "processing",
         progressAt: Date.now(),
         failureSince: null,
       };
       if (processed) continue;
-      const delayMs = await nextImportDelay(reconcileMs);
+      const delayMs = await refreshQueue();
       progress = { ...progress, mode: "waiting", progressAt: Date.now() };
       await heartbeat();
       await waitForWorkerWakeup({
@@ -125,6 +153,7 @@ try {
       });
     } catch (error) {
       progress = {
+        ...progress,
         mode: "retrying",
         progressAt: Date.now(),
         failureSince: progress.failureSince ?? Date.now(),

@@ -129,11 +129,64 @@ try {
   assert.equal(aged.queue.save_failures, 2);
   assert.ok(!JSON.stringify(aged).includes("PRIVATE"));
   assert.ok(!JSON.stringify(aged).includes(userId));
+  const observedAt = Date.now();
+  const queue = {
+    observedAt,
+    queuedAt: observedAt - aged.queue.queued_ms,
+    readyAt: observedAt - aged.queue.ready_ms,
+    activeAt: observedAt - aged.queue.active_ms,
+    saveFailureAt: observedAt - aged.queue.save_failure_ms,
+  };
+  await writeWorkerHeartbeat({
+    mode: "waiting",
+    progressAt: observedAt,
+    failureSince: null,
+    queue,
+  });
+  const cachedQueue = await workerStatus();
+  assert.deepEqual(cachedQueue.issues.sort(), aged.issues.sort());
+  assert.equal(
+    cachedQueue.ok,
+    true,
+    "queue alerts must not take healthy recipe reads offline",
+  );
+  assert.deepEqual(cachedQueue.healthIssues, []);
+  const queueNotify = createNotifier({
+    destination: `http://127.0.0.1:${receiver.address().port}`,
+  });
+  await queueNotify(cachedQueue.issues);
+  assert.deepEqual(received[0].body.issues.sort(), aged.issues.sort());
+  await writeWorkerHeartbeat();
+  await queueNotify((await workerStatus()).issues);
+  assert.equal(received[1].body.event, "operations_recovered");
+  received.length = 0;
+
+  // Age known rows locally while Neon is asleep; an empty category stays empty.
+  await writeWorkerHeartbeat({
+    mode: "waiting",
+    progressAt: observedAt,
+    failureSince: null,
+    queue: {
+      observedAt,
+      queuedAt: observedAt - 299_900,
+      readyAt: null,
+      activeAt: null,
+      saveFailureAt: null,
+    },
+  });
+  assert.deepEqual((await workerStatus(observedAt + 500)).issues, [
+    "queue_aged",
+  ]);
   await client.query("DELETE FROM recipe_import WHERE user_id=$1", [userId]);
   await locker.query(
     "BEGIN; LOCK TABLE recipe_import IN ACCESS EXCLUSIVE MODE",
   );
   const started = Date.now();
+  assert.deepEqual(
+    (await workerStatus(observedAt + 500)).issues,
+    ["queue_aged"],
+    "local alert checks must not query the locked database",
+  );
   // Coalescing protects the database from a flood of concurrent probe requests.
   const pending = Array.from({ length: 30 }, () => operations.snapshot());
   assert.equal(pending[0], pending[29]);
@@ -144,7 +197,9 @@ try {
     "blocked query must be cancelled within the probe budget",
   );
   await locker.query("ROLLBACK");
+  // Explicit diagnostics use fresh database state, not old heartbeat queue ages.
   assert.equal((await inspect()).ok, true);
+  await writeWorkerHeartbeat();
   const unavailable = createOperations({
     connectionString: "postgresql://probe:secret@127.0.0.1:1/unavailable",
   });

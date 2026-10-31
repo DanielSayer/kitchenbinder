@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { workerHeartbeatSchema } from "../packages/api/src/worker-state.ts";
 import { clientIpHeader, proxySecretHeader } from "./client-ip.mjs";
 
 const require = createRequire(
@@ -11,14 +12,6 @@ const require = createRequire(
 const { Pool } = require("pg");
 export const heartbeatPath = () =>
   process.env.WORKER_HEARTBEAT_PATH ?? resolve("tmp/operations/worker.json");
-const heartbeatSchema = z.object({
-  version: z.literal(1),
-  timestamp: z.number().int().nonnegative(),
-  instance: z.uuid(),
-  mode: z.enum(["waiting", "processing", "retrying"]).default("waiting"),
-  progressAt: z.number().int().nonnegative().optional(),
-  failureSince: z.number().int().nonnegative().nullable().default(null),
-});
 const positive = (name, fallback) =>
   z.coerce
     .number()
@@ -39,7 +32,7 @@ export function thresholds() {
 
 export async function workerStatus(now = Date.now()) {
   try {
-    const record = heartbeatSchema.parse(
+    const record = workerHeartbeatSchema.parse(
       JSON.parse(await readFile(heartbeatPath(), "utf8")),
     );
     const ageMs = now - record.timestamp;
@@ -59,16 +52,35 @@ export async function workerStatus(now = Date.now()) {
       issues.push("worker_stalled");
     if (record.failureSince !== null && failureAgeMs > limits.activeMs)
       issues.push("worker_retrying");
+    if (record.queue && record.queue.observedAt > now + 5000)
+      issues.push("worker_stale");
+    const healthIssues = [...issues];
+    if (record.queue) {
+      for (const [oldest, limit, issue] of [
+        [record.queue.queuedAt, limits.queuedMs, "queue_aged"],
+        [record.queue.readyAt, limits.readyMs, "ready_aged"],
+        [record.queue.activeAt, limits.activeMs, "active_aged"],
+        [record.queue.saveFailureAt, limits.saveFailureMs, "save_failure_aged"],
+      ])
+        if (oldest !== null && now - oldest > limit) issues.push(issue);
+    }
     return {
-      ok: issues.length === 0,
+      ok: healthIssues.length === 0,
       ageMs: Math.max(0, ageMs),
       mode: record.mode,
       progressAgeMs: Math.max(0, progressAgeMs),
       failureAgeMs: Math.max(0, failureAgeMs),
+      healthIssues,
+      queue: record.queue,
       issues,
     };
   } catch {
-    return { ok: false, ageMs: null, issues: ["worker_stale"] };
+    return {
+      ok: false,
+      ageMs: null,
+      healthIssues: ["worker_stale"],
+      issues: ["worker_stale"],
+    };
   }
 }
 
@@ -96,7 +108,8 @@ export function createOperations({
     "save_attempts>0 AND (state='failed' OR (state='ready' AND (save_claimed_at IS NULL OR save_attempts>1)))";
   async function inspect() {
     const worker = await workerStatus();
-    const issues = [...worker.issues];
+    // Explicit diagnostics use the current query, not cached queue observations.
+    const issues = [...worker.healthIssues];
     try {
       const result = await pool.query(`SELECT
         count(*) FILTER (WHERE state='queued')::int AS queued,
