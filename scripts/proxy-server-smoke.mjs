@@ -89,7 +89,7 @@ try {
       }),
     });
   assert.equal((await fetch(first.origin)).status, 403);
-  for (const path of ["/health/live", "/health/ready"])
+  for (const path of ["/health/live", "/health/process", "/health/ready"])
     assert.equal((await fetch(`${first.origin}${path}`)).status, 403);
   assert.equal(
     (

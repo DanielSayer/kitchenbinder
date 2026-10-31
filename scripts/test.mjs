@@ -10,7 +10,9 @@ const composeFile = join(root, "packages/db/docker-compose.test.yml");
 const project = `prep-sheet-test-${randomUUID().slice(0, 12)}`;
 const runtimeDirectory = resolve(root, "tmp", project);
 if (dirname(runtimeDirectory) !== resolve(root, "tmp")) {
-  throw new Error("Test runtime directory must stay inside the workspace tmp directory");
+  throw new Error(
+    "Test runtime directory must stay inside the workspace tmp directory",
+  );
 }
 const composeArgs = ["compose", "-p", project, "-f", composeFile];
 const dbDir = join(root, "packages/db");

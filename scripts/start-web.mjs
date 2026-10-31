@@ -112,14 +112,13 @@ const server = createServer(async (incoming, outgoing) => {
         outgoing.writeHead(405, { allow: "GET, HEAD" }).end();
         return;
       }
-      const status =
-        url.pathname === "/health/live"
-          ? undefined
-          : url.pathname === "/health/process"
-            ? { database: true, worker: await workerStatus() }
-            : await operations.snapshot();
-      const ready =
-        status === undefined || (status.database && status.worker.ok);
+      let ready = true;
+      if (url.pathname === "/health/process") {
+        ready = (await workerStatus()).ok;
+      } else if (url.pathname === "/health/ready") {
+        const status = await operations.snapshot();
+        ready = status.database && status.worker.ok;
+      }
       outgoing.writeHead(ready ? 200 : 503, {
         "content-type": "application/json",
         "cache-control": "no-store",
