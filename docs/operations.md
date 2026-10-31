@@ -39,7 +39,10 @@ plan and production latency when sizing the host.
 
 Every 30 seconds the worker atomically writes a versioned local heartbeat file,
 without querying PostgreSQL. It also writes when beginning work, waiting or retrying.
-A clean shutdown removes it after its pending writer finishes.
+A clean shutdown atomically marks it stopped after its pending writer finishes,
+retaining the last queue observation. Startup reads that observation before its
+first fresh heartbeat. Queue alerts therefore remain visible through restarts
+and database outages until a successful scan observes recovery.
 A crash leaves a timestamp that expires. Missing, malformed and far-future
 timestamps fail closed. Compose uses a persistent named volume, writable by the
 worker and read-only in web and monitor. Standalone processes must share
@@ -137,7 +140,7 @@ stay visible until resolved; this includes exhausted retries. Investigate their
 user recovery path instead of deleting records to silence alerts.
 
 The worker collects oldest queued, ready, active and failed-save timestamps in its
-scheduling query before a drain, at stage changes and after an empty drain. It
+scheduling query at stage changes and after an empty drain. It
 writes those aggregate timestamps into the heartbeat. Routine checks calculate
 ages from the timestamps without querying PostgreSQL, so known work can cross an
 alert threshold while Neon sleeps. Exhausted checkpoint-save failures stay visible
@@ -152,10 +155,26 @@ Explicit readiness queries current database state rather than cached queue ages.
 This is sampled queue monitoring. A job committed after the last observation whose
 notification never reaches the worker can remain unknown for up to
 `WORKER_RECONCILE_MS`, plus scan runtime and monitor delivery time. The original
-30-second database monitor could detect it sooner. Reconciliation refreshes the
-observation before claiming work, but a quickly recovered incident may finish
+30-second database monitor could detect it sooner. A quickly recovered incident may finish
 between monitor polls. Monitor `import_worker_wakeup_failed` and
 `import_queue_observation_failed` logs for these delivery/observation failures.
+
+Import discard and completed account deletion notify the worker after their
+transactions commit, so affected snapshots refresh promptly. Discard retains the
+durable failure record and does not itself resolve a failed-save alert. There is
+currently no web action to resolve or delete individual failed saves. For direct
+SQL/operator repairs, request a refresh from the web container after committing:
+
+```sh
+docker compose -f deploy/compose.yml exec web node --import tsx --input-type=module -e 'import { notifyImportWorker } from "./packages/api/src/worker-wakeup.ts"; await notifyImportWorker();'
+```
+
+Queue scans exclude ordinary failed imports with no save attempts. Unresolved
+failed saves remain included regardless of age; cutting them off would hide
+incidents. The existing `recipe_import_queue_idx` begins with `state` and then
+`created_at`. Revisit query plans and a partial failed-save index if retained save
+failures grow enough to justify one. No retention cutoff or schema change is
+introduced here.
 
 ## Alerts, logs and host acceptance
 
@@ -220,7 +239,8 @@ configured thresholds and receiver, and complete these acceptance checks:
 
 1. Stop the worker in staging. Confirm process health becomes 503 within 95 seconds,
    liveness stays 200, and an alert reaches the actual receiver. Restart and
-   confirm recovery delivery. A clean stop removes the marker immediately.
+   confirm recovery delivery. A clean stop marks the worker stopped immediately
+   while preserving unresolved queue alerts.
 2. Block staging database connectivity after startup. Confirm bounded explicit
    readiness failure and unchanged liveness. Submit work and confirm sustained
    worker errors become `worker_retrying`, then recover when connectivity returns.
