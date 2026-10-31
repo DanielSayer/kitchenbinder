@@ -6,6 +6,7 @@ import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readWorkerHeartbeat } from "../packages/api/src/worker-state.ts";
 import { createNotifier } from "./monitor-operations.mjs";
 import { createOperations, workerStatus } from "./operations.mjs";
 
@@ -24,7 +25,7 @@ await client.connect();
 await locker.connect();
 const directory = await mkdtemp(join(tmpdir(), "prep-sheet-operations-"));
 process.env.WORKER_HEARTBEAT_PATH = join(directory, "worker.json");
-const { writeWorkerHeartbeat, clearWorkerHeartbeat } = await import(
+const { writeWorkerHeartbeat, stopWorkerHeartbeat } = await import(
   "../packages/api/src/worker-heartbeat.ts"
 );
 const userId = randomUUID();
@@ -54,6 +55,25 @@ try {
   assert.equal((await workerStatus()).ok, false);
   await writeWorkerHeartbeat();
   assert.equal((await workerStatus()).ok, true);
+  // Fresh heartbeats must still expose stuck work and sustained database errors.
+  await writeWorkerHeartbeat({
+    mode: "processing",
+    progressAt: Date.now() - 400_000,
+    failureSince: null,
+  });
+  assert.deepEqual((await workerStatus()).issues, ["worker_stalled"]);
+  await writeWorkerHeartbeat({
+    mode: "retrying",
+    progressAt: Date.now(),
+    failureSince: Date.now() - 400_000,
+  });
+  assert.deepEqual((await workerStatus()).issues, ["worker_retrying"]);
+  await writeWorkerHeartbeat({
+    mode: "waiting",
+    progressAt: Date.now() - 3_600_000,
+    failureSince: null,
+  });
+  assert.equal((await workerStatus()).ok, true);
   await writeFile(
     process.env.WORKER_HEARTBEAT_PATH,
     JSON.stringify({
@@ -76,7 +96,7 @@ try {
   assert.equal((await workerStatus()).ok, false);
   await writeWorkerHeartbeat();
   assert.equal((await inspect()).ok, true);
-  await clearWorkerHeartbeat();
+  await stopWorkerHeartbeat();
   assert.deepEqual((await inspect()).issues, ["worker_stale"]);
   await writeWorkerHeartbeat();
   await client.query('INSERT INTO "user" (id,name,email) VALUES ($1,$1,$2)', [
@@ -110,11 +130,93 @@ try {
   assert.equal(aged.queue.save_failures, 2);
   assert.ok(!JSON.stringify(aged).includes("PRIVATE"));
   assert.ok(!JSON.stringify(aged).includes(userId));
+  const observedAt = Date.now();
+  const queue = {
+    observedAt,
+    queuedAt: observedAt - aged.queue.queued_ms,
+    readyAt: observedAt - aged.queue.ready_ms,
+    activeAt: observedAt - aged.queue.active_ms,
+    saveFailureAt: observedAt - aged.queue.save_failure_ms,
+  };
+  await writeWorkerHeartbeat({
+    mode: "waiting",
+    progressAt: observedAt,
+    failureSince: null,
+    queue,
+  });
+  const cachedQueue = await workerStatus();
+  assert.deepEqual(cachedQueue.issues.sort(), aged.issues.sort());
+  assert.equal(
+    cachedQueue.ok,
+    true,
+    "queue alerts must not take healthy recipe reads offline",
+  );
+  assert.deepEqual(cachedQueue.healthIssues, []);
+  const queueNotify = createNotifier({
+    destination: `http://127.0.0.1:${receiver.address().port}`,
+  });
+  await queueNotify(cachedQueue.issues);
+  assert.deepEqual(received[0].body.issues.sort(), aged.issues.sort());
+  await stopWorkerHeartbeat();
+  const stopped = await workerStatus();
+  assert.equal(stopped.ok, false);
+  for (const issue of aged.issues) assert.ok(stopped.issues.includes(issue));
+  await queueNotify(stopped.issues);
+  const previous = await readWorkerHeartbeat(process.env.WORKER_HEARTBEAT_PATH);
+  assert.equal(previous.stopped, true);
+  await writeWorkerHeartbeat({
+    mode: "processing",
+    progressAt: Date.now(),
+    failureSince: null,
+    queue: previous.queue,
+  });
+  await queueNotify((await workerStatus()).issues);
+  assert.ok(
+    received.every(({ body }) => body.event !== "operations_recovered"),
+    "restarting must not recover unresolved queue alerts",
+  );
+  await writeWorkerHeartbeat({
+    mode: "waiting",
+    progressAt: Date.now(),
+    failureSince: null,
+    queue: {
+      observedAt: Date.now(),
+      queuedAt: null,
+      readyAt: null,
+      activeAt: null,
+      saveFailureAt: null,
+    },
+  });
+  await queueNotify((await workerStatus()).issues);
+  assert.equal(received.at(-1).body.event, "operations_recovered");
+  received.length = 0;
+
+  // Age known rows locally while Neon is asleep; an empty category stays empty.
+  await writeWorkerHeartbeat({
+    mode: "waiting",
+    progressAt: observedAt,
+    failureSince: null,
+    queue: {
+      observedAt,
+      queuedAt: observedAt - 299_900,
+      readyAt: null,
+      activeAt: null,
+      saveFailureAt: null,
+    },
+  });
+  assert.deepEqual((await workerStatus(observedAt + 500)).issues, [
+    "queue_aged",
+  ]);
   await client.query("DELETE FROM recipe_import WHERE user_id=$1", [userId]);
   await locker.query(
     "BEGIN; LOCK TABLE recipe_import IN ACCESS EXCLUSIVE MODE",
   );
   const started = Date.now();
+  assert.deepEqual(
+    (await workerStatus(observedAt + 500)).issues,
+    ["queue_aged"],
+    "local alert checks must not query the locked database",
+  );
   // Coalescing protects the database from a flood of concurrent probe requests.
   const pending = Array.from({ length: 30 }, () => operations.snapshot());
   assert.equal(pending[0], pending[29]);
@@ -125,7 +227,9 @@ try {
     "blocked query must be cancelled within the probe budget",
   );
   await locker.query("ROLLBACK");
+  // Explicit diagnostics use fresh database state, not old heartbeat queue ages.
   assert.equal((await inspect()).ok, true);
+  await writeWorkerHeartbeat();
   const unavailable = createOperations({
     connectionString: "postgresql://probe:secret@127.0.0.1:1/unavailable",
   });

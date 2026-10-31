@@ -11,6 +11,7 @@ import {
   count,
   desc,
   eq,
+  gt,
   gte,
   inArray,
   isNull,
@@ -40,7 +41,7 @@ import {
   recipesPerImport,
   websiteImportSchema,
 } from "./import-contract";
-import { importFailure, logImport } from "./import-diagnostics";
+import { importFailure, logImport, type Stage } from "./import-diagnostics";
 import type { UploadedPhoto } from "./photo-upload";
 import {
   generateRecipe,
@@ -52,6 +53,8 @@ import {
 import { persistRecipe } from "./recipes/persist";
 import { checkRecipeUsage } from "./recipes/usage";
 import { availableTags } from "./routers/tags";
+import type { QueueObservation } from "./worker-state";
+import { notifyImportWorker } from "./worker-wakeup";
 
 // Imports before multi-recipe imports saved one recipe with the import ID.
 const savedRecipeIds = (job: { id: string; recipeIds: string[] | null }) =>
@@ -278,6 +281,7 @@ async function discardJob(userId: string, input: DiscardInput) {
         "This import was discarded. Start another import to save the recipe.",
     });
   });
+  await notifyImportWorker();
 }
 
 function websiteInput(value: unknown): JobInput {
@@ -420,17 +424,76 @@ async function submitJob(userId: string, input: JobInput) {
       );
     return true;
   });
-  if (admitted)
+  if (admitted) {
     logImport({
       event: "import_queued",
       importId: input.id,
       sourceKind: input.sourceKind,
     });
-  return importStatus(userId, input.id);
+    await notifyImportWorker();
+  }
+  const status = await importStatus(userId, input.id);
+  // Repeated submissions also recover a missed notification for an admitted job.
+  if (!admitted && (status.kind === "queued" || status.kind === "processing"))
+    await notifyImportWorker();
+  return status;
 }
 
 const saveAttemptLimit = 5;
 const claimTimeoutMs = 180_000;
+
+// Scheduling and cached alert timestamps share one query while the worker is
+// already awake. The periodic local heartbeat never invokes this scan.
+export async function inspectImportQueue(maximumMs: number) {
+  const failedSave = sql`${recipeImport.saveAttempts}>0 AND (${recipeImport.state}='failed' OR (${recipeImport.state}='ready' AND (${recipeImport.saveClaimedAt} IS NULL OR ${recipeImport.saveAttempts}>1)))`;
+  const [next] = await db
+    .select({
+      queuedAt: sql<
+        number | null
+      >`(extract(epoch from min(${recipeImport.createdAt}) filter (where ${recipeImport.state}='queued'))*1000)::float8`,
+      readyAt: sql<
+        number | null
+      >`(extract(epoch from min(coalesce(${recipeImport.startedAt},${recipeImport.createdAt})) filter (where ${recipeImport.state}='ready'))*1000)::float8`,
+      activeAt: sql<
+        number | null
+      >`(extract(epoch from min(coalesce(${recipeImport.startedAt},${recipeImport.createdAt})) filter (where ${recipeImport.state} in ('fetching','processing')))*1000)::float8`,
+      saveFailureAt: sql<
+        number | null
+      >`(extract(epoch from min(${recipeImport.createdAt}) filter (where ${failedSave}))*1000)::float8`,
+      delayMs: sql<number | null>`(extract(epoch from (min(case
+      when ${recipeImport.state} = 'queued' then now() + interval '2 seconds'
+      when ${recipeImport.state} = 'ready' and ${recipeImport.saveClaimedAt} is not null
+        then ${recipeImport.saveClaimedAt} + ${claimTimeoutMs} * interval '1 millisecond'
+      when ${recipeImport.state} = 'ready' and ${recipeImport.saveAttempts} < ${saveAttemptLimit}
+        then ${recipeImport.nextSaveAttemptAt}
+      when ${recipeImport.state} in ('fetching', 'processing')
+        then coalesce(${recipeImport.startedAt}, ${recipeImport.createdAt}) + ${claimTimeoutMs} * interval '1 millisecond'
+      end) - now())) * 1000)::float8`,
+    })
+    .from(recipeImport)
+    .where(
+      or(
+        inArray(recipeImport.state, [
+          "queued",
+          "ready",
+          "fetching",
+          "processing",
+        ]),
+        and(eq(recipeImport.state, "failed"), gt(recipeImport.saveAttempts, 0)),
+      ),
+    );
+  const queue: QueueObservation = {
+    observedAt: Date.now(),
+    queuedAt: next?.queuedAt ?? null,
+    readyAt: next?.readyAt ?? null,
+    activeAt: next?.activeAt ?? null,
+    saveFailureAt: next?.saveFailureAt ?? null,
+  };
+  return {
+    delayMs: Math.max(100, Math.min(maximumMs, next?.delayMs ?? maximumMs)),
+    queue,
+  };
+}
 const checkpointRecipeSchema = z.object({
   content: recipeContentSchema,
   tagIds: z.array(z.string().uuid()),
@@ -539,6 +602,7 @@ export async function processNextImport(
   ensureProviderReady: () => void = generate === generateRecipe
     ? requireRecipeProvider
     : () => {},
+  reportProgress: (stage: Stage) => Promise<void> = async () => {},
 ) {
   // Do not replay an AI call whose outcome was lost with its worker. Keep the ID terminal.
   const interrupted = await db
@@ -658,12 +722,13 @@ export async function processNextImport(
   });
   if (!job) return false;
   if (job.kind === "save") {
-    await saveReady(job);
+    await saveReady(job, reportProgress);
     return true;
   }
   const started = Date.now();
   let stage: "fetching" | "generating" = "fetching";
   let stageStarted = started;
+  await reportProgress(stage);
   logImport({
     event: "import_claimed",
     importId: job.id,
@@ -723,6 +788,7 @@ export async function processNextImport(
     });
     stage = "generating";
     stageStarted = Date.now();
+    await reportProgress(stage);
     logImport({ event: "import_stage_started", importId: job.id, stage });
     generationStarted = true;
     const args: Parameters<Generate> = [
@@ -790,7 +856,7 @@ export async function processNextImport(
     });
     return true;
   }
-  if (saveClaim) await saveReady(saveClaim);
+  if (saveClaim) await saveReady(saveClaim, reportProgress);
   return true;
 }
 
@@ -857,9 +923,13 @@ async function failImport(
   );
 }
 
-async function saveReady(claim: SaveClaim) {
+async function saveReady(
+  claim: SaveClaim,
+  reportProgress: (stage: Stage) => Promise<void>,
+) {
   const { id } = claim;
   const started = Date.now();
+  await reportProgress("saving");
   logImport({ event: "import_stage_started", importId: id, stage: "saving" });
   const saved = await db
     .transaction(async (tx) => {

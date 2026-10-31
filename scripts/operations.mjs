@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { workerHeartbeatSchema } from "../packages/api/src/worker-state.ts";
 import { clientIpHeader, proxySecretHeader } from "./client-ip.mjs";
 
 const require = createRequire(
@@ -11,11 +12,6 @@ const require = createRequire(
 const { Pool } = require("pg");
 export const heartbeatPath = () =>
   process.env.WORKER_HEARTBEAT_PATH ?? resolve("tmp/operations/worker.json");
-const heartbeatSchema = z.object({
-  version: z.literal(1),
-  timestamp: z.number().int().nonnegative(),
-  instance: z.uuid(),
-});
 const positive = (name, fallback) =>
   z.coerce
     .number()
@@ -36,16 +32,56 @@ export function thresholds() {
 
 export async function workerStatus(now = Date.now()) {
   try {
-    const record = heartbeatSchema.parse(
+    const record = workerHeartbeatSchema.parse(
       JSON.parse(await readFile(heartbeatPath(), "utf8")),
     );
     const ageMs = now - record.timestamp;
+    const progressAgeMs = now - (record.progressAt ?? record.timestamp);
+    const failureAgeMs =
+      record.failureSince === null ? 0 : now - record.failureSince;
+    const limits = thresholds();
+    const issues = [];
+    if (
+      ageMs < -5000 ||
+      ageMs > limits.heartbeatMs ||
+      progressAgeMs < -5000 ||
+      failureAgeMs < -5000 ||
+      record.stopped
+    )
+      issues.push("worker_stale");
+    if (record.mode === "processing" && progressAgeMs > limits.activeMs)
+      issues.push("worker_stalled");
+    if (record.failureSince !== null && failureAgeMs > limits.activeMs)
+      issues.push("worker_retrying");
+    if (record.queue && record.queue.observedAt > now + 5000)
+      issues.push("worker_stale");
+    const healthIssues = [...issues];
+    if (record.queue) {
+      for (const [oldest, limit, issue] of [
+        [record.queue.queuedAt, limits.queuedMs, "queue_aged"],
+        [record.queue.readyAt, limits.readyMs, "ready_aged"],
+        [record.queue.activeAt, limits.activeMs, "active_aged"],
+        [record.queue.saveFailureAt, limits.saveFailureMs, "save_failure_aged"],
+      ])
+        if (oldest !== null && now - oldest > limit) issues.push(issue);
+    }
     return {
-      ok: ageMs >= -5000 && ageMs <= thresholds().heartbeatMs,
+      ok: healthIssues.length === 0,
       ageMs: Math.max(0, ageMs),
+      mode: record.mode,
+      progressAgeMs: Math.max(0, progressAgeMs),
+      failureAgeMs: Math.max(0, failureAgeMs),
+      healthIssues,
+      queue: record.queue,
+      issues,
     };
   } catch {
-    return { ok: false, ageMs: null };
+    return {
+      ok: false,
+      ageMs: null,
+      healthIssues: ["worker_stale"],
+      issues: ["worker_stale"],
+    };
   }
 }
 
@@ -57,7 +93,9 @@ export function createOperations({
   const pool = new Pool({
     connectionString,
     max: 1,
-    connectionTimeoutMillis: 1000,
+    // Explicit readiness can wake a sleeping Neon compute. Routine probes use
+    // local process health instead, so allow a cold connection here.
+    connectionTimeoutMillis: 10_000,
     statement_timeout: 1000,
     query_timeout: 1500,
     idleTimeoutMillis: 5000,
@@ -71,7 +109,8 @@ export function createOperations({
     "save_attempts>0 AND (state='failed' OR (state='ready' AND (save_claimed_at IS NULL OR save_attempts>1)))";
   async function inspect() {
     const worker = await workerStatus();
-    const issues = worker.ok ? [] : ["worker_stale"];
+    // Explicit diagnostics use the current query, not cached queue observations.
+    const issues = [...worker.healthIssues];
     try {
       const result = await pool.query(`SELECT
         count(*) FILTER (WHERE state='queued')::int AS queued,
@@ -132,7 +171,7 @@ export async function healthcheck(mode) {
   if (mode === "worker") return (await workerStatus()).ok;
   if (mode !== "web") throw new Error("Expected web or worker");
   const response = await fetch(
-    `http://127.0.0.1:${process.env.PORT ?? 3001}/health/ready`,
+    `http://127.0.0.1:${process.env.PORT ?? 3001}/health/process`,
     { signal: AbortSignal.timeout(4000), headers: operationsHeaders() },
   );
   await response.body?.cancel();

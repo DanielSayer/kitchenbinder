@@ -12,6 +12,8 @@ x-runtime: &runtime
   environment: &environment
     NODE_ENV: production
     WORKER_HEARTBEAT_PATH: /app/tmp/operations/worker.json
+    WORKER_WAKE_PATH: /app/tmp/worker-wake/request
+    WORKER_RECONCILE_MS: ${WORKER_RECONCILE_MS:-1800000}
     OPS_HEARTBEAT_MAX_MS: ${OPS_HEARTBEAT_MAX_MS:-90000}
     OPS_QUEUED_MAX_MS: ${OPS_QUEUED_MAX_MS:-300000}
     OPS_READY_MAX_MS: ${OPS_READY_MAX_MS:-600000}
@@ -55,7 +57,7 @@ services:
     command: ["node", "scripts/start-web.mjs"]
     ports: ["127.0.0.1:3001:3001"]
     stop_grace_period: 40s
-    volumes: ["operations:/app/tmp/operations:ro"]
+    volumes: ["operations:/app/tmp/operations:ro", "worker-wake:/app/tmp/worker-wake"]
     healthcheck:
       test: ["CMD", "node", "scripts/operations.mjs", "web"]
       interval: 30s
@@ -75,7 +77,7 @@ services:
     pids_limit: 128
     command: ["node", "scripts/start-worker.mjs"]
     stop_grace_period: 200s
-    volumes: ["operations:/app/tmp/operations"]
+    volumes: ["operations:/app/tmp/operations", "worker-wake:/app/tmp/worker-wake"]
     healthcheck:
       test: ["CMD", "node", "scripts/operations.mjs", "worker"]
       interval: 30s
@@ -97,10 +99,11 @@ services:
     volumes: ["operations:/app/tmp/operations:ro"]
     environment:
       <<: *environment
-      OPS_WEB_URL: http://web:3001/health/live
+      OPS_WEB_URL: http://web:3001/health/process
       WEB_PROXY_SECRET: ${WEB_PROXY_SECRET:?Set the shared proxy authentication secret}
       OPS_ALERT_WEBHOOK_URL: ${OPS_ALERT_WEBHOOK_URL:-}
       OPS_ALERT_TOKEN: ${OPS_ALERT_TOKEN:-}
 
 volumes:
   operations:
+  worker-wake:

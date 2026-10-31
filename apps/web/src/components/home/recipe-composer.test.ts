@@ -787,3 +787,10 @@ it("sends picked photos without text and keeps only their count in storage", asy
     vi.unstubAllGlobals();
   }
 });
+
+it("lets phones pick any image or take a photo with one input", () => {
+  showComposer();
+  expect(
+    screen.getByLabelText("Add recipe photos").getAttribute("accept"),
+  ).toBe("image/*");
+});

@@ -87,9 +87,7 @@ export function ComposerForm({
                 <input
                   ref={fileRef}
                   type="file"
-                  // Android offers the camera only for image/*; no capture
-                  // attribute, so phones also offer the gallery. Undecodable
-                  // formats are rejected when downscaling.
+                  // image/* makes phones offer the camera alongside the library.
                   accept="image/*"
                   multiple
                   hidden

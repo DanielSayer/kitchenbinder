@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "dotenv";
@@ -8,6 +8,12 @@ import { parse } from "dotenv";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const composeFile = join(root, "packages/db/docker-compose.test.yml");
 const project = `prep-sheet-test-${randomUUID().slice(0, 12)}`;
+const runtimeDirectory = resolve(root, "tmp", project);
+if (dirname(runtimeDirectory) !== resolve(root, "tmp")) {
+  throw new Error(
+    "Test runtime directory must stay inside the workspace tmp directory",
+  );
+}
 const composeArgs = ["compose", "-p", project, "-f", composeFile];
 const dbDir = join(root, "packages/db");
 const vitest = join(root, "node_modules/vitest/vitest.mjs");
@@ -100,6 +106,8 @@ try {
     BETTER_AUTH_URL: "http://localhost:3001",
     NODE_ENV: "test",
     PREP_SHEET_TEST_DATABASE: "isolated",
+    WORKER_WAKE_PATH: join(runtimeDirectory, "wake", "request"),
+    WORKER_HEARTBEAT_PATH: join(runtimeDirectory, "operations", "worker.json"),
     AI_ENABLED: "true",
     BILLING_MODE: "disabled",
     POLAR_ACCESS_TOKEN: "",
@@ -129,6 +137,7 @@ try {
     );
     exitCode = 1;
   }
+  rmSync(runtimeDirectory, { recursive: true, force: true });
 }
 
 process.exitCode = exitCode;

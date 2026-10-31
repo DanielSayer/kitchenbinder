@@ -1,14 +1,14 @@
 import { z } from "zod";
 
-type Stage = "fetching" | "generating" | "saving";
+export type Stage = "fetching" | "generating" | "saving";
 type ImportEvent =
   | { event: "import_worker_started" | "import_worker_stopped"; pid: number }
   | { event: "import_worker_retry"; delayMs: number; failure: Failure }
+  | { event: "import_worker_wakeup_failed"; failure: Failure }
+  | { event: "import_queue_observation_failed"; failure: Failure }
   | {
       event: "import_worker_heartbeat";
-      queued: number;
-      active: number;
-      oldestQueuedMs: number;
+      mode: "waiting" | "processing" | "retrying";
     }
   | { event: "import_queued"; importId: string; sourceKind: string }
   | {

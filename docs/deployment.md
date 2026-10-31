@@ -288,12 +288,14 @@ single-client-IP headers. That document includes host nginx configuration and
 shared PostgreSQL auth throttling across replicas and restarts.
 
 Web startup emits `web_started`; the worker emits `import_worker_started` and
-30-second queue heartbeats. Supervise both with restart policies. HTTP handlers
+30-second local heartbeats. Supervise both with restart policies. HTTP handlers
 only admit durable jobs: a running website alone does not process imports.
 Check the homepage, one static asset, authenticated recipe API and PDF, anonymous
 rejection, and subsequent health. Verify real OAuth and one real import separately
 when authorised. The tRPC health API remains a liveness check. The listener also
-provides `/health/live` and `/health/ready`. See [operations and recovery](operations.md)
+provides `/health/live`, `/health/process` for routine local health, and
+`/health/ready` for explicit database readiness. Routine probes must use
+`/health/process` so idle Neon computes can suspend. See [operations and recovery](operations.md)
 for Compose probes, private diagnostics, alerting, log retention, isolated restore
 tooling and the remaining host acceptance checks. Real host alert delivery and
 production backup recovery remain launch gates.
