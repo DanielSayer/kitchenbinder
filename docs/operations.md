@@ -51,6 +51,10 @@ progress for `OPS_ACTIVE_MAX_MS` adds `worker_stalled`; repeated failures lastin
 that long add `worker_retrying`. Both make process health fail. A waiting worker
 remains healthy regardless of how long it has been idle.
 
+Progress time resets at fetch, generation and save stage boundaries, including
+checkpoint-save retries. The stall budget applies to a single stage rather than
+the combined duration of a healthy multi-stage import.
+
 ## Worker wakeups and idle recovery
 
 After committing a website or photo import, web atomically replaces an opaque
@@ -70,6 +74,12 @@ dedicated probe allowance, and point any existing uptime monitors at this route.
 The release script already installs both templates from the candidate image.
 No database migration is needed for this change.
 
+Avoid starting the new worker alongside an old web release: the old web does not
+send local notifications and admitted work can wait for reconciliation. The release
+script enters maintenance and stops both services before starting the candidate.
+If a staged upgrade is unavoidable, upgrade web and attach its wake volume first,
+then upgrade worker. The old worker continues polling during that transition.
+
 The worker checks the local token once per second while waiting. It captures the
 token before draining the durable queue so submissions racing with an empty scan
 cannot be lost. PostgreSQL is authoritative; the token contains no import or user
@@ -83,6 +93,14 @@ no database activity between those scans. A missed notification can delay a new
 job by up to this interval. Normal save retry timing and interrupted-job recovery
 remain scheduled from the durable timestamps. Queue claim locks, save leases,
 checkpoint safety and shutdown draining remain in force.
+
+Recovery polling still wakes Neon. With a five-minute suspend delay, a 30-minute
+scan interval keeps an otherwise idle compute awake for roughly one sixth of the
+time. At 0.25 CU this is about 30 CU-hours per 30-day month before user activity,
+query runtime and other wakeups. Startup verification and the startup/six-hour media
+sweep can add activity; the media sweep queries PostgreSQL when checking stored
+objects for recipe references. Some wake windows may overlap. This is a reduction
+from continuous compute, not zero background compute use.
 
 Database errors retry after five seconds and remain visible in local worker
 health. The six-hour media cleanup remains separate. Frequent checks of
@@ -99,8 +117,7 @@ docker compose -f deploy/compose.yml exec web node scripts/operations.mjs inspec
 The JSON contains dependency status, heartbeat age, queue totals and oldest ages.
 It never selects input, source URLs, user IDs, generated content or exception
 messages. Exit status is nonzero for any operational issue. The following
-thresholds apply to explicit database diagnostics; heartbeat and active thresholds
-also govern routine local worker checks:
+thresholds apply to explicit database diagnostics and cached worker observations:
 
 | Variable | Default ms | Issue |
 | --- | --- | --- |
@@ -117,9 +134,28 @@ started a retry. A first save still holding its lease is excluded. Age is a
 conservative upper bound because the schema does not record the first save
 failure time. Failed checkpoint saves
 stay visible until resolved; this includes exhausted retries. Investigate their
-user recovery path instead of deleting records to silence alerts. Queue issues
-make explicit diagnostics fail without taking otherwise working recipe reads offline. HTTP
-readiness tests dependencies only.
+user recovery path instead of deleting records to silence alerts.
+
+The worker collects oldest queued, ready, active and failed-save timestamps in its
+scheduling query before a drain, at stage changes and after an empty drain. It
+writes those aggregate timestamps into the heartbeat. Routine checks calculate
+ages from the timestamps without querying PostgreSQL, so known work can cross an
+alert threshold while Neon sleeps. Exhausted checkpoint-save failures stay visible
+across idle periods. Stage-observation failures are logged and do not fail the
+import; the next drain/reconciliation refreshes the observation.
+
+The monitor raises `queue_aged`, `ready_aged`, `active_aged` and
+`save_failure_aged` from these cached observations. Queue issues make explicit
+diagnostics fail but do not fail process health or take recipe reads offline.
+Explicit readiness queries current database state rather than cached queue ages.
+
+This is sampled queue monitoring. A job committed after the last observation whose
+notification never reaches the worker can remain unknown for up to
+`WORKER_RECONCILE_MS`, plus scan runtime and monitor delivery time. The original
+30-second database monitor could detect it sooner. Reconciliation refreshes the
+observation before claiming work, but a quickly recovered incident may finish
+between monitor polls. Monitor `import_worker_wakeup_failed` and
+`import_queue_observation_failed` logs for these delivery/observation failures.
 
 ## Alerts, logs and host acceptance
 
@@ -129,8 +165,9 @@ they do not restart unhealthy containers. Use alerts to investigate a stuck
 process before deciding whether to restart it.
 
 The optional monitor checks local worker health and web process health every
-30 seconds without opening a database pool. Queue aggregates remain available
-through explicit `inspect`. Set
+30 seconds without opening a database pool. Its local heartbeat checks include
+cached queue-age alerts. Current queue aggregates remain available through explicit
+`inspect`. Set
 `OPS_ALERT_WEBHOOK_URL` to an operator-owned HTTPS receiver and optionally
 `OPS_ALERT_TOKEN` to its bearer token, then enable it:
 
@@ -187,7 +224,8 @@ configured thresholds and receiver, and complete these acceptance checks:
 2. Block staging database connectivity after startup. Confirm bounded explicit
    readiness failure and unchanged liveness. Submit work and confirm sustained
    worker errors become `worker_retrying`, then recover when connectivity returns.
-   Inspect queued, ready and exhausted save-retry diagnostics explicitly. Process
+   Confirm queued, ready and exhausted save-retry alerts from the heartbeat, and
+   inspect current database diagnostics explicitly. Process
    health is not a claim that the database is currently reachable while idle.
 3. Stop the monitor and the whole host in turn. Confirm independent monitoring
    catches both. Test rejected webhook delivery and its retry. Verify the actual
