@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { createClientIpBoundary } from "./client-ip.mjs";
 import { bodyByteLimit } from "./http-body.mjs";
 import { incomingBody, rejectIncomingBody } from "./incoming-body.mjs";
-import { createOperations } from "./operations.mjs";
+import { createOperations, workerStatus } from "./operations.mjs";
 import { verifyRelease } from "./release-environment.mjs";
 
 const clientIpBoundary = createClientIpBoundary(process.env.WEB_PROXY_SECRET);
@@ -102,7 +102,11 @@ const server = createServer(async (incoming, outgoing) => {
       rejectIncomingBody(incoming, outgoing, 413, "Request body too large.");
       return;
     }
-    if (["/health/live", "/health/ready"].includes(url.pathname)) {
+    if (
+      ["/health/live", "/health/process", "/health/ready"].includes(
+        url.pathname,
+      )
+    ) {
       route = "health";
       if (!["GET", "HEAD"].includes(incoming.method ?? "")) {
         outgoing.writeHead(405, { allow: "GET, HEAD" }).end();
@@ -111,7 +115,9 @@ const server = createServer(async (incoming, outgoing) => {
       const status =
         url.pathname === "/health/live"
           ? undefined
-          : await operations.snapshot();
+          : url.pathname === "/health/process"
+            ? { database: true, worker: await workerStatus() }
+            : await operations.snapshot();
       const ready =
         status === undefined || (status.database && status.worker.ok);
       outgoing.writeHead(ready ? 200 : 503, {

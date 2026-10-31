@@ -84,7 +84,7 @@ server {
     limit_conn prep_connections 12;
     limit_conn prep_total 64;
 
-    location ~ ^/health/(live|ready)$ {
+    location ~ ^/health/(live|process|ready)$ {
         # Independent finite allowance, so ordinary overload cannot spend probes.
         limit_req zone=prep_probe burst=4 nodelay;
         limit_req zone=prep_probe_host burst=20 nodelay;
