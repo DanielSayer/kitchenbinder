@@ -55,11 +55,15 @@ async function idle(delay: number) {
 }
 let writingHeartbeat: Promise<void> | undefined;
 async function heartbeat() {
-  if (writingHeartbeat) await writingHeartbeat;
+  if (writingHeartbeat) {
+    await writingHeartbeat;
+    return heartbeat();
+  }
   if (stopping) return;
-  writingHeartbeat = writeWorkerHeartbeat(progress)
+  const current = progress;
+  writingHeartbeat = writeWorkerHeartbeat(current)
     .then(() =>
-      logImport({ event: "import_worker_heartbeat", mode: progress.mode }),
+      logImport({ event: "import_worker_heartbeat", mode: current.mode }),
     )
     .catch((error: unknown) => {
       logImport({

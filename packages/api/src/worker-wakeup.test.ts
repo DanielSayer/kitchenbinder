@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
@@ -73,4 +73,12 @@ it("keeps notification failure best effort after bounded retries", async () => {
   await mkdir(path);
   expect(await notifyImportWorker()).toBe(false);
   await setTimeout(1);
+});
+
+it("allows recovery scans when an advisory token is damaged", async () => {
+  const path = await setup();
+  await writeFile(path, "incomplete token");
+  expect(await readWorkerWakeup()).toBeNull();
+  expect(await notifyImportWorker()).toBe(true);
+  expect(await readWorkerWakeup()).not.toBeNull();
 });
