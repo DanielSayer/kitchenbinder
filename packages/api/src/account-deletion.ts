@@ -11,6 +11,7 @@ import {
   syncBilling,
 } from "./billing/polar";
 import { type Database, deleteOrphanedRecipes } from "./households/access";
+import { notifyImportWorker } from "./worker-wakeup";
 
 // Shared households the user owns and who would inherit each (null = deleted).
 export async function householdSuccession(database: Database, userId: string) {
@@ -49,7 +50,7 @@ export async function householdSuccession(database: Database, userId: string) {
 
 // Operator-only. Never expose this as a public or authenticated user procedure.
 export async function completeAccountDeletion(requestId: string) {
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const [request] = await tx
       .select()
       .from(accountDeletionRequest)
@@ -138,4 +139,6 @@ export async function completeAccountDeletion(requestId: string) {
     await tx.delete(user).where(eq(user.id, request.userId));
     return { deleted: true };
   });
+  await notifyImportWorker();
+  return result;
 }

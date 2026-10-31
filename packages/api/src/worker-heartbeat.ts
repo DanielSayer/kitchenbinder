@@ -8,12 +8,14 @@ import type { QueueObservation } from "./worker-state";
 const instance = randomUUID();
 const path =
   process.env.WORKER_HEARTBEAT_PATH ?? resolve("tmp/operations/worker.json");
+export const workerHeartbeatPath = () => path;
 export type WorkerProgress = {
   mode: "waiting" | "processing" | "retrying";
   progressAt: number;
   failureSince: number | null;
   queue: QueueObservation | null;
 };
+let lastProgress: WorkerProgress | undefined;
 
 export async function writeWorkerHeartbeat(
   progress: WorkerProgress = {
@@ -22,6 +24,7 @@ export async function writeWorkerHeartbeat(
     failureSince: null,
     queue: null,
   },
+  stopped = false,
 ) {
   await mkdir(dirname(path), { recursive: true });
   const temporary = `${path}.${instance}.tmp`;
@@ -32,15 +35,19 @@ export async function writeWorkerHeartbeat(
         version: 1,
         timestamp: Date.now(),
         instance,
+        stopped,
         ...progress,
       }),
       { mode: 0o644 },
     );
     await rename(temporary, path);
+    lastProgress = progress;
   } finally {
     await rm(temporary, { force: true });
   }
 }
-export async function clearWorkerHeartbeat() {
-  await rm(path, { force: true });
+export async function stopWorkerHeartbeat() {
+  // Clear liveness immediately but retain the last queue observation. A restart
+  // or unavailable database must not turn an existing queue alert into recovery.
+  if (lastProgress) await writeWorkerHeartbeat(lastProgress, true);
 }

@@ -4,6 +4,7 @@ import type { CustomerState } from "@polar-sh/sdk/models/components/customerstat
 import { db } from "@prep-sheet/db";
 import { user } from "@prep-sheet/db/schema/auth";
 import { billingAccount } from "@prep-sheet/db/schema/billing";
+import { recipeImport } from "@prep-sheet/db/schema/import";
 import { recipe } from "@prep-sheet/db/schema/recipe";
 import { accountDeletionRequest } from "@prep-sheet/db/schema/support";
 import { eq, inArray } from "drizzle-orm";
@@ -13,6 +14,7 @@ import * as billing from "./billing/polar";
 import type { Context } from "./context";
 import { sampleRecipe } from "./recipes/fixtures";
 import { appRouter } from "./routers";
+import { readWorkerWakeup } from "./worker-wakeup";
 
 vi.hoisted(() => {
   vi.stubEnv("BILLING_MODE", "sandbox");
@@ -192,6 +194,39 @@ async function waitForBlockedQuery(fragment: string) {
     })
     .toBeGreaterThan(0);
 }
+
+it("notifies the worker only after cascaded import deletion commits", async () => {
+  const { id, reference } = await fixture();
+  await db.insert(recipeImport).values({
+    id: randomUUID(),
+    userId: id,
+    fingerprint: "failed-save",
+    input: "",
+    state: "failed",
+    saveAttempts: 5,
+  });
+  const previous = await readWorkerWakeup();
+  const blocker = await db.$client.connect();
+  let completion: Promise<unknown> | undefined;
+  try {
+    await blocker.query(
+      "BEGIN; LOCK TABLE recipe_import IN ACCESS EXCLUSIVE MODE",
+    );
+    completion = completeAccountDeletion(reference);
+    await waitForBlockedQuery('delete from "user"');
+    expect(await readWorkerWakeup()).toBe(previous);
+    await blocker.query("COMMIT");
+    await completion;
+    expect(await readWorkerWakeup()).not.toBe(previous);
+    expect(
+      await db.select().from(recipeImport).where(eq(recipeImport.userId, id)),
+    ).toHaveLength(0);
+  } finally {
+    await blocker.query("ROLLBACK");
+    blocker.release();
+    await completion;
+  }
+});
 
 function supportCaller(id: string) {
   const now = new Date();

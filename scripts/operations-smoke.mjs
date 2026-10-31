@@ -6,6 +6,7 @@ import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readWorkerHeartbeat } from "../packages/api/src/worker-state.ts";
 import { createNotifier } from "./monitor-operations.mjs";
 import { createOperations, workerStatus } from "./operations.mjs";
 
@@ -24,7 +25,7 @@ await client.connect();
 await locker.connect();
 const directory = await mkdtemp(join(tmpdir(), "prep-sheet-operations-"));
 process.env.WORKER_HEARTBEAT_PATH = join(directory, "worker.json");
-const { writeWorkerHeartbeat, clearWorkerHeartbeat } = await import(
+const { writeWorkerHeartbeat, stopWorkerHeartbeat } = await import(
   "../packages/api/src/worker-heartbeat.ts"
 );
 const userId = randomUUID();
@@ -95,7 +96,7 @@ try {
   assert.equal((await workerStatus()).ok, false);
   await writeWorkerHeartbeat();
   assert.equal((await inspect()).ok, true);
-  await clearWorkerHeartbeat();
+  await stopWorkerHeartbeat();
   assert.deepEqual((await inspect()).issues, ["worker_stale"]);
   await writeWorkerHeartbeat();
   await client.query('INSERT INTO "user" (id,name,email) VALUES ($1,$1,$2)', [
@@ -156,9 +157,38 @@ try {
   });
   await queueNotify(cachedQueue.issues);
   assert.deepEqual(received[0].body.issues.sort(), aged.issues.sort());
-  await writeWorkerHeartbeat();
+  await stopWorkerHeartbeat();
+  const stopped = await workerStatus();
+  assert.equal(stopped.ok, false);
+  for (const issue of aged.issues) assert.ok(stopped.issues.includes(issue));
+  await queueNotify(stopped.issues);
+  const previous = await readWorkerHeartbeat(process.env.WORKER_HEARTBEAT_PATH);
+  assert.equal(previous.stopped, true);
+  await writeWorkerHeartbeat({
+    mode: "processing",
+    progressAt: Date.now(),
+    failureSince: null,
+    queue: previous.queue,
+  });
   await queueNotify((await workerStatus()).issues);
-  assert.equal(received[1].body.event, "operations_recovered");
+  assert.ok(
+    received.every(({ body }) => body.event !== "operations_recovered"),
+    "restarting must not recover unresolved queue alerts",
+  );
+  await writeWorkerHeartbeat({
+    mode: "waiting",
+    progressAt: Date.now(),
+    failureSince: null,
+    queue: {
+      observedAt: Date.now(),
+      queuedAt: null,
+      readyAt: null,
+      activeAt: null,
+      saveFailureAt: null,
+    },
+  });
+  await queueNotify((await workerStatus()).issues);
+  assert.equal(received.at(-1).body.event, "operations_recovered");
   received.length = 0;
 
   // Age known rows locally while Neon is asleep; an empty category stays empty.

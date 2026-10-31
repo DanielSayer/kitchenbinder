@@ -7,6 +7,8 @@ import {
 } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
+import { mkdirSync } from "node:fs";
+import { basename, dirname } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { db } from "@prep-sheet/db";
@@ -14,14 +16,17 @@ import { user } from "@prep-sheet/db/schema/auth";
 import { aiSpend } from "@prep-sheet/db/schema/billing";
 import { recipeImport } from "@prep-sheet/db/schema/import";
 import { recipe } from "@prep-sheet/db/schema/recipe";
+import { accountDeletionRequest } from "@prep-sheet/db/schema/support";
 import { eq, inArray, sql } from "drizzle-orm";
 import { afterAll, expect, it } from "vitest";
 import { z } from "zod";
+import { completeAccountDeletion } from "./account-deletion";
 import { sampleRecipe } from "./recipes/fixtures";
 import { notifyImportWorker } from "./worker-wakeup";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const userId = randomUUID();
+const userIds = [userId];
 const ids = [randomUUID(), randomUUID()];
 const children: ChildProcess[] = [];
 const containers: string[] = [];
@@ -30,7 +35,7 @@ afterAll(async () => {
     spawnSync("docker", ["rm", "--force", name], { stdio: "ignore" });
   for (const child of children) if (child.exitCode === null) child.kill();
   await db.delete(recipe).where(inArray(recipe.id, ids));
-  await db.delete(user).where(eq(user.id, userId));
+  await db.delete(user).where(inArray(user.id, userIds));
   await db.$client.end();
 });
 
@@ -44,6 +49,10 @@ function worker(reconcileMs = 1_800_000) {
       : "--add-host=host.docker.internal:host-gateway";
   if (process.platform !== "linux")
     databaseUrl.hostname = "host.docker.internal";
+  const wakePath = process.env.WORKER_WAKE_PATH;
+  if (!wakePath)
+    throw new Error("The isolated wrapper must supply WORKER_WAKE_PATH");
+  mkdirSync(dirname(wakePath), { recursive: true });
   const child = image
     ? spawn(
         "docker",
@@ -54,6 +63,10 @@ function worker(reconcileMs = 1_800_000) {
           "--name",
           name,
           network,
+          "--mount",
+          `type=bind,source=${dirname(wakePath)},target=/app/tmp/worker-wake,readonly`,
+          "-e",
+          `WORKER_WAKE_PATH=/app/tmp/worker-wake/${basename(wakePath)}`,
           "-e",
           "NODE_ENV=production",
           "-e",
@@ -139,22 +152,7 @@ function worker(reconcileMs = 1_800_000) {
     },
     output: () => output,
     async wake() {
-      if (image) {
-        execFileSync(
-          "docker",
-          [
-            "exec",
-            name,
-            "node",
-            "--import",
-            "tsx",
-            "--input-type=module",
-            "-e",
-            'import { notifyImportWorker } from "./packages/api/src/worker-wakeup.ts"; await notifyImportWorker();',
-          ],
-          { stdio: "ignore" },
-        );
-      } else await notifyImportWorker();
+      await notifyImportWorker();
     },
     healthy() {
       const result = spawnSync(
@@ -255,11 +253,22 @@ it("drains a blocked checkpoint save on shutdown, leaves the next job durable, t
 }, 60_000);
 
 it("keeps an idle heartbeat alive without queue queries, then wakes and saves a checkpoint", async () => {
+  const failedOwner = randomUUID();
+  const deletionReference = randomUUID();
+  userIds.push(failedOwner);
+  await db.insert(user).values({
+    id: failedOwner,
+    name: "Failed save owner",
+    email: `${failedOwner}@example.test`,
+  });
+  await db
+    .insert(accountDeletionRequest)
+    .values({ id: deletionReference, userId: failedOwner });
   const failedId = randomUUID();
   ids.push(failedId);
   await db.insert(recipeImport).values({
     id: failedId,
-    userId,
+    userId: failedOwner,
     fingerprint: failedId,
     input: "",
     state: "failed",
@@ -285,6 +294,12 @@ it("keeps an idle heartbeat alive without queue queries, then wakes and saves a 
       issues: ["save_failure_aged"],
     });
     expect(await scans()).toEqual(before);
+    // Account deletion cascades the failed save and notifies the sleeping worker.
+    // Its alert should clear promptly rather than waiting for reconciliation.
+    await completeAccountDeletion(deletionReference);
+    await expect
+      .poll(() => running.status().issues, { timeout: 10_000 })
+      .toEqual([]);
     expect(running.output().match(/"mode":"waiting"/g)?.length).toBeGreaterThan(
       1,
     );
