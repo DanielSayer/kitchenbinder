@@ -16,6 +16,7 @@ import { recipeImport } from "@prep-sheet/db/schema/import";
 import { recipe } from "@prep-sheet/db/schema/recipe";
 import { eq, inArray, sql } from "drizzle-orm";
 import { afterAll, expect, it } from "vitest";
+import { z } from "zod";
 import { sampleRecipe } from "./recipes/fixtures";
 import { notifyImportWorker } from "./worker-wakeup";
 
@@ -170,6 +171,21 @@ function worker(reconcileMs = 1_800_000) {
       );
       return result.status === 0;
     },
+    status() {
+      const command = [
+        "--input-type=module",
+        "-e",
+        'import { workerStatus } from "./scripts/operations.mjs"; console.log(JSON.stringify(await workerStatus()));',
+      ];
+      const output = execFileSync(
+        image ? "docker" : process.execPath,
+        image ? ["exec", name, "node", ...command] : command,
+        { cwd: root, env: process.env, encoding: "utf8", timeout: 5000 },
+      );
+      return z
+        .object({ ok: z.boolean(), issues: z.array(z.string()) })
+        .parse(JSON.parse(output));
+    },
   };
 }
 function stop(child: ChildProcess) {
@@ -239,6 +255,17 @@ it("drains a blocked checkpoint save on shutdown, leaves the next job durable, t
 }, 60_000);
 
 it("keeps an idle heartbeat alive without queue queries, then wakes and saves a checkpoint", async () => {
+  const failedId = randomUUID();
+  ids.push(failedId);
+  await db.insert(recipeImport).values({
+    id: failedId,
+    userId,
+    fingerprint: failedId,
+    input: "",
+    state: "failed",
+    saveAttempts: 5,
+    createdAt: new Date(Date.now() - 400_000),
+  });
   const running = worker();
   try {
     await running.wait('"mode":"waiting"');
@@ -253,6 +280,10 @@ it("keeps an idle heartbeat alive without queue queries, then wakes and saves a 
     const before = await scans();
     await setTimeout(31_000);
     expect(running.healthy()).toBe(true);
+    expect(running.status()).toMatchObject({
+      ok: true,
+      issues: ["save_failure_aged"],
+    });
     expect(await scans()).toEqual(before);
     expect(running.output().match(/"mode":"waiting"/g)?.length).toBeGreaterThan(
       1,

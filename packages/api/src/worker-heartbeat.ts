@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import type { QueueObservation } from "./worker-state";
 
 // One supervised worker per heartbeat path. Compose shares this directory read-only
 // with web/monitor. Atomic rename prevents probes observing a partial write.
@@ -11,6 +12,7 @@ export type WorkerProgress = {
   mode: "waiting" | "processing" | "retrying";
   progressAt: number;
   failureSince: number | null;
+  queue: QueueObservation | null;
 };
 
 export async function writeWorkerHeartbeat(
@@ -18,6 +20,7 @@ export async function writeWorkerHeartbeat(
     mode: "waiting",
     progressAt: Date.now(),
     failureSince: null,
+    queue: null,
   },
 ) {
   await mkdir(dirname(path), { recursive: true });

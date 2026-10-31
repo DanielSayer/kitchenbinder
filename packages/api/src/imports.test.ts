@@ -93,7 +93,19 @@ describe("durable import concurrency and recovery with PostgreSQL", () => {
   it("shares with the household and keeps the recipe personal", async () => {
     const item = { ...input(), householdId };
     expect((await submitWebsiteImport(owner, item)).kind).toBe("queued");
-    await processNextImport(vi.fn().mockResolvedValue(generated));
+    const progress = vi.fn(
+      async (_stage: "fetching" | "generating" | "saving") => {},
+    );
+    await processNextImport(
+      vi.fn().mockResolvedValue(generated),
+      undefined,
+      progress,
+    );
+    expect(progress.mock.calls.map(([stage]) => stage)).toEqual([
+      "fetching",
+      "generating",
+      "saving",
+    ]);
     expect(await importStatus(owner, item.id)).toMatchObject({
       kind: "saved",
       recipeId: item.id,

@@ -1,10 +1,11 @@
 import { z } from "zod";
 
-type Stage = "fetching" | "generating" | "saving";
+export type Stage = "fetching" | "generating" | "saving";
 type ImportEvent =
   | { event: "import_worker_started" | "import_worker_stopped"; pid: number }
   | { event: "import_worker_retry"; delayMs: number; failure: Failure }
   | { event: "import_worker_wakeup_failed"; failure: Failure }
+  | { event: "import_queue_observation_failed"; failure: Failure }
   | {
       event: "import_worker_heartbeat";
       mode: "waiting" | "processing" | "retrying";
