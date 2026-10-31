@@ -141,8 +141,41 @@ try {
     "x-prep-sheet-client-ip": "127.0.0.1",
   };
   assert.equal((await fetch(`${origin}/health/ready`)).status, 403);
+  assert.equal((await fetch(`${origin}/health/process`)).status, 403);
   const probe = (path) => fetch(`${origin}${path}`, { headers });
   assert.equal((await probe("/health/ready")).status, 200);
+  assert.equal((await probe("/health/process")).status, 200);
+  // Web and worker must see the same signal volume without web gaining write
+  // access to the worker heartbeat volume.
+  run("docker", [
+    "exec",
+    webId,
+    "node",
+    "--input-type=module",
+    "-e",
+    'import { writeFile } from "node:fs/promises"; await writeFile(process.env.WORKER_WAKE_PATH, "compose-wakeup-test");',
+  ]);
+  assert.equal(
+    run("docker", [
+      "exec",
+      workerId,
+      "node",
+      "--input-type=module",
+      "-e",
+      'import { readFile } from "node:fs/promises"; console.log(await readFile(process.env.WORKER_WAKE_PATH,"utf8"));',
+    ]),
+    "compose-wakeup-test",
+  );
+  run("docker", [
+    "exec",
+    webId,
+    "node",
+    "--import",
+    "tsx",
+    "--input-type=module",
+    "-e",
+    'import { notifyImportWorker } from "./packages/api/src/worker-wakeup.ts"; if (!await notifyImportWorker()) process.exit(1);',
+  ]);
   compose(["stop", "worker"]);
   let unavailable = false;
   for (let attempt = 0; attempt < 30; attempt++) {
@@ -159,6 +192,7 @@ try {
     "web must observe stopped worker through the shared volume",
   );
   assert.equal((await probe("/health/live")).status, 200);
+  assert.equal((await probe("/health/process")).status, 503);
   compose(["start", "worker"]);
   let recovered = false;
   for (let attempt = 0; attempt < 80; attempt++) {

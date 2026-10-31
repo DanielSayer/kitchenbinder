@@ -228,9 +228,11 @@ statement cancellation, failover/reconnect, idle transaction termination and col
 starts. Runtime has no CREATE or TEMP grant in this template.
 
 Start with DATABASE_POOL_MAX=5. Web's two pools plus worker's pool can use 15
-connections. Web readiness and monitor add two one-connection pools, giving a
-steady-state upper budget of 17. Web healthchecks use HTTP and worker healthchecks
-read the heartbeat, so neither opens another database pool. Startup verification
+connections. Explicit web readiness adds one connection, giving an upper budget
+of 16 before one-off diagnostics. Routine web healthchecks use `/health/process`
+and worker healthchecks read the local heartbeat. Neither queries the database.
+The monitor also uses local health; explicit database readiness has a separate
+one-connection pool. Startup verification
 and manually invoked operations inspect commands use transient connections.
 Reserve extra connections for migration, backup and operators; record at least 25
 available direct connections for this stack and verify the actual compute's limit.
@@ -331,8 +333,9 @@ sudo systemctl reload nginx
 ```
 
 Use the same `/opt/prep-sheet` directory or explicit project name each time so the
-operations volume stays attached. Never use down -v. Web/monitor mount the shared
-heartbeat read-only, worker read-write. The secret reaches web/monitor only.
+operations and worker-wake volumes stay attached. Never use down -v. Web/monitor
+mount the shared heartbeat read-only, worker read-write. Web and worker mount the
+separate wake volume read-write. The secret reaches web/monitor only.
 Health probes retain proxy authentication. Compose health does not prove actual
 public TLS or provider acceptance.
 

@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
@@ -90,6 +91,7 @@ try {
 
   assert.equal((await request("/health/live")).status, 200);
   const missingWorker = await request("/health/ready");
+  assert.equal((await request("/health/process")).status, 503);
   assert.equal(missingWorker.status, 503);
   assert.deepEqual(await missingWorker.json(), { status: "unavailable" });
   assert.equal(missingWorker.headers.get("cache-control"), "no-store");
@@ -104,10 +106,28 @@ try {
     }),
   );
   await setTimeout(5100);
+  const require = createRequire(
+    new URL("../packages/db/package.json", import.meta.url),
+  );
+  const { Client } = require("pg");
+  const blocker = new Client({ connectionString: database.href });
+  await blocker.connect();
+  try {
+    await blocker.query(
+      "BEGIN; LOCK TABLE recipe_import IN ACCESS EXCLUSIVE MODE",
+    );
+    assert.equal((await request("/health/process")).status, 200);
+    assert.equal((await request("/health/ready")).status, 503);
+  } finally {
+    await blocker.query("ROLLBACK");
+    await blocker.end();
+  }
+  await setTimeout(5100);
   assert.equal((await request("/health/ready")).status, 200);
   await rm(heartbeatPath);
   await setTimeout(5100);
   assert.equal((await request("/health/ready")).status, 503);
+  assert.equal((await request("/health/process")).status, 503);
   assert.equal((await request("/health/live")).status, 200);
   const failure = await fetch(new URL("/%E0?private=never-log-this", origin), {
     headers: {
