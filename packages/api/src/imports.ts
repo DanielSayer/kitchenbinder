@@ -52,6 +52,7 @@ import {
 import { persistRecipe } from "./recipes/persist";
 import { checkRecipeUsage } from "./recipes/usage";
 import { availableTags } from "./routers/tags";
+import { notifyImportWorker } from "./worker-wakeup";
 
 // Imports before multi-recipe imports saved one recipe with the import ID.
 const savedRecipeIds = (job: { id: string; recipeIds: string[] | null }) =>
@@ -426,11 +427,42 @@ async function submitJob(userId: string, input: JobInput) {
       importId: input.id,
       sourceKind: input.sourceKind,
     });
-  return importStatus(userId, input.id);
+  const status = await importStatus(userId, input.id);
+  // Repeated submissions also recover a missed notification for an admitted job.
+  if (status.kind === "queued" || status.kind === "processing")
+    await notifyImportWorker();
+  return status;
 }
 
 const saveAttemptLimit = 5;
 const claimTimeoutMs = 180_000;
+
+// Called after an empty drain, never by the local heartbeat. Keep scheduled save
+// retries and expired leases prompt without querying an empty queue repeatedly.
+export async function nextImportDelay(maximumMs: number) {
+  const [next] = await db
+    .select({
+      delayMs: sql<number | null>`(extract(epoch from (min(case
+      when ${recipeImport.state} = 'queued' then now() + interval '2 seconds'
+      when ${recipeImport.state} = 'ready' and ${recipeImport.saveClaimedAt} is not null
+        then ${recipeImport.saveClaimedAt} + ${claimTimeoutMs} * interval '1 millisecond'
+      when ${recipeImport.state} = 'ready' and ${recipeImport.saveAttempts} < ${saveAttemptLimit}
+        then ${recipeImport.nextSaveAttemptAt}
+      when ${recipeImport.state} in ('fetching', 'processing')
+        then coalesce(${recipeImport.startedAt}, ${recipeImport.createdAt}) + ${claimTimeoutMs} * interval '1 millisecond'
+      end) - now())) * 1000)::float8`,
+    })
+    .from(recipeImport)
+    .where(
+      inArray(recipeImport.state, [
+        "queued",
+        "ready",
+        "fetching",
+        "processing",
+      ]),
+    );
+  return Math.max(100, Math.min(maximumMs, next?.delayMs ?? maximumMs));
+}
 const checkpointRecipeSchema = z.object({
   content: recipeContentSchema,
   tagIds: z.array(z.string().uuid()),

@@ -54,6 +54,25 @@ try {
   assert.equal((await workerStatus()).ok, false);
   await writeWorkerHeartbeat();
   assert.equal((await workerStatus()).ok, true);
+  // Fresh heartbeats must still expose stuck work and sustained database errors.
+  await writeWorkerHeartbeat({
+    mode: "processing",
+    progressAt: Date.now() - 400_000,
+    failureSince: null,
+  });
+  assert.deepEqual((await workerStatus()).issues, ["worker_stalled"]);
+  await writeWorkerHeartbeat({
+    mode: "retrying",
+    progressAt: Date.now(),
+    failureSince: Date.now() - 400_000,
+  });
+  assert.deepEqual((await workerStatus()).issues, ["worker_retrying"]);
+  await writeWorkerHeartbeat({
+    mode: "waiting",
+    progressAt: Date.now() - 3_600_000,
+    failureSince: null,
+  });
+  assert.equal((await workerStatus()).ok, true);
   await writeFile(
     process.env.WORKER_HEARTBEAT_PATH,
     JSON.stringify({

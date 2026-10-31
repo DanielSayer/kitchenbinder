@@ -7,13 +7,30 @@ import { dirname, resolve } from "node:path";
 const instance = randomUUID();
 const path =
   process.env.WORKER_HEARTBEAT_PATH ?? resolve("tmp/operations/worker.json");
-export async function writeWorkerHeartbeat() {
+export type WorkerProgress = {
+  mode: "waiting" | "processing" | "retrying";
+  progressAt: number;
+  failureSince: number | null;
+};
+
+export async function writeWorkerHeartbeat(
+  progress: WorkerProgress = {
+    mode: "waiting",
+    progressAt: Date.now(),
+    failureSince: null,
+  },
+) {
   await mkdir(dirname(path), { recursive: true });
   const temporary = `${path}.${instance}.tmp`;
   try {
     await writeFile(
       temporary,
-      JSON.stringify({ version: 1, timestamp: Date.now(), instance }),
+      JSON.stringify({
+        version: 1,
+        timestamp: Date.now(),
+        instance,
+        ...progress,
+      }),
       { mode: 0o644 },
     );
     await rename(temporary, path);

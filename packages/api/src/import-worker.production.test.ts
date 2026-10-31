@@ -14,9 +14,10 @@ import { user } from "@prep-sheet/db/schema/auth";
 import { aiSpend } from "@prep-sheet/db/schema/billing";
 import { recipeImport } from "@prep-sheet/db/schema/import";
 import { recipe } from "@prep-sheet/db/schema/recipe";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { afterAll, expect, it } from "vitest";
 import { sampleRecipe } from "./recipes/fixtures";
+import { notifyImportWorker } from "./worker-wakeup";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const userId = randomUUID();
@@ -32,7 +33,7 @@ afterAll(async () => {
   await db.$client.end();
 });
 
-function worker() {
+function worker(reconcileMs = 1_800_000) {
   const image = process.env.PREP_SHEET_RELEASE_IMAGE;
   const name = `prep-sheet-worker-${randomUUID()}`;
   const databaseUrl = new URL(process.env.DATABASE_URL ?? "");
@@ -72,6 +73,10 @@ function worker() {
           `BETTER_AUTH_URL=${process.env.BETTER_AUTH_URL}`,
           "-e",
           "WORKER_SHUTDOWN_TIMEOUT_MS=10000",
+          "-e",
+          "DATABASE_IDLE_TIMEOUT_MS=500",
+          "-e",
+          `WORKER_RECONCILE_MS=${reconcileMs}`,
           image,
           "node",
           "scripts/start-worker.mjs",
@@ -97,6 +102,8 @@ function worker() {
             POLAR_PRO_PRODUCT_ID: "",
             POLAR_WEBHOOK_SECRET: "",
             WORKER_SHUTDOWN_TIMEOUT_MS: "10000",
+            DATABASE_IDLE_TIMEOUT_MS: "500",
+            WORKER_RECONCILE_MS: String(reconcileMs),
           },
           stdio: ["ignore", "pipe", "pipe", "ipc"],
         },
@@ -130,6 +137,24 @@ function worker() {
       throw new Error(`Worker event missing: ${event}. ${output}`);
     },
     output: () => output,
+    async wake() {
+      if (image) {
+        execFileSync(
+          "docker",
+          [
+            "exec",
+            name,
+            "node",
+            "--import",
+            "tsx",
+            "--input-type=module",
+            "-e",
+            'import { notifyImportWorker } from "./packages/api/src/worker-wakeup.ts"; await notifyImportWorker();',
+          ],
+          { stdio: "ignore" },
+        );
+      } else await notifyImportWorker();
+    },
     healthy() {
       const result = spawnSync(
         image ? "docker" : process.execPath,
@@ -210,5 +235,100 @@ it("drains a blocked checkpoint save on shutdown, leaves the next job durable, t
   } finally {
     await blocker.query("ROLLBACK");
     blocker.release();
+  }
+}, 60_000);
+
+it("keeps an idle heartbeat alive without queue queries, then wakes and saves a checkpoint", async () => {
+  const running = worker();
+  try {
+    await running.wait('"mode":"waiting"');
+    // Allow PostgreSQL's previous scan statistics to flush before sampling.
+    await setTimeout(1500);
+    const scans = async () =>
+      (
+        await db.execute(
+          sql`select seq_scan, idx_scan from pg_stat_user_tables where relname='recipe_import'`,
+        )
+      ).rows[0];
+    const before = await scans();
+    await setTimeout(31_000);
+    expect(running.healthy()).toBe(true);
+    expect(await scans()).toEqual(before);
+    expect(running.output().match(/"mode":"waiting"/g)?.length).toBeGreaterThan(
+      1,
+    );
+    const id = randomUUID();
+    ids.push(id);
+    await db.insert(recipeImport).values({
+      id,
+      userId,
+      fingerprint: id,
+      input: "",
+      state: "ready",
+      generated: { content: sampleRecipe, tagIds: [], origin: "generated" },
+    });
+    await running.wake();
+    await running.wait("import_saved");
+    expect(
+      (await db.select().from(recipeImport).where(eq(recipeImport.id, id)))[0]
+        ?.state,
+    ).toBe("saved");
+  } finally {
+    running.stop();
+    expect((await running.closed)[0], running.output()).toBe(0);
+  }
+}, 60_000);
+
+it("reconciles a missed wakeup and honours a scheduled save without waiting for the next reconciliation", async () => {
+  const running = worker(10_000);
+  try {
+    await running.wait('"mode":"waiting"');
+    const id = randomUUID();
+    ids.push(id);
+    // Deliberately skip the notification. The fallback must find this checkpoint.
+    await db.insert(recipeImport).values({
+      id,
+      userId,
+      fingerprint: id,
+      input: "",
+      state: "ready",
+      generated: { content: sampleRecipe, tagIds: [], origin: "generated" },
+    });
+    await running.wait("import_saved");
+    running.stop();
+    expect((await running.closed)[0], running.output()).toBe(0);
+
+    const delayedId = randomUUID();
+    ids.push(delayedId);
+    await db.insert(recipeImport).values({
+      id: delayedId,
+      userId,
+      fingerprint: delayedId,
+      input: "",
+      state: "ready",
+      saveAttempts: 1,
+      nextSaveAttemptAt: new Date(Date.now() + 4000),
+      generated: { content: sampleRecipe, tagIds: [], origin: "generated" },
+    });
+    const retrying = worker();
+    try {
+      await retrying.wait("import_saved");
+      expect(
+        (
+          await db
+            .select()
+            .from(recipeImport)
+            .where(eq(recipeImport.id, delayedId))
+        )[0]?.saveAttempts,
+      ).toBe(2);
+    } finally {
+      retrying.stop();
+      expect((await retrying.closed)[0], retrying.output()).toBe(0);
+    }
+  } finally {
+    if (running.child.exitCode === null) {
+      running.stop();
+      await running.closed;
+    }
   }
 }, 60_000);

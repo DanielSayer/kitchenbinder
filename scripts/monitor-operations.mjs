@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { createOperations, operationsHeaders } from "./operations.mjs";
+import { operationsHeaders, workerStatus } from "./operations.mjs";
 
 const destinationSchema = z.url().refine((value) => {
   const url = new URL(value);
@@ -59,7 +59,6 @@ export async function monitor() {
     process.env.OPS_ALERT_WEBHOOK_URL,
   );
   const web = z.url().parse(process.env.OPS_WEB_URL);
-  const operations = createOperations();
   const notify = createNotifier({
     destination,
     token: process.env.OPS_ALERT_TOKEN,
@@ -69,8 +68,8 @@ export async function monitor() {
     process.once(signal, () => stop.abort());
   try {
     while (!stop.signal.aborted) {
-      const snapshot = await operations.snapshot();
-      const issues = [...snapshot.issues];
+      const worker = await workerStatus();
+      const issues = [...worker.issues];
       try {
         const response = await fetch(web, {
           redirect: "error",
@@ -94,7 +93,7 @@ export async function monitor() {
       }
     }
   } finally {
-    await operations.close();
+    stop.abort();
   }
 }
 

@@ -15,6 +15,9 @@ const heartbeatSchema = z.object({
   version: z.literal(1),
   timestamp: z.number().int().nonnegative(),
   instance: z.uuid(),
+  mode: z.enum(["waiting", "processing", "retrying"]).default("waiting"),
+  progressAt: z.number().int().nonnegative().optional(),
+  failureSince: z.number().int().nonnegative().nullable().default(null),
 });
 const positive = (name, fallback) =>
   z.coerce
@@ -40,12 +43,32 @@ export async function workerStatus(now = Date.now()) {
       JSON.parse(await readFile(heartbeatPath(), "utf8")),
     );
     const ageMs = now - record.timestamp;
+    const progressAgeMs = now - (record.progressAt ?? record.timestamp);
+    const failureAgeMs =
+      record.failureSince === null ? 0 : now - record.failureSince;
+    const limits = thresholds();
+    const issues = [];
+    if (
+      ageMs < -5000 ||
+      ageMs > limits.heartbeatMs ||
+      progressAgeMs < -5000 ||
+      failureAgeMs < -5000
+    )
+      issues.push("worker_stale");
+    if (record.mode === "processing" && progressAgeMs > limits.activeMs)
+      issues.push("worker_stalled");
+    if (record.failureSince !== null && failureAgeMs > limits.activeMs)
+      issues.push("worker_retrying");
     return {
-      ok: ageMs >= -5000 && ageMs <= thresholds().heartbeatMs,
+      ok: issues.length === 0,
       ageMs: Math.max(0, ageMs),
+      mode: record.mode,
+      progressAgeMs: Math.max(0, progressAgeMs),
+      failureAgeMs: Math.max(0, failureAgeMs),
+      issues,
     };
   } catch {
-    return { ok: false, ageMs: null };
+    return { ok: false, ageMs: null, issues: ["worker_stale"] };
   }
 }
 
@@ -57,7 +80,9 @@ export function createOperations({
   const pool = new Pool({
     connectionString,
     max: 1,
-    connectionTimeoutMillis: 1000,
+    // Explicit readiness can wake a sleeping Neon compute. Routine probes use
+    // local process health instead, so allow a cold connection here.
+    connectionTimeoutMillis: 10_000,
     statement_timeout: 1000,
     query_timeout: 1500,
     idleTimeoutMillis: 5000,
@@ -71,7 +96,7 @@ export function createOperations({
     "save_attempts>0 AND (state='failed' OR (state='ready' AND (save_claimed_at IS NULL OR save_attempts>1)))";
   async function inspect() {
     const worker = await workerStatus();
-    const issues = worker.ok ? [] : ["worker_stale"];
+    const issues = [...worker.issues];
     try {
       const result = await pool.query(`SELECT
         count(*) FILTER (WHERE state='queued')::int AS queued,
@@ -132,7 +157,7 @@ export async function healthcheck(mode) {
   if (mode === "worker") return (await workerStatus()).ok;
   if (mode !== "web") throw new Error("Expected web or worker");
   const response = await fetch(
-    `http://127.0.0.1:${process.env.PORT ?? 3001}/health/ready`,
+    `http://127.0.0.1:${process.env.PORT ?? 3001}/health/process`,
     { signal: AbortSignal.timeout(4000), headers: operationsHeaders() },
   );
   await response.body?.cancel();
