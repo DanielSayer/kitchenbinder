@@ -87,7 +87,10 @@ export function ComposerForm({
                 <input
                   ref={fileRef}
                   type="file"
-                  accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                  // Android offers the camera only for image/*; no capture
+                  // attribute, so phones also offer the gallery. Undecodable
+                  // formats are rejected when downscaling.
+                  accept="image/*"
                   multiple
                   hidden
                   aria-label="Add recipe photos"
