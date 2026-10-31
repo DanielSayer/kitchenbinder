@@ -10,7 +10,7 @@ export function RecentlyDeleted() {
   const trpc = useTRPC();
   const query = useQuery(
     trpc.recipes.recentlyDeleted.queryOptions(undefined, {
-      refetchInterval: 60_000,
+      refetchOnWindowFocus: "always",
     }),
   );
   const restore = useRestoreRecipe();
