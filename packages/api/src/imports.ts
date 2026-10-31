@@ -11,6 +11,7 @@ import {
   count,
   desc,
   eq,
+  gt,
   gte,
   inArray,
   isNull,
@@ -280,6 +281,7 @@ async function discardJob(userId: string, input: DiscardInput) {
         "This import was discarded. Start another import to save the recipe.",
     });
   });
+  await notifyImportWorker();
 }
 
 function websiteInput(value: unknown): JobInput {
@@ -470,13 +472,15 @@ export async function inspectImportQueue(maximumMs: number) {
     })
     .from(recipeImport)
     .where(
-      inArray(recipeImport.state, [
-        "queued",
-        "ready",
-        "fetching",
-        "processing",
-        "failed",
-      ]),
+      or(
+        inArray(recipeImport.state, [
+          "queued",
+          "ready",
+          "fetching",
+          "processing",
+        ]),
+        and(eq(recipeImport.state, "failed"), gt(recipeImport.saveAttempts, 0)),
+      ),
     );
   const queue: QueueObservation = {
     observedAt: Date.now(),

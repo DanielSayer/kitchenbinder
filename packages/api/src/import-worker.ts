@@ -5,10 +5,12 @@ import { importFailure, logImport } from "./import-diagnostics";
 import { inspectImportQueue, processNextImport } from "./imports";
 import { sweepRecipeMedia } from "./recipes/media";
 import {
-  clearWorkerHeartbeat,
+  stopWorkerHeartbeat,
   type WorkerProgress,
+  workerHeartbeatPath,
   writeWorkerHeartbeat,
 } from "./worker-heartbeat";
+import { readWorkerHeartbeat } from "./worker-state";
 import { readWorkerWakeup, waitForWorkerWakeup } from "./worker-wakeup";
 
 let stopping = false;
@@ -23,7 +25,7 @@ let progress: WorkerProgress = {
   mode: "processing",
   progressAt: Date.now(),
   failureSince: null,
-  queue: null,
+  queue: (await readWorkerHeartbeat(workerHeartbeatPath()))?.queue ?? null,
 };
 const shutdownTimeout = Number(
   process.env.WORKER_SHUTDOWN_TIMEOUT_MS ?? 180_000,
@@ -115,7 +117,6 @@ try {
       const previous = await readWorkerWakeup();
       progress = { ...progress, mode: "processing", progressAt: Date.now() };
       await heartbeat();
-      await refreshQueue();
       const processed = await processNextImport(
         undefined,
         undefined,
@@ -173,7 +174,7 @@ try {
   await sweeping;
   // Wait for the in-flight writer before removing the clean-shutdown marker.
   await writingHeartbeat;
-  await clearWorkerHeartbeat();
+  await stopWorkerHeartbeat();
   await db.$client.end();
   clearTimeout(shutdownTimer);
   logImport({ event: "import_worker_stopped", pid: process.pid });

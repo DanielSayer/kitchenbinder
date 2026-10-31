@@ -45,7 +45,8 @@ export async function workerStatus(now = Date.now()) {
       ageMs < -5000 ||
       ageMs > limits.heartbeatMs ||
       progressAgeMs < -5000 ||
-      failureAgeMs < -5000
+      failureAgeMs < -5000 ||
+      record.stopped
     )
       issues.push("worker_stale");
     if (record.mode === "processing" && progressAgeMs > limits.activeMs)

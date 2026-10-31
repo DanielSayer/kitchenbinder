@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { z } from "zod";
 
 const timestamp = z.number().finite().nonnegative();
@@ -21,4 +22,15 @@ export const workerHeartbeatSchema = workerProgressSchema.extend({
   version: z.literal(1),
   timestamp: timestamp.int(),
   instance: z.uuid(),
+  stopped: z.boolean().default(false),
 });
+
+export async function readWorkerHeartbeat(path: string) {
+  try {
+    return workerHeartbeatSchema.parse(
+      JSON.parse(await readFile(path, "utf8")),
+    );
+  } catch {
+    return null;
+  }
+}
