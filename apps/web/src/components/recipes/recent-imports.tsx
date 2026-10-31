@@ -28,12 +28,13 @@ function AccountImports({ userId }: { userId: string }) {
   });
   const imports = useQuery({
     ...options,
+    refetchOnWindowFocus: "always",
     refetchInterval: (query) =>
       query.state.data?.some(
         (job) => job.state !== "saved" && job.state !== "failed",
       )
         ? 2000
-        : 10000,
+        : false,
   });
 
   return (
