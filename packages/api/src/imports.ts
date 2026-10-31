@@ -421,15 +421,17 @@ async function submitJob(userId: string, input: JobInput) {
       );
     return true;
   });
-  if (admitted)
+  if (admitted) {
     logImport({
       event: "import_queued",
       importId: input.id,
       sourceKind: input.sourceKind,
     });
+    await notifyImportWorker();
+  }
   const status = await importStatus(userId, input.id);
   // Repeated submissions also recover a missed notification for an admitted job.
-  if (status.kind === "queued" || status.kind === "processing")
+  if (!admitted && (status.kind === "queued" || status.kind === "processing"))
     await notifyImportWorker();
   return status;
 }
