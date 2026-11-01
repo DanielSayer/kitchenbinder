@@ -3,6 +3,7 @@ import { db } from "@prep-sheet/db";
 import { z } from "zod";
 import { importFailure, logImport } from "./import-diagnostics";
 import { inspectImportQueue, processNextImport } from "./imports";
+import { parseNextRecipeIngredients } from "./recipes/ingredient-parsing";
 import { sweepRecipeMedia } from "./recipes/media";
 import {
   stopWorkerHeartbeat,
@@ -144,6 +145,8 @@ try {
         failureSince: null,
       };
       if (processed) continue;
+      // Imports come first; ingredient parsing uses idle time.
+      if (await parseNextRecipeIngredients()) continue;
       const delayMs = await refreshQueue();
       progress = { ...progress, mode: "waiting", progressAt: Date.now() };
       await heartbeat();
