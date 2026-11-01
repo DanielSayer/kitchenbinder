@@ -20,7 +20,7 @@ describe("captured recipe generation", () => {
   it("uses shared rules and schema without fetching even when the captured text starts with a URL", async () => {
     fake.generate.mockResolvedValue({
       output: {
-        recipes: [{ recipe: sampleRecipe, tagIds: [] }],
+        recipes: [{ recipe: sampleRecipe, ingredientDetails: [], tagIds: [] }],
         origin: "generated",
         imageIndex: null,
       },
@@ -60,6 +60,7 @@ describe("captured recipe generation", () => {
         output: {
           recipes: Array.from({ length: 7 }, (_, index) => ({
             recipe: { ...sampleRecipe, title: `Recipe ${index}` },
+            ingredientDetails: [],
             tagIds: [],
           })),
           origin,
@@ -120,6 +121,7 @@ describe("photo recipe generation", () => {
       output: {
         recipes: Array.from({ length: 7 }, (_, index) => ({
           recipe: { ...sampleRecipe, title: `Recipe ${index}` },
+          ingredientDetails: [],
           tagIds: [],
         })),
         origin: "imported",
@@ -156,7 +158,7 @@ describe("photo recipe generation", () => {
   it("never generates a recipe from photos", async () => {
     fake.generate.mockResolvedValue({
       output: {
-        recipes: [{ recipe: sampleRecipe, tagIds: [] }],
+        recipes: [{ recipe: sampleRecipe, ingredientDetails: [], tagIds: [] }],
         origin: "generated",
         imageIndex: null,
       },

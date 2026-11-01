@@ -67,6 +67,14 @@ type ImportEvent =
   | { event: "media_sweep_completed"; scanned: number; deleted: number }
   | { event: "media_sweep_failed"; failure: Failure }
   | {
+      event: "ingredients_parsed";
+      recipeId: string;
+      lines: number;
+      parsed: number;
+      elapsedMs: number;
+    }
+  | { event: "ingredients_parse_failed"; recipeId: string; failure: Failure }
+  | {
       event: "import_page_response";
       importId: string;
       hostname: string;
