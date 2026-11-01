@@ -202,7 +202,10 @@ export function GeneratedShoppingList() {
         const needed = items.filter((item) => item.status === "needed");
         const bought = items.length > 0 && !needed.length;
         const quantity = combinedQuantity(
-          (bought ? items : needed).map((item) => item.text),
+          (bought ? items : needed).map(({ text, ingredient }) => ({
+            text,
+            ingredient,
+          })),
         );
         return { ...group, index, items, bought, quantity };
       })

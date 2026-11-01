@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { db } from "@prep-sheet/db";
+import { parseIngredient } from "@prep-sheet/db/ingredients";
 import { tripIsStale } from "@prep-sheet/db/meal-planner";
 import { mealPlanner } from "@prep-sheet/db/schema/meal-planner";
 import { recipe } from "@prep-sheet/db/schema/recipe";
@@ -14,6 +15,7 @@ import {
   resolveHousehold,
 } from "../households/access";
 import { protectedProcedure, router } from "../index";
+import { ingredientFor } from "../recipes/ingredient-data";
 import { pickerInput, pickerRecipe, shoppingRecipePage } from "../recipes/list";
 
 const itemText = z.string().trim().min(1).max(2000);
@@ -247,6 +249,7 @@ export const shoppingRouter = router({
             householdId,
             addedBy: userId,
             text,
+            ingredient: ingredientFor(text, source.ingredientData),
             recipeId: source.id,
             recipeTitle: source.title,
             servings: source.content.servings,
@@ -285,6 +288,7 @@ export const shoppingRouter = router({
         await tx.insert(shoppingItem).values({
           id: input.id,
           text: input.text,
+          ingredient: parseIngredient(input.text),
           householdId,
           addedBy: userId,
         });
@@ -311,7 +315,7 @@ export const shoppingRouter = router({
           .update(shoppingItem)
           .set(
             input.kind === "text"
-              ? { text: input.text }
+              ? { text: input.text, ingredient: parseIngredient(input.text) }
               : { status: input.status },
           )
           .where(

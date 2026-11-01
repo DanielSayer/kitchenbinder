@@ -11,6 +11,7 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { IngredientLine } from "../ingredients";
 import type { RecipeContent } from "../recipe-content";
 import type { RecipePhoto } from "../recipe-photo";
 import { user } from "./auth";
@@ -23,6 +24,12 @@ export const recipe = pgTable(
     userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
     title: text("title").notNull(),
     content: jsonb("content").$type<RecipeContent>().notNull(),
+    // Derived from content.ingredients by the server, never sent by clients.
+    ingredientData: jsonb("ingredient_data").$type<IngredientLine[]>(),
+    // Set while some lines still need the AI parser; see ingredient-parsing.ts.
+    ingredientsPendingAt: timestamp("ingredients_pending_at", {
+      withTimezone: true,
+    }),
     // Immutable identity of the original manual submission, including its destination.
     manualRequestHash: text("manual_request_hash"),
     revision: integer("revision").default(1).notNull(),
@@ -46,6 +53,9 @@ export const recipe = pgTable(
   (table) => [
     index("recipe_user_created_idx").on(table.userId, table.createdAt),
     index("recipe_deleted_expiry_idx").on(table.expiresAt),
+    index("recipe_ingredients_pending_idx")
+      .on(table.ingredientsPendingAt)
+      .where(sql`${table.ingredientsPendingAt} is not null`),
     check(
       "recipe_deletion_dates_check",
       sql`(${table.deletedAt} is null and ${table.expiresAt} is null) or (${table.deletedAt} is not null and ${table.expiresAt} is not null and ${table.expiresAt} > ${table.deletedAt})`,

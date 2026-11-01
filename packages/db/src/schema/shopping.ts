@@ -7,6 +7,7 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { Ingredient } from "../ingredients";
 import type { ShoppingPlan } from "../shopping-plan";
 import { user } from "./auth";
 import { household } from "./household";
@@ -22,6 +23,7 @@ export const shoppingItem = pgTable(
       onDelete: "set null",
     }),
     text: text("text").notNull(),
+    ingredient: jsonb("ingredient").$type<Ingredient>(),
     status: text("status", { enum: ["needed", "bought", "owned"] })
       .notNull()
       .default("needed"),

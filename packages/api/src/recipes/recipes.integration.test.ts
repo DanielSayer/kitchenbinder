@@ -554,6 +554,86 @@ describe("recipes API with PostgreSQL", () => {
       code: "NOT_FOUND",
     });
   });
+  it("parses ingredients on save, reuses unchanged lines and copies them to the shopping list", async () => {
+    const owner = caller(ids[0]);
+    const id = randomUUID();
+    const ingredients = [
+      "For the sauce:",
+      "3 cloves garlic, crushed",
+      "1 egg or 2 yolks",
+    ];
+    await owner.recipes.createManual({
+      id,
+      content: { ...sampleRecipe, ingredients },
+    });
+    const stored = async () =>
+      (
+        await db
+          .select({
+            data: recipe.ingredientData,
+            pending: recipe.ingredientsPendingAt,
+          })
+          .from(recipe)
+          .where(eq(recipe.id, id))
+      )[0];
+    const created = await stored();
+    expect(created?.data).toMatchObject([
+      { text: "For the sauce:", heading: true, parsed: null },
+      {
+        source: "code",
+        parsed: {
+          quantity: 3,
+          unit: "clove",
+          item: "garlic",
+          detail: "crushed",
+        },
+      },
+      { source: "code", parsed: null },
+    ]);
+    expect(created?.pending).toBeInstanceOf(Date);
+
+    // An AI result for the unreadable line survives edits elsewhere.
+    const ai = {
+      text: "1 egg or 2 yolks",
+      heading: false,
+      source: "ai" as const,
+      parsed: {
+        quantity: 1,
+        quantityMax: null,
+        unit: null,
+        size: null,
+        item: "egg",
+        detail: "or 2 yolks",
+        optional: false,
+      },
+    };
+    await db
+      .update(recipe)
+      .set({
+        ingredientData: [...(created?.data ?? []).slice(0, 2), ai],
+        ingredientsPendingAt: null,
+      })
+      .where(eq(recipe.id, id));
+    await owner.recipes.update({
+      id,
+      expectedRevision: 1,
+      content: { ...sampleRecipe, ingredients: [...ingredients, "2 lemons"] },
+    });
+    const updated = await stored();
+    expect(updated?.data?.[2]).toEqual(ai);
+    expect(updated?.data?.[3]).toMatchObject({ parsed: { item: "lemon" } });
+    expect(updated?.pending).toBeNull();
+
+    await owner.shopping.addRecipes({ recipeIds: [id] });
+    const items = await owner.shopping.list({});
+    expect(
+      items
+        .filter((item) => item.recipeId === id)
+        .map((item) => item.ingredient?.item ?? null),
+    ).toEqual([null, "garlic", "egg", "lemon"]);
+    await owner.shopping.clear({ scope: "all" });
+    await owner.recipes.delete({ id });
+  });
   it("does not save anything when generation fails", async () => {
     vi.mocked(generateRecipe).mockRejectedValueOnce(
       new Error("upstream unavailable"),

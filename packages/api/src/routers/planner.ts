@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { db } from "@prep-sheet/db";
+import { parseIngredient } from "@prep-sheet/db/ingredients";
 import {
   type Allocation,
   coverageInput,
@@ -460,7 +461,13 @@ export const plannerRouter = router({
                 inArray(shoppingItem.id, removed),
               ),
             );
-        if (additions.length) await tx.insert(shoppingItem).values(additions);
+        if (additions.length)
+          await tx.insert(shoppingItem).values(
+            additions.map((item) => ({
+              ...item,
+              ingredient: parseIngredient(item.text),
+            })),
+          );
         const trip: MealTrip = {
           ...input.coverage,
           demands: reviewed.demands,
