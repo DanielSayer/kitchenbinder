@@ -89,3 +89,37 @@ describe("conservative grocery totals", () => {
     ).toEqual(["0", "1"]);
   });
 });
+
+describe("garlic and other counted lines", () => {
+  it("adds cloves whatever the preparation", () => {
+    expect(
+      combinedQuantity([
+        "3 cloves garlic, finely sliced",
+        "3 cloves of garlic, crushed",
+        "3 garlic cloves, minced",
+      ]),
+    ).toBe("9 cloves");
+    expect(combinedQuantity(["1 clove garlic"])).toBe("1 clove");
+  });
+  it("uses stored ingredients when given", () => {
+    const plan = generateShoppingPlan([
+      { id: "a", text: "3 cloves garlic, crushed" },
+      {
+        id: "b",
+        text: "garlic (3 cloves), sliced",
+        ingredient: {
+          quantity: 3,
+          quantityMax: null,
+          unit: "clove",
+          size: null,
+          item: "garlic",
+          detail: "sliced",
+          optional: false,
+        },
+      },
+    ]);
+    expect(plan.groups).toEqual([
+      { category: "Produce", name: "Garlic", itemIds: ["a", "b"] },
+    ]);
+  });
+});

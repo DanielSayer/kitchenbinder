@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseQuantity, quantityPattern } from "./ingredients";
 
 export const calendarDate = z.iso
   .date()
@@ -156,47 +157,20 @@ export function tripIsStale(meals: Meal[], trip: MealTrip) {
   );
 }
 
-const fractions: Record<string, number> = {
-  "¼": 0.25,
-  "½": 0.5,
-  "¾": 0.75,
-  "⅓": 1 / 3,
-  "⅔": 2 / 3,
-  "⅛": 0.125,
-  "⅜": 0.375,
-  "⅝": 0.625,
-  "⅞": 0.875,
-};
+const leadingQuantity = new RegExp(String.raw`^(${quantityPattern})\s*(.*)$`);
 export function scaleIngredient(
   text: string,
   factor: number,
 ): { text: string; uncertain: boolean } {
   if (Math.abs(factor - 1) < 0.000001) return { text, uncertain: false };
-  const match = text.match(
-    /^(\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?\s*[¼½¾⅓⅔⅛⅜⅝⅞]?|[¼½¾⅓⅔⅛⅜⅝⅞])\s*(.*)$/,
-  );
+  const match = text.match(leadingQuantity);
   if (!match?.[1] || !match[2] || /^(?:[-–,./]|to\b|or\b)/i.test(match[2])) {
     return {
       text: `${text} [check quantity for ×${Number(factor.toFixed(3))} recipe]`,
       uncertain: true,
     };
   }
-  const amount = match[1].trim();
-  let quantity = 0;
-  if (amount.includes("/")) {
-    const parts = amount.split(/[\s/]+/).map(Number);
-    quantity =
-      parts.length === 3
-        ? (parts[0] ?? 0) + (parts[1] ?? 0) / (parts[2] ?? 1)
-        : (parts[0] ?? 0) / (parts[1] ?? 1);
-  } else {
-    const fraction = Object.entries(fractions).find(([symbol]) =>
-      amount.includes(symbol),
-    );
-    quantity = fraction
-      ? Number(amount.replace(fraction[0], "").trim() || 0) + fraction[1]
-      : Number(amount);
-  }
+  const quantity = parseQuantity(match[1]);
   if (!Number.isFinite(quantity) || quantity <= 0)
     return {
       text: `${text} [check quantity for ×${Number(factor.toFixed(3))} recipe]`,

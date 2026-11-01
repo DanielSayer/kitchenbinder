@@ -1,3 +1,10 @@
+import {
+  type Ingredient,
+  parseIngredient,
+  type Unit,
+  unitDefinitions,
+} from "./ingredients";
+
 export const shoppingCategories = [
   "Produce",
   "Meat & seafood",
@@ -60,29 +67,42 @@ export function categoriseGrocery(text: string): Category {
   );
 }
 
-const units: Record<string, { unit: string; multiplier: number }> = {
+// Exact conversions only; spoons and cups stay separate because standards vary.
+const sums: Partial<Record<Unit, { unit: string; multiplier: number }>> = {
+  mg: { unit: "g", multiplier: 0.001 },
   g: { unit: "g", multiplier: 1 },
-  gram: { unit: "g", multiplier: 1 },
-  grams: { unit: "g", multiplier: 1 },
   kg: { unit: "g", multiplier: 1000 },
-  kilogram: { unit: "g", multiplier: 1000 },
-  kilograms: { unit: "g", multiplier: 1000 },
+  oz: { unit: "g", multiplier: unitDefinitions.oz.base },
+  lb: { unit: "g", multiplier: unitDefinitions.lb.base },
   ml: { unit: "ml", multiplier: 1 },
-  millilitres: { unit: "ml", multiplier: 1 },
-  milliliters: { unit: "ml", multiplier: 1 },
   l: { unit: "ml", multiplier: 1000 },
-  litre: { unit: "ml", multiplier: 1000 },
-  litres: { unit: "ml", multiplier: 1000 },
-  liters: { unit: "ml", multiplier: 1000 },
   tsp: { unit: "tsp", multiplier: 1 },
-  teaspoon: { unit: "tsp", multiplier: 1 },
-  teaspoons: { unit: "tsp", multiplier: 1 },
   tbsp: { unit: "tbsp", multiplier: 1 },
-  tablespoon: { unit: "tbsp", multiplier: 1 },
-  tablespoons: { unit: "tbsp", multiplier: 1 },
   cup: { unit: "cups", multiplier: 1 },
-  cups: { unit: "cups", multiplier: 1 },
+  clove: { unit: "cloves", multiplier: 1 },
 };
+
+// Packaging, ranges, alternatives and unspecified amounts never enter a sum.
+export function parseGrocery(line: string, ingredient?: Ingredient | null) {
+  const parsed = ingredient === undefined ? parseIngredient(line) : ingredient;
+  if (
+    !parsed?.quantity ||
+    parsed.quantityMax !== null ||
+    parsed.size !== null ||
+    parsed.optional
+  )
+    return null;
+  const conversion = parsed.unit
+    ? sums[parsed.unit]
+    : { unit: "", multiplier: 1 };
+  if (!conversion) return null;
+  return {
+    quantity: parsed.quantity * conversion.multiplier,
+    unit: conversion.unit,
+    name: parsed.item,
+  };
+}
+
 const fractions: Record<string, number> = {
   "½": 0.5,
   "¼": 0.25,
@@ -94,76 +114,15 @@ const fractions: Record<string, number> = {
   "⅝": 0.625,
   "⅞": 0.875,
 };
-function amount(raw: string): number {
-  const unicode = raw.match(/[½¼¾⅓⅔⅛⅜⅝⅞]$/)?.[0];
-  if (unicode)
-    return Number(raw.slice(0, -1).trim() || 0) + (fractions[unicode] ?? 0);
-  const parts = raw.split(/\s+/);
-  const last = parts.pop() ?? "";
-  const [numerator, denominator] = last.split("/");
-  return (
-    Number(parts[0] ?? 0) +
-    (denominator ? Number(numerator) / Number(denominator) : Number(numerator))
+
+type GroceryLine = string | { text: string; ingredient?: Ingredient | null };
+
+export function combinedQuantity(lines: GroceryLine[]): string | null {
+  const parsed = lines.map((line) =>
+    typeof line === "string"
+      ? parseGrocery(line)
+      : parseGrocery(line.text, line.ingredient),
   );
-}
-function normaliseName(raw: string) {
-  return raw
-    .toLowerCase()
-    .replace(/^of\s+/, "")
-    .replace(
-      /,\s*(?:finely |roughly )?(?:diced|chopped|sliced|grated|peeled|softened|melted|drained)\s*$/,
-      "",
-    )
-    .replace(
-      /\b(onion|egg|lemon|lime|apple|banana|carrot|avocado|capsicum|breast|thigh)s\b/g,
-      "$1",
-    )
-    .replace(/\bpotatoes\b/g, "potato")
-    .replace(/\btomatoes\b/g, "tomato")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-// Packaging, ranges, alternatives and unspecified amounts never enter a sum.
-export function parseGrocery(line: string) {
-  if (/\bor\b|\bto taste\b|\boptional\b|\bplus\b|\bapprox/i.test(line))
-    return null;
-  const match = line
-    .trim()
-    .match(
-      /^(\d+\s+\d+\/\d+|\d+\/\d+|\d*\s*[½¼¾⅓⅔⅛⅜⅝⅞]|\d+(?:\.\d+)?)\s*([a-z]+)\b\s*(.*)$/i,
-    );
-  if (!match) return null;
-  const [, raw, word, rest] = match;
-  if (!raw || !word) return null;
-  const quantity = amount(raw);
-  if (!Number.isFinite(quantity) || quantity <= 0) return null;
-  const conversion = units[word.toLowerCase()];
-  if (conversion) {
-    const name = normaliseName(rest ?? "");
-    if (
-      !name ||
-      /\b(tin|can|jar|bottle|pack|bag|bunch|each|x)\b|[×\d]/i.test(name)
-    )
-      return null;
-    return {
-      quantity: quantity * conversion.multiplier,
-      unit: conversion.unit,
-      name,
-    };
-  }
-  const name = normaliseName(`${word} ${rest ?? ""}`);
-  if (
-    !/^(?:(?:red|brown|white|green|large|small|medium|free-range) )?(?:onion|egg|lemon|lime|apple|banana|carrot|potato|tomato|avocado|capsicum)$/.test(
-      name,
-    )
-  )
-    return null;
-  return { quantity, unit: "", name };
-}
-
-export function combinedQuantity(lines: string[]): string | null {
-  const parsed = lines.map(parseGrocery);
   const first = parsed[0];
   if (
     !first ||
@@ -181,17 +140,20 @@ export function combinedQuantity(lines: string[]): string | null {
   const display = fraction
     ? `${whole || ""}${fraction}`
     : String(Number(total.toFixed(3)));
-  const unit = first.unit === "cups" && total <= 1 ? "cup" : first.unit;
+  const unit =
+    total <= 1 && (first.unit === "cups" || first.unit === "cloves")
+      ? first.unit.slice(0, -1)
+      : first.unit;
   return `${display}${unit ? ` ${unit}` : ""}`;
 }
 
 export function generateShoppingPlan(
-  items: { id: string; text: string }[],
+  items: { id: string; text: string; ingredient?: Ingredient | null }[],
 ): ShoppingPlan {
   const groups = new Map<string, ShoppingPlan["groups"][number]>();
   for (const item of items) {
-    const parsed = parseGrocery(item.text);
-    const category = categoriseGrocery(item.text);
+    const parsed = parseGrocery(item.text, item.ingredient);
+    const category = categoriseGrocery(parsed ? parsed.name : item.text);
     const key = parsed ? `${category}:${parsed.unit}:${parsed.name}` : item.id;
     const existing = groups.get(key);
     if (existing) existing.itemIds.push(item.id);

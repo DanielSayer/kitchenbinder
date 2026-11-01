@@ -1,29 +1,15 @@
 // Servings scaling for free-text ingredient lines: only the leading quantity
 // ("1 1/2", "½", "2-3", "400g") is scaled; everything else is left as written.
 
-const vulgar: Record<string, number> = {
-  "¼": 0.25,
-  "½": 0.5,
-  "¾": 0.75,
-  "⅓": 1 / 3,
-  "⅔": 2 / 3,
-  "⅛": 0.125,
-};
-const number = String.raw`\d+\/\d+|\d+(?:[.,]\d+)?(?:\s+\d+\/\d+|\s*[¼½¾⅓⅔⅛])?|[¼½¾⅓⅔⅛]`;
-const leading = new RegExp(
-  String.raw`^(\s*)(${number})(?:(\s*(?:-|–|to)\s*)(${number}))?`,
-);
+import {
+  parseQuantity,
+  quantityPattern,
+  readUnit,
+} from "@prep-sheet/db/ingredients";
 
-function parseNumber(text: string) {
-  const value = text.trim();
-  const fraction = value.match(/^(\d+)\/(\d+)$/);
-  if (fraction) return Number(fraction[1]) / Number(fraction[2] || 1);
-  const mixed = value.match(/^(\d+)\s+(\d+)\/(\d+)$/);
-  if (mixed) return Number(mixed[1]) + Number(mixed[2]) / Number(mixed[3] || 1);
-  const glyph = value.match(/^(\d*)\s*([¼½¾⅓⅔⅛])$/);
-  if (glyph) return Number(glyph[1] || 0) + (vulgar[glyph[2] ?? ""] ?? 0);
-  return Number(value.replace(",", "."));
-}
+const leading = new RegExp(
+  String.raw`^(\s*)(${quantityPattern})(?:(\s*(?:-|–|to)\s*)(${quantityPattern}))?`,
+);
 
 const fractions: [number, string][] = [
   [0, ""],
@@ -69,7 +55,7 @@ export function scaleIngredient(line: string, factor: number) {
   const match = line.match(leading);
   if (!match) return line;
   const [all, space = "", first = "", joiner, second] = match;
-  const scaled = (text: string) => formatQuantity(parseNumber(text) * factor);
+  const scaled = (text: string) => formatQuantity(parseQuantity(text) * factor);
   const quantity =
     second !== undefined
       ? `${scaled(first)}${joiner}${scaled(second)}`
@@ -82,11 +68,10 @@ export function splitQuantity(line: string, factor = 1) {
   const scaled = scaleIngredient(line, factor);
   const match = scaled.match(leading);
   if (!match) return { quantity: "", rest: scaled };
-  const unit = scaled
-    .slice(match[0].length)
-    .match(
-      /^\s*(?:x\s+)?(?:g|kg|ml|l|oz|lb|lbs|tsp|tbsp|tbs|cups?|tins?|cans?|cloves?|bunch(?:es)?|handfuls?|pinch(?:es)?|sprigs?|slices?|sticks?|packs?|pkts?)\b\.?/i,
-    );
-  const end = match[0].length + (unit?.[0].length ?? 0);
+  const after = scaled.slice(match[0].length);
+  const times = after.match(/^\s*(?:x\s+)?/i)?.[0] ?? "";
+  const unit = readUnit(after.slice(times.length));
+  const unitLength = unit ? times.length + unit.written : 0;
+  const end = match[0].length + unitLength;
   return { quantity: scaled.slice(0, end).trim(), rest: scaled.slice(end) };
 }
