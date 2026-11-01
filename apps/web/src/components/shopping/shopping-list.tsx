@@ -368,7 +368,7 @@ function ListScreen({ userId }: { userId: string }) {
   const [editing, setEditing] = useState<Item | null>(null);
   const [editingOpen, setEditingOpen] = useState(false);
   const [text, setText] = useDraft(`shopping:${userId}:new`, "");
-  const [newId, setNewId] = useState(() => crypto.randomUUID());
+  const [newId, setNewId] = useState<string>(() => crypto.randomUUID());
   const [nudge, setNudge] = useState(false);
   useEffect(() => {
     try {
@@ -446,13 +446,33 @@ function ListScreen({ userId }: { userId: string }) {
     trpc.shopping.addItem.mutationOptions({
       // No toast: the new row is the confirmation, and a toast would cover
       // the input during rapid entry.
-      onSuccess: async () => {
-        setText("");
-        setNewId(crypto.randomUUID());
+      onSuccess: async (_, input) => {
+        // A retry after a failed add: clear the restored text.
+        if (textRef.current === input.text) {
+          setText("");
+          setNewId(crypto.randomUUID());
+        }
         await refresh();
+      },
+      // Put the text (and its id, so a resubmit stays idempotent) back
+      // unless the next item has been started.
+      onError: (_, input) => {
+        if (textRef.current) return;
+        setText(input.text);
+        setNewId(input.id);
       },
     }),
   );
+  const textRef = useRef(text);
+  textRef.current = text;
+  // Clear on submit, not on success, so the input stays editable and
+  // focused (keyboard open) while the add saves.
+  const submit = () => {
+    if (!text.trim() || add.isPending) return;
+    add.mutate({ householdId, id: newId, text });
+    setText("");
+    setNewId(crypto.randomUUID());
+  };
   const items = (list.data ?? []).filter((item) => !hidden.has(item.id));
   const needed = items.filter((item) => item.status === "needed");
   const bought = items.filter((item) => item.status === "bought");
@@ -686,8 +706,7 @@ function ListScreen({ userId }: { userId: string }) {
           className="shop-quick"
           onSubmit={(event) => {
             event.preventDefault();
-            if (text.trim() && !add.isPending)
-              add.mutate({ householdId, id: newId, text });
+            submit();
           }}
         >
           <ErrorNotice
@@ -700,10 +719,10 @@ function ListScreen({ userId }: { userId: string }) {
               aria-label="Add an item"
               value={text}
               maxLength={2000}
-              // Not disabled while saving: that blurs the input and closes
-              // the mobile keyboard between items.
-              enterKeyHint="done"
-              readOnly={add.isPending}
+              // Never disabled/readOnly while saving: that blurs the input and
+              // closes the mobile keyboard. "enter", not "done": Android
+              // keyboards close themselves on Done.
+              enterKeyHint="enter"
               onChange={(event) => setText(event.target.value)}
             />
             <button
