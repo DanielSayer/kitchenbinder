@@ -335,9 +335,8 @@ export function Collection() {
     const ids = [...selectedIds];
     void client.collections.addRecipes
       .mutate({ collectionId: target.id, recipeIds: ids })
-      .then(async ({ added }) => {
+      .then(async () => {
         await invalidateCollections();
-        toast.success(`Added ${plural(added)} to ${target.name}.`);
         endSelection();
         selectCollection(target.id);
       })

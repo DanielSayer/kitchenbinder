@@ -128,13 +128,10 @@ export function RecipePicker({
   const shown = recipes.isError ? [] : (recipes.data?.items ?? []);
   const add = useMutation(
     trpc.shopping.addRecipes.mutationOptions({
-      onSuccess: async ({ addedRecipes }) => {
+      onSuccess: async () => {
         await client.invalidateQueries({
           queryKey: trpc.shopping.pathKey(),
         });
-        toast.success(
-          `Added ingredients from ${addedRecipes} ${addedRecipes === 1 ? "recipe" : "recipes"}`,
-        );
         setSelected([]);
         onClose();
       },
