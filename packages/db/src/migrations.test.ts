@@ -117,10 +117,14 @@ async function seed(client: pg.Client) {
   `);
 }
 // Stable projections across 0008, which moves personal plans/lists to households,
-// 0009, which adds empty photo columns, and 0012, which adds empty recipe IDs.
+// 0009, which adds empty photo columns, 0012, which adds empty recipe IDs, and
+// 0014, which adds parsed ingredients and flags recipes for parsing.
 const projections: [string, string][] = [
   ["user", "row_to_json(t)::jsonb"],
-  ["recipe", "row_to_json(t)::jsonb - 'group_id' - 'photo'"],
+  [
+    "recipe",
+    "row_to_json(t)::jsonb - 'group_id' - 'photo' - 'ingredient_data' - 'ingredients_pending_at'",
+  ],
   [
     "recipe_import",
     "row_to_json(t)::jsonb - 'group_id' - 'household_id' - 'collection_id' - 'image_candidates' - 'recipe_ids'",
@@ -128,7 +132,7 @@ const projections: [string, string][] = [
   ["meal_planner", "row_to_json(t)::jsonb - 'user_id' - 'household_id' - 'id'"],
   [
     "shopping_item",
-    "row_to_json(t)::jsonb - 'user_id' - 'added_by' - 'household_id'",
+    "row_to_json(t)::jsonb - 'user_id' - 'added_by' - 'household_id' - 'ingredient'",
   ],
   ["billing_account", "row_to_json(t)::jsonb"],
   ["ai_spend", "row_to_json(t)::jsonb"],
@@ -158,7 +162,7 @@ it("provisions a clean database with ICU and preserves all data on repeated migr
           "SELECT count(*)::int AS total FROM prep_sheet_migration",
         )
       ).rows[0].total,
-    ).toBe(14);
+    ).toBe(15);
     expect(
       (
         await client.query(
@@ -765,7 +769,7 @@ it.each([6, 7])(
       expect(
         (
           await client.query(
-            "SELECT row_to_json(t)::jsonb - 'added_by' AS data FROM shopping_item t WHERE household_id=$1",
+            "SELECT row_to_json(t)::jsonb - 'added_by' - 'ingredient' AS data FROM shopping_item t WHERE household_id=$1",
             [shared],
           )
         ).rows,

@@ -84,7 +84,7 @@ const sums: Partial<Record<Unit, { unit: string; multiplier: number }>> = {
 
 // Packaging, ranges, alternatives and unspecified amounts never enter a sum.
 export function parseGrocery(line: string, ingredient?: Ingredient | null) {
-  const parsed = ingredient === undefined ? parseIngredient(line) : ingredient;
+  const parsed = ingredient ?? parseIngredient(line);
   if (
     !parsed?.quantity ||
     parsed.quantityMax !== null ||

@@ -39,6 +39,7 @@ import {
   submitWebsiteImport,
 } from "../imports";
 import { protectedProcedure, router } from "../index";
+import { ingredientColumns } from "../recipes/ingredient-data";
 import {
   collectionInput,
   cookingSummary,
@@ -52,6 +53,7 @@ import {
   tagsOf,
 } from "../recipes/list";
 import { copyRecipeTags, setRecipeTags } from "../tags/recipes";
+import { notifyImportWorker } from "../worker-wakeup";
 
 const idInput = z.object({ id: z.uuid() });
 const placementInput = {
@@ -426,6 +428,7 @@ export const recipesRouter = router({
           }),
         )
         .digest("hex");
+      const ingredients = ingredientColumns(input.content.ingredients);
       await db.transaction(async (tx) => {
         await lockAccount(tx, userId);
         const [existing] = await tx
@@ -453,6 +456,7 @@ export const recipesRouter = router({
             userId,
             title: input.content.title,
             content: input.content,
+            ...ingredients,
             manualRequestHash,
             origin: "manual",
             sourceUrl: null,
@@ -461,6 +465,7 @@ export const recipesRouter = router({
           .returning({ id: recipe.id });
         if (inserted.length) await applyPlacement(tx, input.id, prepared);
       });
+      if (ingredients.ingredientsPendingAt) await notifyImportWorker();
       const saved = await getRecipe(input.id, userId);
       if (
         saved.userId !== userId ||
@@ -495,6 +500,8 @@ export const recipesRouter = router({
             userId,
             title: source.title,
             content: source.content,
+            ingredientData: source.ingredientData,
+            ingredientsPendingAt: source.ingredientsPendingAt,
             sourceUrl: source.sourceUrl,
             photo: source.photo,
             origin: source.origin,
@@ -520,11 +527,20 @@ export const recipesRouter = router({
       }),
     )
     .mutation(async ({ input, ctx }) => {
+      const [previous] = await db
+        .select({ ingredientData: recipe.ingredientData })
+        .from(recipe)
+        .where(owned(input.id, ctx.session.user.id));
+      const ingredients = ingredientColumns(
+        input.content.ingredients,
+        previous?.ingredientData,
+      );
       const [result] = await db
         .update(recipe)
         .set({
           title: input.content.title,
           content: input.content,
+          ...ingredients,
           updatedAt: new Date(),
           revision: sql`${recipe.revision} + 1`,
         })
@@ -543,6 +559,7 @@ export const recipesRouter = router({
             "This recipe changed since you started editing. Your draft has been kept. Compare changes or reload the saved recipe.",
         });
       }
+      if (result.ingredientsPendingAt) await notifyImportWorker();
       return result;
     }),
   delete: protectedProcedure.input(idInput).mutation(async ({ input, ctx }) => {
