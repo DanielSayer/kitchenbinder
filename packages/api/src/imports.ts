@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { db } from "@prep-sheet/db";
+import { ingredientLineSchema } from "@prep-sheet/db/ingredients";
 import { recipeContentSchema } from "@prep-sheet/db/recipe-content";
 import { user } from "@prep-sheet/db/schema/auth";
 import { recipeImport, recipeImportPhoto } from "@prep-sheet/db/schema/import";
@@ -50,6 +51,7 @@ import {
   requireRecipeProvider,
   withImageChoices,
 } from "./recipes/generate";
+import { ingredientColumns } from "./recipes/ingredient-data";
 import { persistRecipe } from "./recipes/persist";
 import { checkRecipeUsage } from "./recipes/usage";
 import { availableTags } from "./routers/tags";
@@ -496,6 +498,8 @@ export async function inspectImportQueue(maximumMs: number) {
 }
 const checkpointRecipeSchema = z.object({
   content: recipeContentSchema,
+  // Missing from checkpoints written before ingredients were parsed.
+  ingredientData: z.array(ingredientLineSchema).optional(),
   tagIds: z.array(z.string().uuid()),
 });
 const checkpointSchema = z
@@ -822,6 +826,7 @@ export async function processNextImport(
             recipes: result.recipes.map((item, index) => ({
               id: index ? randomUUID() : job.id,
               content: item.content,
+              ingredientData: item.ingredientData,
               tagIds: item.tagIds,
             })),
             origin: result.origin,
@@ -1010,6 +1015,7 @@ async function saveReady(
             userId: job.userId,
             title: item.content.title,
             content: item.content,
+            ...ingredientColumns(item.content.ingredients, item.ingredientData),
             sourceUrl: job.sourceUrl,
             origin: checkpoint.data.origin ?? "imported",
           },
