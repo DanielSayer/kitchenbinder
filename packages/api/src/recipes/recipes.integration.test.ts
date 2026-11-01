@@ -630,7 +630,7 @@ describe("recipes API with PostgreSQL", () => {
       items
         .filter((item) => item.recipeId === id)
         .map((item) => item.ingredient?.item ?? null),
-    ).toEqual([null, "garlic", "egg", "lemon"]);
+    ).toEqual(["garlic", "egg", "lemon"]);
     await owner.shopping.clear({ scope: "all" });
     await owner.recipes.delete({ id });
   });

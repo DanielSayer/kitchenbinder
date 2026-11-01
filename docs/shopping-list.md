@@ -2,7 +2,7 @@
 
 Each household (see [households](households.md)) has one persistent list at `/shopping`, shared by its members. Every procedure takes an optional `householdId` (omitted = the caller's "Just me") and verifies membership. Items record `addedBy`. Ingredients can be added from the recipe picker, collection selection, or recipe detail, from any recipe the caller can access.
 
-Ingredients retain their original text, recipe title and yield. List edits do not change recipes, and recipe updates or deletion do not change copied ingredients. Duplicate ingredient lines are kept separately. A recipe cannot be added again while any of its items remain on the list. Clearing or removing all of its items makes it available again.
+Ingredients retain their original text, recipe title and yield. List edits do not change recipes, and recipe updates or deletion do not change copied ingredients. Duplicate ingredient lines are kept separately. Headings such as "For the sauce:" are not added. A recipe cannot be added again while any of its items remain on the list. Clearing or removing all of its items makes it available again.
 
 Items have three states: needed, bought and owned. Tapping a row ticks it bought (olive). Swiping a row left marks it owned (Have it); a Have it button does the same with a mouse, keyboard or screen reader. Need this returns owned items to needed. Needed items are grouped by aisle (`categoriseGrocery`) or by recipe; bought and owned items collapse into their own sections. Quick add sits at the bottom of the screen. The row menu opens a sheet to edit or remove the item. Ticks, Have it, removals, Clear bought items and Clear the whole list act immediately with an Undo toast; removals are only sent when the toast closes.
 

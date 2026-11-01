@@ -15,7 +15,7 @@ import {
   resolveHousehold,
 } from "../households/access";
 import { protectedProcedure, router } from "../index";
-import { ingredientFor } from "../recipes/ingredient-data";
+import { ingredientFor, isHeadingLine } from "../recipes/ingredient-data";
 import { pickerInput, pickerRecipe, shoppingRecipePage } from "../recipes/list";
 
 const itemText = z.string().trim().min(1).max(2000);
@@ -244,17 +244,23 @@ export const shoppingRouter = router({
           (source) => !alreadyAdded.has(source.id),
         );
         const items = additions.flatMap((source) =>
-          source.content.ingredients.map((text, position) => ({
-            id: randomUUID(),
-            householdId,
-            addedBy: userId,
-            text,
-            ingredient: ingredientFor(text, source.ingredientData),
-            recipeId: source.id,
-            recipeTitle: source.title,
-            servings: source.content.servings,
-            position,
-          })),
+          source.content.ingredients.flatMap((text, position) =>
+            isHeadingLine(text, source.ingredientData)
+              ? []
+              : [
+                  {
+                    id: randomUUID(),
+                    householdId,
+                    addedBy: userId,
+                    text,
+                    ingredient: ingredientFor(text, source.ingredientData),
+                    recipeId: source.id,
+                    recipeTitle: source.title,
+                    servings: source.content.servings,
+                    position,
+                  },
+                ],
+          ),
         );
         checkCapacity(existing.length + items.length);
         if (items.length) await tx.insert(shoppingItem).values(items);
