@@ -213,7 +213,7 @@ const aliasPattern = [...aliasToUnit.keys()]
   .map((alias) => alias.replace(/[.]/g, "\\.").replace(/ /g, "\\s*"))
   .join("|");
 const unitPattern = new RegExp(
-  String.raw`^(${aliasPattern})\.?(?![a-z])\s*(?:of\s+)?`,
+  String.raw`^((${aliasPattern})\.?)(?![a-z])\s*(?:of\s+)?`,
   "i",
 );
 const amountPattern = new RegExp(
@@ -234,11 +234,14 @@ const containers = new Set<Unit>([
   "punnet",
 ]);
 
-function readUnit(text: string) {
+/** Unit at the start of text; length includes a following "of". */
+export function readUnit(text: string) {
   const match = text.match(unitPattern);
-  if (!match?.[1]) return null;
-  const unit = aliasToUnit.get(match[1].toLowerCase().replace(/\s+/g, " "));
-  return unit ? { unit, length: match[0].length } : null;
+  if (!match?.[1] || !match[2]) return null;
+  const unit = aliasToUnit.get(match[2].toLowerCase().replace(/\s+/g, " "));
+  return unit
+    ? { unit, length: match[0].length, written: match[1].length }
+    : null;
 }
 
 function readAmount(text: string) {

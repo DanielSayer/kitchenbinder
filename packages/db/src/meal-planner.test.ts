@@ -115,7 +115,10 @@ describe("meal planning rules", () => {
     expect(scaleIngredient("1-2 onions", 2).uncertain).toBe(true);
     expect(scaleIngredient("Salt to taste", 2).uncertain).toBe(true);
     expect(scaleIngredient("1/0 cup flour", 2).uncertain).toBe(true);
-    expect(scaleIngredient("1,000 g rice", 2).uncertain).toBe(true);
+    expect(scaleIngredient("1,000 g rice", 2)).toEqual({
+      text: "2000 g rice",
+      uncertain: false,
+    });
     expect(scaleIngredient("Salt to taste", 1)).toEqual({
       text: "Salt to taste",
       uncertain: false,
