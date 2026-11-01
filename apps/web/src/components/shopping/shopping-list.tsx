@@ -444,18 +444,12 @@ function ListScreen({ userId }: { userId: string }) {
     );
   const add = useMutation(
     trpc.shopping.addItem.mutationOptions({
-      onSuccess: async (_, input) => {
+      // No toast: the new row is the confirmation, and a toast would cover
+      // the input during rapid entry.
+      onSuccess: async () => {
         setText("");
         setNewId(crypto.randomUUID());
         await refresh();
-        undoToast(`Added ${input.text.trim()}`, {
-          onUndo: () =>
-            void trpcClient.shopping.removeItem
-              .mutate({ householdId, id: input.id })
-              .then(refresh, (cause) =>
-                toast.error(errorText(cause, "Couldn't undo.")),
-              ),
-        });
       },
     }),
   );
@@ -692,7 +686,8 @@ function ListScreen({ userId }: { userId: string }) {
           className="shop-quick"
           onSubmit={(event) => {
             event.preventDefault();
-            if (text.trim()) add.mutate({ householdId, id: newId, text });
+            if (text.trim() && !add.isPending)
+              add.mutate({ householdId, id: newId, text });
           }}
         >
           <ErrorNotice
@@ -705,8 +700,10 @@ function ListScreen({ userId }: { userId: string }) {
               aria-label="Add an item"
               value={text}
               maxLength={2000}
+              // Not disabled while saving: that blurs the input and closes
+              // the mobile keyboard between items.
               enterKeyHint="done"
-              disabled={add.isPending}
+              readOnly={add.isPending}
               onChange={(event) => setText(event.target.value)}
             />
             <button
