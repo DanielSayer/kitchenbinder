@@ -280,6 +280,10 @@ const plurals: [RegExp, string][] = [
 const keepPlural =
   /(?:asparagus|couscous|hummus|houmous|molasses|brussels|swiss|grass|series|species|cress|oats|grits|greens|noodles|lentils|chickpeas|peas|beans|sprinkles|bitters|schnapps|chives|herbes de provence|fries|crisps|chips|guts|innards|tortilla chips|breadcrumbs|crumbs)$/;
 
+// Usually written in the plural, so "chickpea" groups with "chickpeas".
+const pluralOnly =
+  /(?:chickpea|lentil|bean|noodle|oat|chive|breadcrumb|crumb|(?:^|\s)pea)$/;
+
 /** Singular, lowercase form of an item, for grouping like with like. */
 export function normaliseItem(text: string) {
   const item = text
@@ -288,6 +292,7 @@ export function normaliseItem(text: string) {
     .replace(/^of\s+/, "")
     .trim();
   if (keepPlural.test(item)) return item;
+  if (pluralOnly.test(item)) return `${item}s`;
   const last = item.match(/(\S+)$/)?.[1] ?? "";
   for (const [pattern, replacement] of plurals)
     if (pattern.test(last))

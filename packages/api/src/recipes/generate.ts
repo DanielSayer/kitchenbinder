@@ -1,5 +1,9 @@
 import { createOpenAI } from "@ai-sdk/openai";
-import { recipeContentSchema } from "@prep-sheet/db/recipe-content";
+import type { IngredientLine } from "@prep-sheet/db/ingredients";
+import {
+  type RecipeContent,
+  recipeContentSchema,
+} from "@prep-sheet/db/recipe-content";
 import { aiPolicy } from "@prep-sheet/env/ai-policy";
 import { env } from "@prep-sheet/env/server";
 import { TRPCError } from "@trpc/server";
@@ -8,6 +12,7 @@ import { z } from "zod";
 import { type ImageCandidate, recipesPerImport } from "../import-contract";
 import { extractImages, extractPage } from "./extract-page";
 import { fetchPage, PAGE_ERROR, recipeUrl } from "./fetch-page";
+import { aiIngredientLines, aiIngredientSchema } from "./ingredient-data";
 import { buildRecipeSystemPrompt } from "./prompt";
 
 // No maxItems: extra recipes are dropped below rather than failing the import.
@@ -15,12 +20,21 @@ const resultSchema = z.object({
   recipes: z.array(
     z.object({
       recipe: recipeContentSchema,
+      // One entry per recipe.ingredients line.
+      ingredientDetails: z.array(aiIngredientSchema),
       tagIds: z.array(z.string()).max(105),
     }),
   ),
   origin: z.enum(["imported", "generated"]),
   imageIndex: z.number().int().nullable(),
 });
+
+export type GeneratedRecipe = {
+  content: RecipeContent;
+  /** Absent when the model wasn't asked, as in older checkpoints and tests. */
+  ingredientData?: IngredientLine[];
+  tagIds: string[];
+};
 
 // The recipe's own metadata image wins; otherwise the AI may choose one.
 export function preferredImage(images: readonly ImageCandidate[]) {
@@ -110,12 +124,18 @@ export async function generateRecipe(
           null)
         : null;
     return {
-      recipes: found.map(({ recipe, tagIds }) => ({
-        content: recipe,
-        tagIds: [...new Set(tagIds)].filter((id) =>
-          tags.some((tag) => tag.id === id),
-        ),
-      })),
+      recipes: found.map(
+        ({ recipe, ingredientDetails, tagIds }): GeneratedRecipe => ({
+          content: recipe,
+          ingredientData: aiIngredientLines(
+            recipe.ingredients,
+            ingredientDetails,
+          ),
+          tagIds: [...new Set(tagIds)].filter((id) =>
+            tags.some((tag) => tag.id === id),
+          ),
+        }),
+      ),
       sourceUrl,
       origin,
       imageUrl,
