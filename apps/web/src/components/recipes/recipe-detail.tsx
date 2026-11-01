@@ -133,7 +133,6 @@ export function RecipeDetail({ id }: { id: string }) {
           }),
         ]);
         setEditing(false);
-        toast.success("Recipe updated.");
       },
     }),
   );

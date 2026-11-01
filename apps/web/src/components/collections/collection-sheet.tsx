@@ -1,7 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useId, useState } from "react";
-import { toast } from "sonner";
 import { ErrorNotice } from "@/components/feedback";
 import { Sheet } from "@/components/pantry";
 import { useTRPC } from "@/utils/trpc";
@@ -46,7 +45,6 @@ export function CollectionSheet({
         await invalidate();
         onOpenChange(false);
         onCreated?.(created.id);
-        toast.success(`Created ${created.name}.`);
       },
     }),
   );
