@@ -56,6 +56,15 @@ describe("meal planning rules", () => {
     ]);
     expect(demands.every((demand) => demand.factor === 2)).toBe(true);
   });
+  it("leaves ingredient headings off the shopping list", () => {
+    const demands = shoppingDemands(
+      [{ ...curry, ingredients: ["For the rice:", "200 g rice"] }],
+      coverage,
+    );
+    expect(demands.map((demand) => [demand.key, demand.text])).toEqual([
+      ["curry:1", "200 g rice"],
+    ]);
+  });
   it("only marks shopping stale for ingredient-affecting changes", () => {
     const trip = {
       ...coverage,

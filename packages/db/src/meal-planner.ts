@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { parseQuantity, quantityPattern } from "./ingredients";
+import {
+  isIngredientHeading,
+  parseQuantity,
+  quantityPattern,
+} from "./ingredients";
 
 export const calendarDate = z.iso
   .date()
@@ -125,15 +129,22 @@ export function shoppingDemands(meals: Meal[], coverage: Coverage): Demand[] {
       meal.kind === "recipe" &&
       meal.date >= coverage.start &&
       meal.date <= coverage.end
-        ? meal.ingredients.map((text, position) => ({
-            key: `${meal.id}:${position}`,
-            mealId: meal.id,
-            recipeId: meal.recipeId,
-            title: meal.title,
-            text,
-            factor: meal.cook / meal.baseServings,
-            servings: meal.cook,
-          }))
+        ? meal.ingredients.flatMap((text, position) =>
+            // Headings such as "For the sauce:" aren't things to buy.
+            isIngredientHeading(text)
+              ? []
+              : [
+                  {
+                    key: `${meal.id}:${position}`,
+                    mealId: meal.id,
+                    recipeId: meal.recipeId,
+                    title: meal.title,
+                    text,
+                    factor: meal.cook / meal.baseServings,
+                    servings: meal.cook,
+                  },
+                ],
+          )
         : [],
     )
     .sort((a, b) => a.key.localeCompare(b.key));

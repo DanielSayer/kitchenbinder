@@ -2,6 +2,7 @@ import {
   type Ingredient,
   type IngredientLine,
   ingredientSchema,
+  isIngredientHeading,
   needsAiParse,
   normaliseItem,
   parseIngredient,
@@ -23,6 +24,15 @@ export function ingredientColumns(
     ingredientData,
     ingredientsPendingAt: needsAiParse(ingredientData) ? new Date() : null,
   };
+}
+
+/** Whether a recipe line is a heading such as "For the sauce:". */
+export function isHeadingLine(
+  text: string,
+  lines: readonly IngredientLine[] | null,
+) {
+  const line = lines?.find((candidate) => candidate.text === text);
+  return line ? line.heading : isIngredientHeading(text);
 }
 
 /** The parsed form of one recipe line, for a shopping list copy. */
