@@ -162,7 +162,7 @@ it("provisions a clean database with ICU and preserves all data on repeated migr
           "SELECT count(*)::int AS total FROM prep_sheet_migration",
         )
       ).rows[0].total,
-    ).toBe(15);
+    ).toBe(16);
     expect(
       (
         await client.query(

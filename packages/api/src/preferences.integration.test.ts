@@ -44,9 +44,13 @@ afterAll(async () => {
 });
 
 describe("preferences", () => {
-  it("defaults the week to Monday", async () => {
+  it("defaults to Monday, metric and Australian cups", async () => {
     const api = await caller();
-    await expect(api.get()).resolves.toEqual({ weekStartsOn: 1 });
+    await expect(api.get()).resolves.toEqual({
+      weekStartsOn: 1,
+      unitSystem: "metric",
+      measureStandard: "au",
+    });
   });
 
   it("saves the week start per user", async () => {
@@ -54,8 +58,19 @@ describe("preferences", () => {
     const other = await caller();
     await api.update({ weekStartsOn: 0 });
     await api.update({ weekStartsOn: 6 });
-    await expect(api.get()).resolves.toEqual({ weekStartsOn: 6 });
-    await expect(other.get()).resolves.toEqual({ weekStartsOn: 1 });
+    await expect(api.get()).resolves.toMatchObject({ weekStartsOn: 6 });
+    await expect(other.get()).resolves.toMatchObject({ weekStartsOn: 1 });
+  });
+
+  it("updates one preference without resetting others", async () => {
+    const api = await caller();
+    await api.update({ weekStartsOn: 3 });
+    await api.update({ unitSystem: "imperial" });
+    await expect(api.update({ measureStandard: "us" })).resolves.toEqual({
+      weekStartsOn: 3,
+      unitSystem: "imperial",
+      measureStandard: "us",
+    });
   });
 
   it("rejects days outside the week", async () => {
