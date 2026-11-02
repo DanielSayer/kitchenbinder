@@ -114,7 +114,11 @@ export function displayQuantity(
     convertAmount(amount, target, item, preferences.measureStandard);
   const converted =
     (unit && shown(unit)) ?? preferredAmount(amount, item, preferences);
-  const choices = unitChoices(parsed.unit, item).flatMap((choice) => {
+  const choices = unitChoices(
+    amount,
+    item,
+    preferences.measureStandard,
+  ).flatMap((choice) => {
     const value = shown(choice);
     return value ? [{ unit: choice, label: formatAmount(value) }] : [];
   });

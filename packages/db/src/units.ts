@@ -108,21 +108,21 @@ export function convertAmount(
   return { quantity, quantityMax, unit: to };
 }
 
-const massUnits: Unit[] = ["g", "kg", "oz", "lb"];
-const volumeUnits: Unit[] = ["ml", "l", "tsp", "tbsp", "cup", "fl_oz"];
-
-/** Units an amount can be switched to, the current unit first. */
-export function unitChoices(unit: Unit, item: string): Unit[] {
-  const dimension = dimensionOf(unit);
-  if (dimension === "count") return [unit];
-  const same = dimension === "mass" ? massUnits : volumeUnits;
-  const other =
-    densityOf(item) === null
-      ? []
-      : dimension === "mass"
-        ? volumeUnits
-        : massUnits;
-  return [unit, ...[...same, ...other].filter((choice) => choice !== unit)];
+/**
+ * Units an amount can be switched to: as written, then its best metric and
+ * imperial forms. At most three, the written unit first.
+ */
+export function unitChoices(
+  amount: Amount,
+  item: string,
+  standard: MeasureStandard = defaultMeasurePreferences.measureStandard,
+): Unit[] {
+  const units = (["metric", "imperial"] as const).map(
+    (unitSystem) =>
+      preferredAmount(amount, item, { unitSystem, measureStandard: standard })
+        .unit,
+  );
+  return [...new Set([amount.unit, ...units])];
 }
 
 const metricUnits = new Set<Unit>(["mg", "g", "kg", "ml", "l"]);
