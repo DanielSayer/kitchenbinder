@@ -1,5 +1,7 @@
+import { parseIngredient } from "@prep-sheet/db/ingredients";
 import { describe, expect, it } from "vitest";
 import {
+  displayQuantity,
   formatQuantity,
   parseServings,
   scaleIngredient,
@@ -88,5 +90,60 @@ describe("ingredientsUsed", () => {
         ingredients,
       ),
     ).toEqual(["cherry tomatoes", "butter beans", "smoked paprika"]);
+  });
+});
+
+describe("displayQuantity", () => {
+  const metric = { unitSystem: "metric", measureStandard: "au" } as const;
+  const imperial = { unitSystem: "imperial", measureStandard: "us" } as const;
+  const show = (
+    line: string,
+    preferences: typeof metric | typeof imperial,
+    factor = 1,
+  ) => displayQuantity(line, factor, parseIngredient(line), preferences);
+
+  it("shows cups of dry ingredients in grams for metric", () => {
+    expect(show("1 cup plain flour", metric)).toMatchObject({
+      quantity: "130 g",
+      rest: " plain flour",
+      unit: "g",
+    });
+    expect(show("2 cups milk", metric).quantity).toBe("500 ml");
+  });
+  it("shows grams as ounces for imperial", () => {
+    expect(show("500g beef mince", imperial)).toMatchObject({
+      quantity: "1 lb",
+      rest: " beef mince",
+    });
+  });
+  it("scales before converting", () => {
+    expect(show("1 cup plain flour", metric, 2).quantity).toBe("260 g");
+  });
+  it("keeps lines already in the user's units as written", () => {
+    expect(show("1 1/2 tbsp olive oil", metric)).toMatchObject({
+      quantity: "1 1/2 tbsp",
+      rest: " olive oil",
+    });
+    expect(show("3 garlic cloves", metric)).toEqual(
+      splitQuantity("3 garlic cloves"),
+    );
+  });
+  it("uses a unit the cook picked", () => {
+    const line = "1 cup plain flour";
+    const shown = displayQuantity(
+      line,
+      1,
+      parseIngredient(line),
+      metric,
+      "cup",
+    );
+    expect(shown.quantity).toBe("1 cup");
+    expect(shown.choices?.map((choice) => choice.unit)).toContain("oz");
+  });
+  it("leaves lines whose text doesn't match the parsed amount", () => {
+    expect(
+      displayQuantity("1 cup flour", 1, parseIngredient("2 cups flour"), metric)
+        .quantity,
+    ).toBe("1 cup");
   });
 });

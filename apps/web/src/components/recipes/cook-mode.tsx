@@ -1,3 +1,4 @@
+import type { IngredientLine } from "@prep-sheet/db/ingredients";
 import type { RecipeContent } from "@prep-sheet/db/recipe-content";
 import {
   ArrowLeft,
@@ -16,8 +17,12 @@ import {
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { Sheet } from "@/components/pantry";
+import {
+  IngredientText,
+  parsedIngredients,
+  useUnitChoices,
+} from "./ingredient-text";
 import { useWakeLock } from "./keep-awake";
-import { splitQuantity } from "./scale-ingredients";
 import {
   formatClock,
   ingredientsUsed,
@@ -87,6 +92,7 @@ function chime() {
 export function CookMode({
   recipeId,
   content,
+  ingredientData,
   factor = 1,
   ingredientChecks,
   onClose,
@@ -94,6 +100,7 @@ export function CookMode({
 }: {
   recipeId: string;
   content: RecipeContent;
+  ingredientData?: IngredientLine[] | null;
   /** Servings scale for the ingredients sheet. */
   factor?: number;
   ingredientChecks?: {
@@ -119,6 +126,8 @@ export function CookMode({
   });
   const [timers, setTimers] = useState<RunningTimer[]>([]);
   const [ingredientsOpen, setIngredientsOpen] = useState(false);
+  const parsed = parsedIngredients(content.ingredients, ingredientData);
+  const { unitFor, setUnit } = useUnitChoices();
   const { supported, status } = useWakeLock(true);
   const now = useNow(timers.length > 0);
   const root = useRef<HTMLDivElement>(null);
@@ -349,12 +358,15 @@ export function CookMode({
         <ul className="cook-ingredient-list">
           {content.ingredients.map((ingredient, ingredientIndex) => {
             const key = ingredientChecks?.keys[ingredientIndex] ?? "";
-            const { quantity, rest } = splitQuantity(ingredient, factor);
+            const unitKey = key || String(ingredientIndex);
             const text = (
-              <span className="ingredient-text">
-                {quantity ? <b>{quantity}</b> : null}
-                {rest}
-              </span>
+              <IngredientText
+                text={ingredient}
+                factor={factor}
+                ingredient={parsed[ingredientIndex] ?? null}
+                unit={unitFor(unitKey)}
+                onUnitChange={(unit) => setUnit(unitKey, unit)}
+              />
             );
             return (
               <li key={key || ingredientIndex}>

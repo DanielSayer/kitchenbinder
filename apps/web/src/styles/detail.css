@@ -986,3 +986,24 @@
     animation: none;
   }
 }
+.ingredient-unit {
+  display: inline;
+  margin-right: 4px;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px dashed currentColor;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.ingredient-unit:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: 2px;
+}
+.ingredient-unit-menu {
+  width: auto;
+  min-width: 8rem;
+}

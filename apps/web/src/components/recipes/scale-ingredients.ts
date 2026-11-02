@@ -2,39 +2,27 @@
 // ("1 1/2", "½", "2-3", "400g") is scaled; everything else is left as written.
 
 import {
+  type Ingredient,
   parseQuantity,
   quantityPattern,
   readUnit,
+  type Unit,
 } from "@prep-sheet/db/ingredients";
+import {
+  convertAmount,
+  dimensionOf,
+  formatAmount,
+  formatQuantity,
+  type MeasurePreferences,
+  preferredAmount,
+  unitChoices,
+} from "@prep-sheet/db/units";
+
+export { formatQuantity };
 
 const leading = new RegExp(
   String.raw`^(\s*)(${quantityPattern})(?:(\s*(?:-|–|to)\s*)(${quantityPattern}))?`,
 );
-
-const fractions: [number, string][] = [
-  [0, ""],
-  [0.25, "¼"],
-  [1 / 3, "⅓"],
-  [0.5, "½"],
-  [2 / 3, "⅔"],
-  [0.75, "¾"],
-  [1, ""],
-];
-
-/** Kitchen-friendly number: whole numbers from 10, otherwise nearest ¼ or ⅓. */
-export function formatQuantity(value: number) {
-  if (!Number.isFinite(value) || value <= 0) return "0";
-  if (value >= 10) return String(Math.round(value));
-  let whole = Math.floor(value);
-  const rest = value - whole;
-  let best = fractions[0] as [number, string];
-  for (const candidate of fractions)
-    if (Math.abs(candidate[0] - rest) < Math.abs(best[0] - rest))
-      best = candidate;
-  if (best[0] === 1) whole += 1;
-  if (whole === 0 && !best[1]) return "¼";
-  return `${whole || ""}${best[1]}` || "0";
-}
 
 /** First whole number in a servings string ("4", "4-6", "Serves 2"). */
 export function parseServings(servings: string | null | undefined) {
@@ -74,4 +62,68 @@ export function splitQuantity(line: string, factor = 1) {
   const unitLength = unit ? times.length + unit.written : 0;
   const end = match[0].length + unitLength;
   return { quantity: scaled.slice(0, end).trim(), rest: scaled.slice(end) };
+}
+
+type Displayed = {
+  quantity: string;
+  rest: string;
+  /** Units the quantity can switch between, when it can. */
+  choices?: { unit: Unit; label: string }[];
+  unit?: Unit;
+};
+
+/**
+ * Like splitQuantity, but shows the amount in the user's units, or in
+ * `unit` when they picked one. Only lines whose written amount matches the
+ * parsed ingredient are converted; the rest show as written.
+ */
+export function displayQuantity(
+  line: string,
+  factor: number,
+  ingredient: Ingredient | null | undefined,
+  preferences: MeasurePreferences,
+  unit?: Unit | null,
+): Displayed {
+  const plain = splitQuantity(line, factor);
+  const parsed = ingredient;
+  if (
+    !parsed?.quantity ||
+    !parsed.unit ||
+    parsed.size ||
+    dimensionOf(parsed.unit) === "count"
+  )
+    return plain;
+  const match = line.match(leading);
+  const after = match ? line.slice(match[0].length) : "";
+  const space = after.match(/^\s*/)?.[0] ?? "";
+  const read = readUnit(after.slice(space.length));
+  if (
+    !match?.[2] ||
+    read?.unit !== parsed.unit ||
+    Math.abs(parseQuantity(match[2]) - parsed.quantity) > 0.001
+  )
+    return plain;
+  const amount = {
+    quantity: parsed.quantity * factor,
+    quantityMax:
+      parsed.quantityMax === null ? null : parsed.quantityMax * factor,
+    unit: parsed.unit,
+  };
+  const item = parsed.item;
+  const shown = (target: Unit) =>
+    convertAmount(amount, target, item, preferences.measureStandard);
+  const converted =
+    (unit && shown(unit)) ?? preferredAmount(amount, item, preferences);
+  const choices = unitChoices(parsed.unit, item).flatMap((choice) => {
+    const value = shown(choice);
+    return value ? [{ unit: choice, label: formatAmount(value) }] : [];
+  });
+  if (converted.unit === parsed.unit)
+    return { ...plain, choices, unit: parsed.unit };
+  return {
+    quantity: `${match[1] ?? ""}${formatAmount(converted)}`.trim(),
+    rest: after.slice(space.length + read.written),
+    choices,
+    unit: converted.unit,
+  };
 }

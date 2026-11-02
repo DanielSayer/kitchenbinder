@@ -441,6 +441,7 @@ export function RecipeDetail({ id }: { id: string }) {
                 <RecipeBody
                   key={`body-${userId}-${id}`}
                   content={content}
+                  ingredientData={data.ingredientData}
                   servings={servings ?? base}
                   onServingsChange={setServings}
                   progress={progress}
@@ -497,6 +498,7 @@ export function RecipeDetail({ id }: { id: string }) {
                 <CookMode
                   recipeId={id}
                   content={content}
+                  ingredientData={data.ingredientData}
                   factor={factor}
                   ingredientChecks={{
                     keys,
