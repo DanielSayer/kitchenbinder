@@ -186,23 +186,35 @@ const glyphs: [number, string][] = [
   [1, ""],
 ];
 
-/** Kitchen-friendly number: whole numbers from 10, otherwise nearest ¼ or ⅓. */
-export function formatQuantity(value: number) {
+/**
+ * Kitchen-friendly number: whole numbers from 10, otherwise nearest ¼ or ⅓,
+ * or only the given fractions.
+ */
+export function formatQuantity(value: number, fractions = glyphs) {
   if (!Number.isFinite(value) || value <= 0) return "0";
   if (value >= 10) return String(Math.round(value));
   let whole = Math.floor(value);
   const rest = value - whole;
   let best = glyphs[0] as [number, string];
-  for (const candidate of glyphs)
+  for (const candidate of fractions)
     if (Math.abs(candidate[0] - rest) < Math.abs(best[0] - rest))
       best = candidate;
   if (best[0] === 1) whole += 1;
-  if (whole === 0 && !best[1]) return "¼";
+  if (whole === 0 && !best[1])
+    return fractions.find(([, glyph]) => glyph)?.[1] ?? "¼";
   return `${whole || ""}${best[1]}` || "0";
 }
 
+const halves = glyphs.filter(([value]) => value % 0.5 === 0);
+const quarters = glyphs.filter(([value]) => value % 0.25 === 0);
+
 /** Grams and millilitres rounded the way recipes write them. */
 function formatMetric(value: number) {
+  // 625 ml and 450 g, not 630 ml and 455 g: quarters of a hundred when close.
+  if (value >= 250 && value < 1000) {
+    const quarter = Math.round(value / 25) * 25;
+    if (Math.abs(quarter - value) <= value * 0.02) return String(quarter);
+  }
   const step =
     value < 5 ? 0.5 : value < 20 ? 1 : value < 250 ? 5 : value < 1000 ? 10 : 50;
   const rounded = Math.max(step, Math.round(value / step) * step);
@@ -219,6 +231,9 @@ export function formatUnitQuantity(value: number, unit: Unit) {
   if (unit === "g" || unit === "ml" || unit === "mg")
     return formatMetric(value);
   if (unit === "kg" || unit === "l") return formatLarge(value);
+  // Scales and jugs mark halves and quarters, not thirds.
+  if (unit === "oz" || unit === "fl_oz") return formatQuantity(value, halves);
+  if (unit === "lb") return formatQuantity(value, quarters);
   return formatQuantity(value);
 }
 
