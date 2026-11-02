@@ -88,6 +88,7 @@ describe("preferred units", () => {
     [amount(200, "g"), "butter", "200 g"],
     [amount(2, "tbsp"), "olive oil", "2 tbsp"],
     [amount(8, "fl_oz"), "water", "235 ml"],
+    [amount(2.5, "cup"), "milk", "625 ml"],
   ])("metric shows %j %s as %s", (value, item, text) =>
     expect(shown(value, item, metric)).toBe(text),
   );
@@ -95,6 +96,8 @@ describe("preferred units", () => {
     [amount(500, "g"), "beef mince", "1 lb"],
     [amount(200, "g"), "butter", "7 oz"],
     [amount(100, "g"), "feta", "3½ oz"],
+    [amount(125, "g"), "butter", "4½ oz"],
+    [amount(1.15, "kg"), "potatoes", "2½ lb"],
     [amount(500, "ml"), "chicken stock", "2 cups"],
     [amount(60, "ml"), "milk", "¼ cup"],
     [amount(30, "ml"), "lemon juice", "2 tbsp"],
