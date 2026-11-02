@@ -34,11 +34,13 @@ import {
   Sheet,
   undoToast,
 } from "@/components/pantry";
+import { useMeasurePreferences } from "@/components/preferences";
 import { PageBar } from "@/components/shell/page-bar";
 import { authClient } from "@/lib/auth-client";
 import { useTRPC, useTRPCClient } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
 import { MealListNotice } from "../planner/plan-shop";
+import { displayLine } from "../recipes/scale-ingredients";
 import { RecipePicker } from "./add-recipes";
 import { AisleHeading, ShopProgress } from "./aisles";
 import { ShoppingListAction } from "./generated-list";
@@ -149,6 +151,7 @@ function ShopRow({
     move(0);
   };
   const bought = item.status === "bought";
+  const measures = useMeasurePreferences();
   return (
     <li className="shop-item" data-nudge={nudge || undefined}>
       {swipeable && (
@@ -187,7 +190,9 @@ function ShopRow({
             <Check size={16} />
           </span>
           <span className="shop-text">
-            <b className="shop-name">{item.text}</b>{" "}
+            <b className="shop-name">
+              {displayLine(item.text, item.ingredient, measures)}
+            </b>{" "}
             {note && <small>{note}</small>}
           </span>
         </label>

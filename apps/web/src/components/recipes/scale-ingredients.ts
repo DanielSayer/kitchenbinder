@@ -127,3 +127,15 @@ export function displayQuantity(
     unit: converted.unit,
   };
 }
+
+/** Whole line with its amount in the user's units. */
+export function displayLine(
+  line: string,
+  ingredient: Ingredient | null | undefined,
+  preferences: MeasurePreferences,
+) {
+  const shown = displayQuantity(line, 1, ingredient, preferences);
+  return shown.quantity === splitQuantity(line).quantity
+    ? line
+    : `${shown.quantity}${shown.rest}`;
+}

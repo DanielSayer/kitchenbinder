@@ -15,6 +15,7 @@ import {
 import { useState } from "react";
 import { useHouseholdScope } from "@/components/households/household-context";
 import { EmptyState, LargeTitle } from "@/components/pantry";
+import { useMeasurePreferences } from "@/components/preferences";
 import { PageBar } from "@/components/shell/page-bar";
 import { useTRPC } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
@@ -191,6 +192,7 @@ export function GeneratedShoppingList() {
     }),
   );
   const plan = query.data;
+  const measures = useMeasurePreferences();
   const current = new Map(plan?.items.map((item) => [item.id, item]));
   const rows =
     plan?.content.groups
@@ -206,6 +208,7 @@ export function GeneratedShoppingList() {
             text,
             ingredient,
           })),
+          measures,
         );
         return { ...group, index, items, bought, quantity };
       })

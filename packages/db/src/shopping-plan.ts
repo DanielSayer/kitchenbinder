@@ -1,9 +1,14 @@
+import { type Ingredient, parseIngredient, type Unit } from "./ingredients";
 import {
-  type Ingredient,
-  parseIngredient,
-  type Unit,
-  unitDefinitions,
-} from "./ingredients";
+  convertQuantity,
+  defaultMeasurePreferences,
+  densityOf,
+  dimensionOf,
+  formatAmount,
+  type MeasurePreferences,
+  preferredAmount,
+  unitLabel,
+} from "./units";
 
 export const shoppingCategories = [
   "Produce",
@@ -67,23 +72,13 @@ export function categoriseGrocery(text: string): Category {
   );
 }
 
-// Exact conversions only; spoons and cups stay separate because standards vary.
-const sums: Partial<Record<Unit, { unit: string; multiplier: number }>> = {
-  mg: { unit: "g", multiplier: 0.001 },
-  g: { unit: "g", multiplier: 1 },
-  kg: { unit: "g", multiplier: 1000 },
-  oz: { unit: "g", multiplier: unitDefinitions.oz.base },
-  lb: { unit: "g", multiplier: unitDefinitions.lb.base },
-  ml: { unit: "ml", multiplier: 1 },
-  l: { unit: "ml", multiplier: 1000 },
-  tsp: { unit: "tsp", multiplier: 1 },
-  tbsp: { unit: "tbsp", multiplier: 1 },
-  cup: { unit: "cups", multiplier: 1 },
-  clove: { unit: "cloves", multiplier: 1 },
-};
+type Grocery = { quantity: number; unit: Unit | null; name: string };
 
 // Packaging, ranges, alternatives and unspecified amounts never enter a sum.
-export function parseGrocery(line: string, ingredient?: Ingredient | null) {
+export function parseGrocery(
+  line: string,
+  ingredient?: Ingredient | null,
+): Grocery | null {
   const parsed = ingredient ?? parseIngredient(line);
   if (
     !parsed?.quantity ||
@@ -92,15 +87,18 @@ export function parseGrocery(line: string, ingredient?: Ingredient | null) {
     parsed.optional
   )
     return null;
-  const conversion = parsed.unit
-    ? sums[parsed.unit]
-    : { unit: "", multiplier: 1 };
-  if (!conversion) return null;
-  return {
-    quantity: parsed.quantity * conversion.multiplier,
-    unit: conversion.unit,
-    name: parsed.item,
-  };
+  const unit = parsed.unit;
+  if (unit && unit !== "clove" && dimensionOf(unit) === "count") return null;
+  return { quantity: parsed.quantity, unit, name: parsed.item };
+}
+
+/**
+ * Which lines can be added together: counts with counts, cloves with
+ * cloves, and weights with volumes when the ingredient's density is known.
+ */
+function sumKind({ unit, name }: Grocery) {
+  if (unit === null || unit === "clove") return unit ?? "each";
+  return densityOf(name) === null ? dimensionOf(unit) : "measure";
 }
 
 const fractions: Record<string, number> = {
@@ -115,9 +113,23 @@ const fractions: Record<string, number> = {
   "⅞": 0.875,
 };
 
+function formatCount(total: number) {
+  const whole = Math.floor(total);
+  const fraction = Object.entries(fractions).find(
+    ([, value]) => Math.abs(total - whole - value) < 0.000001,
+  )?.[0];
+  return fraction
+    ? `${whole || ""}${fraction}`
+    : String(Number(total.toFixed(3)));
+}
+
 type GroceryLine = string | { text: string; ingredient?: Ingredient | null };
 
-export function combinedQuantity(lines: GroceryLine[]): string | null {
+/** Total for lines of one item, in the user's units, or null if they don't add up. */
+export function combinedQuantity(
+  lines: GroceryLine[],
+  preferences: MeasurePreferences = defaultMeasurePreferences,
+): string | null {
   const parsed = lines.map((line) =>
     typeof line === "string"
       ? parseGrocery(line)
@@ -128,23 +140,37 @@ export function combinedQuantity(lines: GroceryLine[]): string | null {
     !first ||
     parsed.some(
       (value) =>
-        !value || value.unit !== first.unit || value.name !== first.name,
+        !value ||
+        value.name !== first.name ||
+        sumKind(value) !== sumKind(first),
     )
   )
     return null;
-  const total = parsed.reduce((sum, value) => sum + (value?.quantity ?? 0), 0);
-  const whole = Math.floor(total);
-  const fraction = Object.entries(fractions).find(
-    ([, value]) => Math.abs(total - whole - value) < 0.000001,
-  )?.[0];
-  const display = fraction
-    ? `${whole || ""}${fraction}`
-    : String(Number(total.toFixed(3)));
-  const unit =
-    total <= 1 && (first.unit === "cups" || first.unit === "cloves")
-      ? first.unit.slice(0, -1)
-      : first.unit;
-  return `${display}${unit ? ` ${unit}` : ""}`;
+  const groceries = parsed as Grocery[];
+  const { unit, name } = first;
+  if (unit === null || unit === "clove") {
+    const total = groceries.reduce((sum, value) => sum + value.quantity, 0);
+    const label = unit ? ` ${unitLabel(unit, total > 1 ? 2 : 1)}` : "";
+    return `${formatCount(total)}${label}`;
+  }
+  // One unit throughout stays in it; mixed units add up in grams, or in
+  // millilitres when every line is a volume.
+  const target: Unit = groceries.every((value) => value.unit === unit)
+    ? unit
+    : groceries.every(
+          (value) => value.unit && dimensionOf(value.unit) === "volume",
+        )
+      ? "ml"
+      : "g";
+  let total = 0;
+  for (const value of groceries) {
+    const converted =
+      value.unit && convertQuantity(value.quantity, value.unit, target, name);
+    if (converted === null || converted === undefined) return null;
+    total += converted;
+  }
+  const amount = { quantity: total, quantityMax: null, unit: target };
+  return formatAmount(preferredAmount(amount, name, preferences));
 }
 
 export function generateShoppingPlan(
@@ -154,7 +180,9 @@ export function generateShoppingPlan(
   for (const item of items) {
     const parsed = parseGrocery(item.text, item.ingredient);
     const category = categoriseGrocery(parsed ? parsed.name : item.text);
-    const key = parsed ? `${category}:${parsed.unit}:${parsed.name}` : item.id;
+    const key = parsed
+      ? `${category}:${sumKind(parsed)}:${parsed.name}`
+      : item.id;
     const existing = groups.get(key);
     if (existing) existing.itemIds.push(item.id);
     else
