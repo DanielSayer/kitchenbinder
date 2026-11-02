@@ -3,6 +3,7 @@ import {
   categoriseGrocery,
   combinedQuantity,
   generateShoppingPlan,
+  groceryGroup,
   parseGrocery,
 } from "./shopping-plan";
 
@@ -140,5 +141,33 @@ describe("garlic and other counted lines", () => {
     expect(plan.groups).toEqual([
       { category: "Produce", name: "Garlic", itemIds: ["a", "b"] },
     ]);
+  });
+});
+
+describe("groceryGroup", () => {
+  it("gives lines that add up the same key", () => {
+    const flour = groceryGroup("200g plain flour");
+    expect(flour).toEqual({
+      category: "Pantry",
+      key: expect.any(String),
+      name: "Plain flour",
+    });
+    expect(groceryGroup("1 cup plain flour").key).toBe(flour.key);
+    expect(groceryGroup("3 garlic cloves").key).toBe(
+      groceryGroup("1 clove garlic, crushed").key,
+    );
+  });
+  it("keeps lines apart when they can't be added", () => {
+    expect(groceryGroup("200g chicken").key).not.toBe(
+      groceryGroup("1 cup chicken").key,
+    );
+    expect(groceryGroup("2 garlic cloves").key).not.toBe(
+      groceryGroup("1 garlic").key,
+    );
+    expect(groceryGroup("salt to taste")).toEqual({
+      category: "Pantry",
+      key: null,
+      name: "salt to taste",
+    });
   });
 });
