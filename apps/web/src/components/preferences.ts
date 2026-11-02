@@ -23,3 +23,12 @@ export function usePreferences() {
 export function useWeekStartsOn() {
   return usePreferences().data?.weekStartsOn ?? 1;
 }
+
+/** Metric or imperial, and AU or US cup sizes. Metric AU until loaded. */
+export function useMeasurePreferences() {
+  const data = usePreferences().data;
+  return {
+    unitSystem: data?.unitSystem ?? "metric",
+    measureStandard: data?.measureStandard ?? "au",
+  } as const;
+}
