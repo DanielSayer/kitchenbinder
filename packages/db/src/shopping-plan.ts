@@ -173,26 +173,31 @@ export function combinedQuantity(
   return formatAmount(preferredAmount(amount, name, preferences));
 }
 
+/**
+ * A line's aisle, and the key and name it shares with other lines of the
+ * same item that add up to one total (null key when it can't be added).
+ */
+export function groceryGroup(text: string, ingredient?: Ingredient | null) {
+  const parsed = parseGrocery(text, ingredient);
+  const category = categoriseGrocery(parsed ? parsed.name : text);
+  return parsed
+    ? {
+        category,
+        key: `${category}:${sumKind(parsed)}:${parsed.name}`,
+        name: parsed.name.charAt(0).toUpperCase() + parsed.name.slice(1),
+      }
+    : { category, key: null, name: text };
+}
+
 export function generateShoppingPlan(
   items: { id: string; text: string; ingredient?: Ingredient | null }[],
 ): ShoppingPlan {
   const groups = new Map<string, ShoppingPlan["groups"][number]>();
   for (const item of items) {
-    const parsed = parseGrocery(item.text, item.ingredient);
-    const category = categoriseGrocery(parsed ? parsed.name : item.text);
-    const key = parsed
-      ? `${category}:${sumKind(parsed)}:${parsed.name}`
-      : item.id;
-    const existing = groups.get(key);
+    const { category, key, name } = groceryGroup(item.text, item.ingredient);
+    const existing = groups.get(key ?? item.id);
     if (existing) existing.itemIds.push(item.id);
-    else
-      groups.set(key, {
-        category,
-        name: parsed
-          ? parsed.name.charAt(0).toUpperCase() + parsed.name.slice(1)
-          : item.text,
-        itemIds: [item.id],
-      });
+    else groups.set(key ?? item.id, { category, name, itemIds: [item.id] });
   }
   return {
     groups: [...groups.values()].sort(

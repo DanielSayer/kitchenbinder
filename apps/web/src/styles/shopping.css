@@ -776,3 +776,7 @@
     min-width: 0;
   }
 }
+/* Lines behind a combined row, shown when it is expanded. */
+.shop-lines {
+  padding-left: 28px;
+}

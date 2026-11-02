@@ -1,6 +1,7 @@
 import type { AppRouter } from "@prep-sheet/api/routers/index";
 import {
-  categoriseGrocery,
+  combinedQuantity,
+  groceryGroup,
   shoppingCategories,
 } from "@prep-sheet/db/shopping-plan";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -17,6 +18,7 @@ import {
   Trash2,
 } from "lucide-react";
 import {
+  Fragment,
   type PointerEvent as ReactPointerEvent,
   useEffect,
   useRef,
@@ -48,6 +50,10 @@ import { ShoppingListAction } from "./generated-list";
 type Item = inferRouterOutputs<AppRouter>["shopping"]["list"][number];
 type Status = Item["status"];
 type Mode = "aisle" | "recipe";
+/** A list row: one line, or lines of one item that add up, with their total. */
+type Entry =
+  | { item: Item }
+  | { key: string; name: string; quantity: string; items: Item[] };
 
 const modeKey = "shopping-group-mode";
 const hintKey = "shopping-swipe-hint";
@@ -83,6 +89,9 @@ function useDraft(key: string, initial: string) {
  */
 function ShopRow({
   item,
+  label,
+  quantity,
+  expanded,
   note,
   swipeable,
   nudge,
@@ -92,6 +101,12 @@ function ShopRow({
   onMore,
 }: {
   item: Item;
+  /** Name for a combined row, in place of the item's text. */
+  label?: string;
+  /** Combined total, shown beside the name. */
+  quantity?: string | null;
+  /** Set for combined rows: whether their lines are shown. */
+  expanded?: boolean;
   note?: string | null;
   swipeable: boolean;
   nudge?: boolean;
@@ -152,6 +167,7 @@ function ShopRow({
   };
   const bought = item.status === "bought";
   const measures = useMeasurePreferences();
+  const name = label ?? item.text;
   return (
     <li className="shop-item" data-nudge={nudge || undefined}>
       {swipeable && (
@@ -183,7 +199,7 @@ function ShopRow({
             type="checkbox"
             className="pantry-visually-hidden"
             checked={bought}
-            aria-label={`${bought ? "Mark needed" : "Mark bought"}: ${item.text}`}
+            aria-label={`${bought ? "Mark needed" : "Mark bought"}: ${name}`}
             onChange={onToggle}
           />
           <span className="shop-check" aria-hidden="true">
@@ -191,16 +207,17 @@ function ShopRow({
           </span>
           <span className="shop-text">
             <b className="shop-name">
-              {displayLine(item.text, item.ingredient, measures)}
+              {label ?? displayLine(item.text, item.ingredient, measures)}
             </b>{" "}
             {note && <small>{note}</small>}
           </span>
+          {quantity && <span className="shop-qty">{quantity}</span>}
         </label>
         {item.status === "needed" ? (
           <button
             type="button"
             className="shop-have"
-            aria-label={`Already have it: ${item.text}`}
+            aria-label={`Already have it: ${name}`}
             onClick={onHave}
           >
             <House size={16} aria-hidden="true" />
@@ -211,7 +228,7 @@ function ShopRow({
             type="button"
             className="shop-have"
             data-visible
-            aria-label={`Need this: ${item.text}`}
+            aria-label={`Need this: ${name}`}
             onClick={onNeed}
           >
             Need this
@@ -220,7 +237,12 @@ function ShopRow({
         <button
           type="button"
           className="icon-button shop-more"
-          aria-label={`Actions for ${item.text}`}
+          aria-label={
+            expanded === undefined
+              ? `Actions for ${name}`
+              : `${expanded ? "Hide" : "Show"} lines for ${name}`
+          }
+          aria-expanded={expanded}
           onClick={onMore}
         >
           <MoreHorizontal size={18} />
@@ -375,6 +397,8 @@ function ListScreen({ userId }: { userId: string }) {
   const [text, setText] = useDraft(`shopping:${userId}:new`, "");
   const [newId, setNewId] = useState<string>(() => crypto.randomUUID());
   const [nudge, setNudge] = useState(false);
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const measures = useMeasurePreferences();
   useEffect(() => {
     try {
       if (localStorage.getItem(hintKey)) return;
@@ -387,25 +411,36 @@ function ListScreen({ userId }: { userId: string }) {
   const refresh = () =>
     client.invalidateQueries({ queryKey: trpc.shopping.pathKey() });
   const statusUpdate = useMutation(trpc.shopping.updateItem.mutationOptions());
-  const changeStatus = async (item: Item, status: Status, message?: string) => {
-    const previous = item.status;
+  const changeStatus = (item: Item, status: Status, message?: string) =>
+    changeStatuses([item], status, message);
+  const changeStatuses = async (
+    targets: readonly Item[],
+    status: Status,
+    message?: string,
+  ) => {
+    const ids = new Set(targets.map((item) => item.id));
     client.setQueryData(listKey, (old) =>
-      old?.map((entry) =>
-        entry.id === item.id ? { ...entry, status } : entry,
-      ),
+      old?.map((entry) => (ids.has(entry.id) ? { ...entry, status } : entry)),
     );
     if (message)
       undoToast(message, {
         id: "shopping-status",
-        onUndo: () => void changeStatus({ ...item, status }, previous),
+        onUndo: () => {
+          for (const item of targets)
+            void changeStatus({ ...item, status }, item.status);
+        },
       });
     try {
-      await statusUpdate.mutateAsync({
-        householdId,
-        kind: "status",
-        id: item.id,
-        status,
-      });
+      await Promise.all(
+        targets.map((item) =>
+          statusUpdate.mutateAsync({
+            householdId,
+            kind: "status",
+            id: item.id,
+            status,
+          }),
+        ),
+      );
     } catch (cause) {
       toast.error(errorText(cause, "Couldn't update that item."));
     } finally {
@@ -526,12 +561,35 @@ function ListScreen({ userId }: { userId: string }) {
       }}
     />
   );
+  // By aisle, lines of one item that add up share a row with their total.
   const groups =
     mode === "aisle"
       ? shoppingCategories.flatMap((category) => {
-          const entries = needed.filter(
-            (item) => categoriseGrocery(item.text) === category,
-          );
+          const lines = needed.flatMap((item) => {
+            const group = groceryGroup(item.text, item.ingredient);
+            return group.category === category ? [{ item, group }] : [];
+          });
+          const byKey = new Map<string, Item[]>();
+          for (const { item, group } of lines)
+            if (group.key)
+              byKey.set(group.key, [...(byKey.get(group.key) ?? []), item]);
+          const entries: Entry[] = [];
+          const placed = new Set<string>();
+          for (const { item, group } of lines) {
+            const same = group.key ? (byKey.get(group.key) ?? []) : [];
+            const quantity =
+              same.length > 1 ? combinedQuantity(same, measures) : null;
+            if (!group.key || !quantity) entries.push({ item });
+            else if (!placed.has(group.key)) {
+              placed.add(group.key);
+              entries.push({
+                key: group.key,
+                name: group.name,
+                quantity,
+                items: same,
+              });
+            }
+          }
           return entries.length
             ? [{ key: category, title: category, category, entries }]
             : [];
@@ -548,8 +606,55 @@ function ListScreen({ userId }: { userId: string }) {
           key,
           title: entries[0]?.recipeTitle ?? "Other groceries",
           category: undefined,
-          entries,
+          entries: entries.map((item): Entry => ({ item })),
         }));
+  const entryRow = (entry: Entry) => {
+    if ("item" in entry) return row(entry.item);
+    const [first] = entry.items;
+    if (!first) return null;
+    const open = expanded.has(entry.key);
+    const recipes = [
+      ...new Set(entry.items.flatMap((item) => item.recipeTitle ?? [])),
+    ];
+    return (
+      <Fragment key={entry.key}>
+        <ShopRow
+          item={first}
+          label={entry.name}
+          quantity={entry.quantity}
+          expanded={open}
+          note={
+            recipes.length ? recipes.join(", ") : `${entry.items.length} lines`
+          }
+          swipeable
+          onToggle={() =>
+            void changeStatuses(entry.items, "bought", `Ticked ${entry.name}`)
+          }
+          onHave={() =>
+            void changeStatuses(
+              entry.items,
+              "owned",
+              `${entry.name} · already have it`,
+            )
+          }
+          onNeed={() => void changeStatuses(entry.items, "needed")}
+          onMore={() =>
+            setExpanded((current) => {
+              const next = new Set(current);
+              if (open) next.delete(entry.key);
+              else next.add(entry.key);
+              return next;
+            })
+          }
+        />
+        {open && (
+          <li className="shop-lines">
+            <ul className="shop-list">{entry.items.map(row)}</ul>
+          </li>
+        )}
+      </Fragment>
+    );
+  };
   const openPicker = () => {
     setPickerKey((current) => current + 1);
     setPicker(true);
@@ -675,7 +780,7 @@ function ListScreen({ userId }: { userId: string }) {
                     kind={group.key === "other" ? "manual" : "recipe"}
                     count={group.entries.length}
                   />
-                  <ul className="shop-list">{group.entries.map(row)}</ul>
+                  <ul className="shop-list">{group.entries.map(entryRow)}</ul>
                 </section>
               ))}
               {owned.length > 0 && (
