@@ -138,7 +138,7 @@ describe("displayQuantity", () => {
       "cup",
     );
     expect(shown.quantity).toBe("1 cup");
-    expect(shown.choices?.map((choice) => choice.unit)).toContain("oz");
+    expect(shown.choices?.map((choice) => choice.unit)).toEqual(["cup", "g"]);
   });
   it("leaves lines whose text doesn't match the parsed amount", () => {
     expect(

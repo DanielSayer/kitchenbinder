@@ -66,11 +66,12 @@ describe("converting", () => {
       amount(1000, "g", 2000),
     );
   });
-  it("offers units that make sense for the ingredient", () => {
-    expect(unitChoices("g", "chicken")).toEqual(["g", "kg", "oz", "lb"]);
-    expect(unitChoices("cup", "flour")).toContain("g");
-    expect(unitChoices("cup", "flour")[0]).toBe("cup");
-    expect(unitChoices("clove", "garlic")).toEqual(["clove"]);
+  it("offers the written unit plus its metric and imperial forms", () => {
+    expect(unitChoices(amount(500, "g"), "chicken")).toEqual(["g", "lb"]);
+    expect(unitChoices(amount(2, "cup"), "plain flour")).toEqual(["cup", "g"]);
+    expect(unitChoices(amount(0.5, "cup"), "milk")).toEqual(["cup", "ml"]);
+    expect(unitChoices(amount(1, "tsp"), "baking powder")).toEqual(["tsp"]);
+    expect(unitChoices(amount(2, "clove"), "garlic")).toEqual(["clove"]);
   });
 });
 
