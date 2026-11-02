@@ -1,9 +1,15 @@
+import type { IngredientLine } from "@prep-sheet/db/ingredients";
 import type { RecipeContent } from "@prep-sheet/db/recipe-content";
 import { Check, Minus, Plus } from "lucide-react";
 import { useState } from "react";
 import { Segmented } from "@/components/pantry";
 import { ingredientKeys, useIngredientProgress } from "./ingredient-progress";
-import { parseServings, splitQuantity } from "./scale-ingredients";
+import {
+  IngredientText,
+  parsedIngredients,
+  useUnitChoices,
+} from "./ingredient-text";
+import { parseServings } from "./scale-ingredients";
 
 type Pane = "ingredients" | "method";
 const panes = [
@@ -49,12 +55,14 @@ export function ServingsStepper({
  */
 export function RecipeBody({
   content,
+  ingredientData,
   progressKey,
   servings: controlledServings,
   onServingsChange,
   progress,
 }: {
   content: RecipeContent;
+  ingredientData?: IngredientLine[] | null;
   progressKey?: string;
   servings?: number | null;
   onServingsChange?: (servings: number) => void;
@@ -71,6 +79,8 @@ export function RecipeBody({
   const factor = base && servings ? servings / base : 1;
   const keys = ingredientKeys(content.ingredients);
   const currentChecks = new Set(keys.filter((key) => checked.has(key)));
+  const parsed = parsedIngredients(content.ingredients, ingredientData);
+  const { unitFor, setUnit } = useUnitChoices();
 
   return (
     <div className="recipe-body" data-pane={pane}>
@@ -133,7 +143,6 @@ export function RecipeBody({
         <ul className="recipe-ingredients">
           {content.ingredients.map((ingredient, index) => {
             const key = keys[index] ?? "";
-            const { quantity, rest } = splitQuantity(ingredient, factor);
             return (
               <li key={key}>
                 <label className="ingredient-row">
@@ -152,10 +161,13 @@ export function RecipeBody({
                   <span className="ingredient-check" aria-hidden="true">
                     <Check size={16} />
                   </span>
-                  <span className="ingredient-text">
-                    {quantity ? <b>{quantity}</b> : null}
-                    {rest}
-                  </span>
+                  <IngredientText
+                    text={ingredient}
+                    factor={factor}
+                    ingredient={parsed[index] ?? null}
+                    unit={unitFor(key)}
+                    onUnitChange={(unit) => setUnit(key, unit)}
+                  />
                 </label>
               </li>
             );
