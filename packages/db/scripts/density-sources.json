@@ -1,0 +1,849 @@
+{
+  "$comment": "Ingredient names (singular, lowercase, as normaliseItem gives) mapped to a USDA FoodData Central SR Legacy food and portion. build-densities.mjs turns these into src/densities.ts.",
+  "sources": [
+    {
+      "fdcId": 168894,
+      "items": [
+        "flour",
+        "plain flour",
+        "all-purpose flour",
+        "all purpose flour",
+        "white flour",
+        "self-raising flour",
+        "self raising flour",
+        "self-rising flour",
+        "cake flour",
+        "pastry flour"
+      ]
+    },
+    {
+      "fdcId": 168896,
+      "items": ["bread flour", "strong flour", "baker's flour", "bakers flour"]
+    },
+    {
+      "fdcId": 168893,
+      "items": [
+        "wholemeal flour",
+        "whole wheat flour",
+        "wholewheat flour",
+        "wholemeal self-raising flour",
+        "spelt flour"
+      ]
+    },
+    {
+      "fdcId": 169698,
+      "items": [
+        "cornflour",
+        "cornstarch",
+        "corn starch",
+        "arrowroot",
+        "tapioca flour",
+        "potato starch"
+      ]
+    },
+    { "fdcId": 169695, "items": ["corn flour", "maize flour"] },
+    { "fdcId": 169694, "items": ["masa harina", "masa"] },
+    { "fdcId": 169697, "items": ["polenta", "cornmeal"] },
+    { "fdcId": 169715, "items": ["semolina"] },
+    {
+      "fdcId": 169655,
+      "items": [
+        "sugar",
+        "white sugar",
+        "caster sugar",
+        "castor sugar",
+        "superfine sugar",
+        "granulated sugar",
+        "raw sugar",
+        "coconut sugar"
+      ]
+    },
+    {
+      "fdcId": 168833,
+      "portion": "packed",
+      "items": [
+        "brown sugar",
+        "light brown sugar",
+        "dark brown sugar",
+        "soft brown sugar",
+        "muscovado sugar"
+      ]
+    },
+    {
+      "fdcId": 169656,
+      "portion": "unsifted",
+      "items": [
+        "icing sugar",
+        "powdered sugar",
+        "confectioners sugar",
+        "confectioners' sugar",
+        "pure icing sugar",
+        "icing sugar mixture"
+      ]
+    },
+    { "fdcId": 169640, "liquid": true, "items": ["honey"] },
+    {
+      "fdcId": 169661,
+      "liquid": true,
+      "items": [
+        "maple syrup",
+        "golden syrup",
+        "rice malt syrup",
+        "agave syrup",
+        "corn syrup",
+        "syrup"
+      ]
+    },
+    { "fdcId": 168820, "liquid": true, "items": ["molasses", "treacle"] },
+    {
+      "fdcId": 173430,
+      "items": ["butter", "unsalted butter", "salted butter", "ghee"]
+    },
+    { "fdcId": 171040, "items": ["margarine", "dairy-free spread"] },
+    {
+      "fdcId": 171011,
+      "items": ["shortening", "vegetable shortening", "copha", "lard"]
+    },
+    {
+      "fdcId": 171413,
+      "liquid": true,
+      "items": ["olive oil", "extra virgin olive oil", "light olive oil", "oil"]
+    },
+    {
+      "fdcId": 172336,
+      "liquid": true,
+      "items": [
+        "canola oil",
+        "vegetable oil",
+        "sunflower oil",
+        "rice bran oil",
+        "peanut oil",
+        "grapeseed oil",
+        "neutral oil",
+        "cooking oil",
+        "avocado oil"
+      ]
+    },
+    { "fdcId": 171412, "liquid": true, "items": ["coconut oil"] },
+    {
+      "fdcId": 171016,
+      "liquid": true,
+      "items": ["sesame oil", "toasted sesame oil"]
+    },
+    {
+      "fdcId": 171265,
+      "liquid": true,
+      "items": [
+        "milk",
+        "full cream milk",
+        "whole milk",
+        "skim milk",
+        "low fat milk",
+        "almond milk",
+        "oat milk",
+        "soy milk"
+      ]
+    },
+    { "fdcId": 167697, "liquid": true, "items": ["buttermilk"] },
+    {
+      "fdcId": 171275,
+      "liquid": true,
+      "items": ["sweetened condensed milk", "condensed milk"]
+    },
+    { "fdcId": 171276, "liquid": true, "items": ["evaporated milk"] },
+    {
+      "fdcId": 170859,
+      "liquid": true,
+      "portion": "fluid",
+      "items": [
+        "cream",
+        "thickened cream",
+        "heavy cream",
+        "double cream",
+        "whipping cream",
+        "heavy whipping cream",
+        "pouring cream",
+        "single cream",
+        "pure cream",
+        "light cream",
+        "cooking cream"
+      ]
+    },
+    {
+      "fdcId": 171257,
+      "items": ["sour cream", "creme fraiche", "crème fraîche"]
+    },
+    {
+      "fdcId": 171284,
+      "items": [
+        "yoghurt",
+        "yogurt",
+        "plain yoghurt",
+        "plain yogurt",
+        "natural yoghurt",
+        "natural yogurt",
+        "greek yoghurt",
+        "greek yogurt"
+      ]
+    },
+    { "fdcId": 173418, "items": ["cream cheese", "mascarpone"] },
+    {
+      "fdcId": 170851,
+      "portion": "1 cup",
+      "items": ["ricotta", "ricotta cheese"]
+    },
+    { "fdcId": 167703, "items": ["cottage cheese"] },
+    {
+      "fdcId": 171247,
+      "items": [
+        "parmesan",
+        "parmesan cheese",
+        "grated parmesan",
+        "parmigiano reggiano",
+        "pecorino",
+        "grana padano"
+      ]
+    },
+    {
+      "fdcId": 173414,
+      "portion": "shredded",
+      "items": [
+        "cheddar",
+        "cheddar cheese",
+        "grated cheddar",
+        "cheese",
+        "grated cheese",
+        "tasty cheese",
+        "shredded cheese",
+        "pizza cheese",
+        "gruyere",
+        "gruyère"
+      ]
+    },
+    {
+      "fdcId": 170845,
+      "portion": "shredded",
+      "items": [
+        "mozzarella",
+        "mozzarella cheese",
+        "grated mozzarella",
+        "shredded mozzarella"
+      ]
+    },
+    { "fdcId": 173420, "items": ["feta", "feta cheese"] },
+    {
+      "fdcId": 172884,
+      "liquid": true,
+      "items": [
+        "stock",
+        "chicken stock",
+        "vegetable stock",
+        "broth",
+        "chicken broth",
+        "vegetable broth",
+        "fish stock"
+      ]
+    },
+    { "fdcId": 172883, "liquid": true, "items": ["beef stock", "beef broth"] },
+    {
+      "fdcId": 168877,
+      "items": [
+        "rice",
+        "white rice",
+        "long grain rice",
+        "long-grain rice",
+        "basmati rice",
+        "jasmine rice",
+        "brown rice",
+        "uncooked rice"
+      ]
+    },
+    {
+      "fdcId": 168879,
+      "items": [
+        "medium grain rice",
+        "medium-grain rice",
+        "arborio rice",
+        "risotto rice",
+        "carnaroli rice",
+        "paella rice"
+      ]
+    },
+    {
+      "fdcId": 168931,
+      "items": [
+        "short grain rice",
+        "short-grain rice",
+        "sushi rice",
+        "glutinous rice"
+      ]
+    },
+    {
+      "fdcId": 168878,
+      "items": [
+        "cooked rice",
+        "cooked white rice",
+        "cooked basmati rice",
+        "cooked jasmine rice",
+        "leftover rice"
+      ]
+    },
+    { "fdcId": 169726, "items": ["wild rice"] },
+    {
+      "fdcId": 173904,
+      "items": [
+        "oats",
+        "rolled oats",
+        "quick oats",
+        "porridge oats",
+        "old fashioned oats",
+        "old-fashioned oats"
+      ]
+    },
+    { "fdcId": 168874, "items": ["quinoa"] },
+    { "fdcId": 169699, "items": ["couscous", "pearl couscous"] },
+    {
+      "fdcId": 170688,
+      "items": ["bulgur", "burghul", "bulgur wheat", "cracked wheat"]
+    },
+    { "fdcId": 170284, "items": ["pearl barley", "barley"] },
+    {
+      "fdcId": 172420,
+      "items": [
+        "lentils",
+        "red lentils",
+        "green lentils",
+        "brown lentils",
+        "dried lentils",
+        "split peas"
+      ]
+    },
+    {
+      "fdcId": 173801,
+      "items": [
+        "chickpeas",
+        "canned chickpeas",
+        "tinned chickpeas",
+        "cooked chickpeas"
+      ]
+    },
+    {
+      "fdcId": 175238,
+      "items": [
+        "black beans",
+        "kidney beans",
+        "red kidney beans",
+        "cannellini beans",
+        "butter beans",
+        "borlotti beans",
+        "white beans",
+        "canned beans",
+        "beans"
+      ]
+    },
+    {
+      "fdcId": 169736,
+      "portion": "elbows",
+      "items": [
+        "macaroni",
+        "elbow macaroni",
+        "small pasta",
+        "risoni",
+        "orzo",
+        "ditalini"
+      ]
+    },
+    {
+      "fdcId": 169736,
+      "portion": "penne",
+      "items": [
+        "penne",
+        "pasta",
+        "fusilli",
+        "rigatoni",
+        "farfalle",
+        "dry pasta"
+      ]
+    },
+    { "fdcId": 169731, "items": ["egg noodles", "dried egg noodles"] },
+    {
+      "fdcId": 169593,
+      "items": [
+        "cocoa",
+        "cocoa powder",
+        "cacao powder",
+        "dutch cocoa",
+        "unsweetened cocoa powder"
+      ]
+    },
+    {
+      "fdcId": 167976,
+      "portion": "chips 6 oz",
+      "items": [
+        "chocolate chips",
+        "choc chips",
+        "dark chocolate chips",
+        "milk chocolate chips",
+        "white chocolate chips",
+        "chocolate chip"
+      ]
+    },
+    { "fdcId": 172803, "items": ["baking powder"] },
+    {
+      "fdcId": 175040,
+      "items": [
+        "baking soda",
+        "bicarbonate of soda",
+        "bicarb soda",
+        "bicarb",
+        "bi-carb soda"
+      ]
+    },
+    {
+      "fdcId": 175043,
+      "portion": "teaspoon",
+      "items": [
+        "yeast",
+        "dry yeast",
+        "dried yeast",
+        "active dry yeast",
+        "instant yeast",
+        "instant dried yeast"
+      ]
+    },
+    {
+      "fdcId": 173468,
+      "items": ["salt", "table salt", "fine salt", "sea salt", "fine sea salt"]
+    },
+    {
+      "fdcId": 170931,
+      "portion": "teaspoon tsp ground",
+      "items": [
+        "pepper",
+        "black pepper",
+        "ground black pepper",
+        "ground pepper",
+        "white pepper",
+        "cracked black pepper"
+      ]
+    },
+    {
+      "fdcId": 171320,
+      "portion": "teaspoon",
+      "items": ["cinnamon", "ground cinnamon"]
+    },
+    {
+      "fdcId": 170923,
+      "portion": "teaspoon",
+      "items": ["cumin", "ground cumin", "cumin seed", "cumin seeds"]
+    },
+    {
+      "fdcId": 171329,
+      "portion": "teaspoon",
+      "items": ["paprika", "smoked paprika", "sweet paprika"]
+    },
+    {
+      "fdcId": 172231,
+      "portion": "teaspoon",
+      "items": ["turmeric", "ground turmeric"]
+    },
+    {
+      "fdcId": 171319,
+      "portion": "teaspoon",
+      "items": [
+        "chilli powder",
+        "chili powder",
+        "cayenne pepper",
+        "chilli flakes",
+        "chili flakes",
+        "red pepper flakes"
+      ]
+    },
+    { "fdcId": 171325, "portion": "teaspoon", "items": ["garlic powder"] },
+    { "fdcId": 171327, "portion": "teaspoon", "items": ["onion powder"] },
+    {
+      "fdcId": 171328,
+      "portion": "teaspoon tsp leaves",
+      "items": [
+        "oregano",
+        "dried oregano",
+        "dried thyme",
+        "dried basil",
+        "dried herbs",
+        "mixed herbs",
+        "italian seasoning",
+        "dried mixed herbs"
+      ]
+    },
+    { "fdcId": 170926, "portion": "teaspoon", "items": ["ground ginger"] },
+    {
+      "fdcId": 171326,
+      "portion": "teaspoon",
+      "items": [
+        "nutmeg",
+        "ground nutmeg",
+        "allspice",
+        "ground allspice",
+        "mixed spice",
+        "ground cloves"
+      ]
+    },
+    {
+      "fdcId": 170924,
+      "portion": "teaspoon",
+      "items": ["curry powder", "garam masala"]
+    },
+    {
+      "fdcId": 170922,
+      "portion": "teaspoon",
+      "items": ["ground coriander", "coriander seed", "coriander seeds"]
+    },
+    {
+      "fdcId": 173471,
+      "liquid": true,
+      "items": ["vanilla extract", "vanilla essence", "vanilla"]
+    },
+    {
+      "fdcId": 168586,
+      "items": [
+        "desiccated coconut",
+        "shredded coconut",
+        "coconut",
+        "flaked coconut",
+        "coconut flakes"
+      ]
+    },
+    {
+      "fdcId": 170173,
+      "liquid": true,
+      "items": ["coconut milk", "coconut cream"]
+    },
+    { "fdcId": 168592, "items": ["almonds", "almond", "whole almonds"] },
+    { "fdcId": 170568, "items": ["blanched almonds"] },
+    {
+      "fdcId": 170187,
+      "portion": "ground",
+      "items": [
+        "almond meal",
+        "ground almonds",
+        "ground almond",
+        "almond flour",
+        "hazelnut meal"
+      ]
+    },
+    {
+      "fdcId": 170187,
+      "portion": "chopped",
+      "items": [
+        "walnuts",
+        "walnut",
+        "chopped walnuts",
+        "hazelnuts",
+        "nuts",
+        "chopped nuts",
+        "mixed nuts"
+      ]
+    },
+    {
+      "fdcId": 170182,
+      "portion": "chopped",
+      "items": ["pecans", "pecan", "chopped pecans"]
+    },
+    { "fdcId": 172430, "items": ["peanuts", "peanut", "roasted peanuts"] },
+    {
+      "fdcId": 169421,
+      "items": ["cashews", "cashew", "cashew nuts", "raw cashews"]
+    },
+    { "fdcId": 170178, "items": ["macadamias", "macadamia", "macadamia nuts"] },
+    { "fdcId": 170184, "items": ["pistachios", "pistachio", "pistachio nuts"] },
+    { "fdcId": 170591, "items": ["pine nuts", "pine nut", "pinenuts"] },
+    {
+      "fdcId": 172470,
+      "items": [
+        "peanut butter",
+        "smooth peanut butter",
+        "crunchy peanut butter",
+        "tahini",
+        "nut butter"
+      ]
+    },
+    { "fdcId": 168588, "portion": "1 cup", "items": ["almond butter"] },
+    {
+      "fdcId": 170150,
+      "items": [
+        "sesame seeds",
+        "sesame seed",
+        "white sesame seeds",
+        "black sesame seeds",
+        "chia seeds",
+        "chia seed",
+        "poppy seeds"
+      ]
+    },
+    {
+      "fdcId": 169414,
+      "items": ["flaxseed", "flaxseeds", "linseed", "linseeds"]
+    },
+    {
+      "fdcId": 170562,
+      "portion": "1 cup cup",
+      "items": ["sunflower seeds", "sunflower seed"]
+    },
+    {
+      "fdcId": 170556,
+      "items": ["pumpkin seeds", "pumpkin seed", "pepitas", "pepita"]
+    },
+    {
+      "fdcId": 174928,
+      "items": [
+        "breadcrumbs",
+        "dried breadcrumbs",
+        "dry breadcrumbs",
+        "panko breadcrumbs",
+        "panko"
+      ]
+    },
+    {
+      "fdcId": 168165,
+      "portion": "packed",
+      "items": [
+        "raisins",
+        "raisin",
+        "sultanas",
+        "sultana",
+        "currants",
+        "currant",
+        "dried fruit",
+        "mixed dried fruit"
+      ]
+    },
+    { "fdcId": 171723, "items": ["dried cranberries", "craisins"] },
+    { "fdcId": 173941, "items": ["dried apricots", "dried apricot"] },
+    {
+      "fdcId": 171726,
+      "items": ["dates", "date", "medjool dates", "pitted dates"]
+    },
+    {
+      "fdcId": 170016,
+      "items": ["peas", "frozen peas", "green peas", "baby peas"]
+    },
+    {
+      "fdcId": 168398,
+      "items": [
+        "corn",
+        "corn kernels",
+        "frozen corn",
+        "sweetcorn",
+        "sweet corn",
+        "corn kernel"
+      ]
+    },
+    {
+      "fdcId": 170000,
+      "portion": "chopped",
+      "items": [
+        "onion",
+        "brown onion",
+        "white onion",
+        "yellow onion",
+        "red onion",
+        "chopped onion"
+      ]
+    },
+    {
+      "fdcId": 170457,
+      "portion": "chopped",
+      "items": ["tomato", "chopped tomato"]
+    },
+    {
+      "fdcId": 170457,
+      "portion": "cherry",
+      "items": ["cherry tomato", "grape tomato"]
+    },
+    {
+      "fdcId": 170459,
+      "portion": "1 cup",
+      "items": ["tomato paste", "tomato concentrate"]
+    },
+    {
+      "fdcId": 170460,
+      "items": [
+        "passata",
+        "tomato puree",
+        "tomato purée",
+        "tomato sauce",
+        "crushed tomato",
+        "diced tomato"
+      ]
+    },
+    { "fdcId": 168556, "items": ["ketchup", "catsup"] },
+    {
+      "fdcId": 172473,
+      "liquid": true,
+      "portion": "1 cup",
+      "items": [
+        "soy sauce",
+        "light soy sauce",
+        "dark soy sauce",
+        "tamari",
+        "kecap manis",
+        "oyster sauce",
+        "hoisin sauce"
+      ]
+    },
+    { "fdcId": 174531, "liquid": true, "items": ["fish sauce"] },
+    {
+      "fdcId": 171610,
+      "liquid": true,
+      "portion": "1 cup",
+      "items": ["worcestershire sauce", "worcestershire"]
+    },
+    {
+      "fdcId": 172237,
+      "liquid": true,
+      "items": [
+        "vinegar",
+        "white vinegar",
+        "apple cider vinegar",
+        "cider vinegar",
+        "white wine vinegar",
+        "red wine vinegar",
+        "rice vinegar",
+        "rice wine vinegar",
+        "balsamic vinegar",
+        "malt vinegar",
+        "wine",
+        "white wine",
+        "red wine",
+        "dry white wine",
+        "shaoxing wine",
+        "mirin",
+        "beer"
+      ]
+    },
+    {
+      "fdcId": 167747,
+      "liquid": true,
+      "items": ["lemon juice", "fresh lemon juice"]
+    },
+    {
+      "fdcId": 168156,
+      "liquid": true,
+      "items": ["lime juice", "fresh lime juice"]
+    },
+    {
+      "fdcId": 169098,
+      "liquid": true,
+      "items": ["orange juice", "fresh orange juice", "juice"]
+    },
+    {
+      "fdcId": 171009,
+      "items": [
+        "mayonnaise",
+        "mayo",
+        "whole egg mayonnaise",
+        "kewpie mayonnaise",
+        "aioli"
+      ]
+    },
+    {
+      "fdcId": 172234,
+      "items": [
+        "mustard",
+        "dijon mustard",
+        "wholegrain mustard",
+        "yellow mustard",
+        "american mustard",
+        "seeded mustard"
+      ]
+    },
+    {
+      "fdcId": 168462,
+      "items": [
+        "spinach",
+        "baby spinach",
+        "spinach leaf",
+        "rocket",
+        "arugula",
+        "mixed salad leaf",
+        "salad leaf",
+        "kale"
+      ]
+    },
+    {
+      "fdcId": 170416,
+      "items": [
+        "parsley",
+        "flat-leaf parsley",
+        "flat leaf parsley",
+        "italian parsley",
+        "curly parsley",
+        "fresh parsley"
+      ]
+    },
+    {
+      "fdcId": 169997,
+      "items": [
+        "coriander",
+        "fresh coriander",
+        "coriander leaf",
+        "cilantro",
+        "fresh cilantro"
+      ]
+    },
+    {
+      "fdcId": 172232,
+      "items": [
+        "basil",
+        "fresh basil",
+        "basil leaf",
+        "mint",
+        "mint leaf",
+        "fresh mint"
+      ]
+    },
+    {
+      "fdcId": 171711,
+      "items": [
+        "blueberry",
+        "frozen blueberry",
+        "berry",
+        "mixed berry",
+        "frozen berry",
+        "raspberry"
+      ]
+    },
+    { "fdcId": 167762, "portion": "sliced", "items": ["strawberry"] },
+    {
+      "fdcId": 173944,
+      "portion": "mashed",
+      "items": ["mashed banana", "banana", "ripe banana", "overripe banana"]
+    },
+    {
+      "fdcId": 169251,
+      "portion": "1 cup cup pieces",
+      "items": ["mushroom", "button mushroom", "sliced mushroom"]
+    },
+    {
+      "fdcId": 170393,
+      "portion": "grated",
+      "items": ["carrot", "grated carrot"]
+    },
+    { "fdcId": 169988, "items": ["celery", "chopped celery"] },
+    {
+      "fdcId": 169975,
+      "portion": "shredded",
+      "items": [
+        "cabbage",
+        "shredded cabbage",
+        "red cabbage",
+        "white cabbage",
+        "savoy cabbage",
+        "wombok",
+        "napa cabbage",
+        "coleslaw"
+      ]
+    },
+    { "fdcId": 167573, "items": ["ice cream", "vanilla ice cream"] }
+  ]
+}
