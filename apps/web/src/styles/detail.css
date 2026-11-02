@@ -986,7 +986,10 @@
     animation: none;
   }
 }
+/* Above the row's full-size checkbox, so tapping the amount opens the menu. */
 .ingredient-unit {
+  position: relative;
+  z-index: 1;
   display: inline;
   margin-right: 4px;
   padding: 0;
