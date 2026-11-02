@@ -1,5 +1,9 @@
 import type { IngredientLine } from "@prep-sheet/db/ingredients";
 import type { RecipeContent } from "@prep-sheet/db/recipe-content";
+import {
+  defaultMeasurePreferences,
+  type MeasurePreferences,
+} from "@prep-sheet/db/units";
 import { Check, Minus, Plus } from "lucide-react";
 import { useState } from "react";
 import { Segmented } from "@/components/pantry";
@@ -56,6 +60,7 @@ export function ServingsStepper({
 export function RecipeBody({
   content,
   ingredientData,
+  measures = defaultMeasurePreferences,
   progressKey,
   servings: controlledServings,
   onServingsChange,
@@ -63,6 +68,8 @@ export function RecipeBody({
 }: {
   content: RecipeContent;
   ingredientData?: IngredientLine[] | null;
+  /** The user's units; metric with Australian cups when not given. */
+  measures?: MeasurePreferences;
   progressKey?: string;
   servings?: number | null;
   onServingsChange?: (servings: number) => void;
@@ -167,6 +174,7 @@ export function RecipeBody({
                     ingredient={parsed[index] ?? null}
                     unit={unitFor(key)}
                     onUnitChange={(unit) => setUnit(key, unit)}
+                    preferences={measures}
                   />
                 </label>
               </li>

@@ -27,6 +27,7 @@ import {
   toneForTags,
   undoToast,
 } from "@/components/pantry";
+import { useMeasurePreferences } from "@/components/preferences";
 import { authClient } from "@/lib/auth-client";
 import { useTRPC, useTRPCClient } from "@/utils/trpc";
 import { CookMode } from "./cook-mode";
@@ -201,6 +202,7 @@ export function RecipeDetail({ id }: { id: string }) {
 
   const data = recipe.data;
   const content = data?.content;
+  const measures = useMeasurePreferences();
   const base = parseServings(content?.servings);
   const factor = base && servings ? servings / base : 1;
   const keys = content ? ingredientKeys(content.ingredients) : [];
@@ -442,6 +444,7 @@ export function RecipeDetail({ id }: { id: string }) {
                   key={`body-${userId}-${id}`}
                   content={content}
                   ingredientData={data.ingredientData}
+                  measures={measures}
                   servings={servings ?? base}
                   onServingsChange={setServings}
                   progress={progress}
@@ -499,6 +502,7 @@ export function RecipeDetail({ id }: { id: string }) {
                   recipeId={id}
                   content={content}
                   ingredientData={data.ingredientData}
+                  measures={measures}
                   factor={factor}
                   ingredientChecks={{
                     keys,

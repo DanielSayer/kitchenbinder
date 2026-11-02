@@ -1,6 +1,10 @@
 import type { IngredientLine } from "@prep-sheet/db/ingredients";
 import type { RecipeContent } from "@prep-sheet/db/recipe-content";
 import {
+  defaultMeasurePreferences,
+  type MeasurePreferences,
+} from "@prep-sheet/db/units";
+import {
   ArrowLeft,
   Check,
   ListChecks,
@@ -93,6 +97,7 @@ export function CookMode({
   recipeId,
   content,
   ingredientData,
+  measures = defaultMeasurePreferences,
   factor = 1,
   ingredientChecks,
   onClose,
@@ -101,6 +106,8 @@ export function CookMode({
   recipeId: string;
   content: RecipeContent;
   ingredientData?: IngredientLine[] | null;
+  /** The user's units; metric with Australian cups when not given. */
+  measures?: MeasurePreferences;
   /** Servings scale for the ingredients sheet. */
   factor?: number;
   ingredientChecks?: {
@@ -366,6 +373,7 @@ export function CookMode({
                 ingredient={parsed[ingredientIndex] ?? null}
                 unit={unitFor(unitKey)}
                 onUnitChange={(unit) => setUnit(unitKey, unit)}
+                preferences={measures}
               />
             );
             return (
