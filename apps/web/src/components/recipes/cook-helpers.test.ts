@@ -140,6 +140,33 @@ describe("displayQuantity", () => {
     expect(shown.quantity).toBe("1 cup");
     expect(shown.choices?.map((choice) => choice.unit)).toEqual(["cup", "g"]);
   });
+  it("uses the recipe's own conversion instead of adding a second", () => {
+    expect(show("2 cups (500 ml) beef stock", metric)).toMatchObject({
+      quantity: "500 ml",
+      rest: " beef stock",
+    });
+    expect(show("3/4 cup (185 ml) orange juice", metric).quantity).toBe(
+      "185 ml",
+    );
+    expect(show("2 cups (500 ml) beef stock", metric, 2).quantity).toBe("1 l");
+    const beef = "3 lb / 1.5 kg beef chuck";
+    const ingredient = {
+      quantity: 3,
+      quantityMax: null,
+      unit: "lb",
+      size: null,
+      item: "beef chuck",
+      detail: null,
+      optional: false,
+    } as const;
+    expect(displayQuantity(beef, 1, ingredient, metric)).toMatchObject({
+      quantity: "1.5 kg",
+      rest: " beef chuck",
+    });
+    expect(displayQuantity(beef, 1, ingredient, imperial).quantity).toBe(
+      "3 lb",
+    );
+  });
   it("leaves lines whose text doesn't match the parsed amount", () => {
     expect(
       displayQuantity("1 cup flour", 1, parseIngredient("2 cups flour"), metric)

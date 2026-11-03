@@ -127,6 +127,10 @@ export function unitChoices(
 
 const metricUnits = new Set<Unit>(["mg", "g", "kg", "ml", "l"]);
 
+export function isMetricUnit(unit: Unit) {
+  return metricUnits.has(unit);
+}
+
 /** Best metric unit for grams or millilitres. */
 function metricUnit(base: number, dimension: "mass" | "volume"): Unit {
   if (dimension === "mass") return base >= 1000 ? "kg" : "g";
