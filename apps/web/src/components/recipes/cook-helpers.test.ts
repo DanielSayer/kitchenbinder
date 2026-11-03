@@ -167,6 +167,22 @@ describe("displayQuantity", () => {
       "3 lb",
     );
   });
+  it("shows only the amount in the user's system when both are written", () => {
+    const tomatoes = "14 oz / 400g can crushed tomatoes";
+    expect(show(tomatoes, metric)).toMatchObject({
+      quantity: "400 g",
+      rest: " can crushed tomatoes",
+    });
+    expect(show(tomatoes, imperial)).toMatchObject({
+      quantity: "14 oz",
+      rest: " can crushed tomatoes",
+    });
+    expect(show("2 cups (500 ml) beef stock", imperial)).toMatchObject({
+      quantity: "2 cups",
+      rest: " beef stock",
+    });
+    expect(show("1 tbsp (20 ml) oil", metric).quantity).toBe("1 tbsp");
+  });
   it("leaves lines whose text doesn't match the parsed amount", () => {
     expect(
       displayQuantity("1 cup flour", 1, parseIngredient("2 cups flour"), metric)
