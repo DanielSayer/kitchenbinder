@@ -13,6 +13,7 @@ import {
   dimensionOf,
   formatAmount,
   formatQuantity,
+  isMetricUnit,
   type MeasurePreferences,
   preferredAmount,
   unitChoices,
@@ -64,6 +65,28 @@ export function splitQuantity(line: string, factor = 1) {
   return { quantity: scaled.slice(0, end).trim(), rest: scaled.slice(end) };
 }
 
+// The recipe's own conversion after the amount: "2 cups (500 ml)", "3 lb / 1.5 kg".
+const alternatePattern = new RegExp(
+  String.raw`^\s*(\(|\/)\s*(${quantityPattern})(?:\s*(?:-|–|to)\s*(${quantityPattern}))?\s*`,
+);
+
+function readAlternate(text: string) {
+  const match = text.match(alternatePattern);
+  if (!match?.[2]) return null;
+  const read = readUnit(text.slice(match[0].length));
+  if (!read || dimensionOf(read.unit) === "count") return null;
+  let length = match[0].length + read.written;
+  if (match[1] === "(") {
+    const close = text.slice(length).match(/^\s*\)/);
+    if (!close) return null;
+    length += close[0].length;
+  }
+  const quantity = parseQuantity(match[2]);
+  const quantityMax = match[3] ? parseQuantity(match[3]) : null;
+  if (!Number.isFinite(quantity) || Number.isNaN(quantityMax)) return null;
+  return { quantity, quantityMax, unit: read.unit, length };
+}
+
 type Displayed = {
   quantity: string;
   rest: string;
@@ -110,10 +133,34 @@ export function displayQuantity(
     unit: parsed.unit,
   };
   const item = parsed.item;
-  const shown = (target: Unit) =>
-    convertAmount(amount, target, item, preferences.measureStandard);
-  const converted =
-    (unit && shown(unit)) ?? preferredAmount(amount, item, preferences);
+  const written = after.slice(space.length + read.written);
+  const alternate = readAlternate(written);
+  const shown = (target: Unit) => {
+    // Prefer the recipe's own figure in the target's system over ours.
+    if (
+      alternate &&
+      target !== parsed.unit &&
+      isMetricUnit(alternate.unit) === isMetricUnit(target)
+    ) {
+      const value = convertAmount(
+        {
+          quantity: alternate.quantity * factor,
+          quantityMax:
+            alternate.quantityMax === null
+              ? null
+              : alternate.quantityMax * factor,
+          unit: alternate.unit,
+        },
+        target,
+        item,
+        preferences.measureStandard,
+      );
+      if (value) return value;
+    }
+    return convertAmount(amount, target, item, preferences.measureStandard);
+  };
+  const preferred = preferredAmount(amount, item, preferences);
+  const converted = (unit && shown(unit)) ?? shown(preferred.unit) ?? preferred;
   const choices = unitChoices(
     amount,
     item,
@@ -126,7 +173,7 @@ export function displayQuantity(
     return { ...plain, choices, unit: parsed.unit };
   return {
     quantity: `${match[1] ?? ""}${formatAmount(converted)}`.trim(),
-    rest: after.slice(space.length + read.written),
+    rest: written.slice(alternate?.length ?? 0),
     choices,
     unit: converted.unit,
   };
