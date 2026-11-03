@@ -1,7 +1,9 @@
 // Servings scaling for free-text ingredient lines: only the leading quantity
 // ("1 1/2", "½", "2-3", "400g") is scaled; everything else is left as written.
+// A package size ("400 g tin") is kept and the number of packages scaled.
 
 import {
+  containers,
   type Ingredient,
   parseQuantity,
   quantityPattern,
@@ -17,6 +19,7 @@ import {
   type MeasurePreferences,
   preferredAmount,
   unitChoices,
+  unitLabel,
 } from "@prep-sheet/db/units";
 
 export { formatQuantity };
@@ -39,8 +42,28 @@ export function formatServings(servings: string | null | undefined) {
   return /^\d+(\s*[-–]\s*\d+)?$/.test(text) ? `Serves ${text}` : text;
 }
 
+/** "400 g tin tomatoes" as "2 x 400 g tins tomatoes", or null for other lines. */
+function scalePackages(line: string, factor: number) {
+  const match = line.match(leading);
+  if (!match?.[2] || match[4] !== undefined) return null;
+  const [all, space = ""] = match;
+  const gap = line.slice(all.length).match(/^\s*/)?.[0] ?? "";
+  const read = readUnit(line.slice(all.length + gap.length));
+  if (!read || dimensionOf(read.unit) === "count") return null;
+  let end = all.length + gap.length + read.written;
+  end += readAlternate(line.slice(end))?.length ?? 0;
+  const before = line.slice(end).match(/^\s*/)?.[0] ?? "";
+  const container = readUnit(line.slice(end + before.length));
+  if (!container || !containers.has(container.unit)) return null;
+  const label = unitLabel(container.unit, factor > 1 ? 2 : 1);
+  const after = line.slice(end + before.length + container.written);
+  return `${space}${formatQuantity(factor)} x ${line.slice(space.length, end)}${before}${label}${after}`;
+}
+
 export function scaleIngredient(line: string, factor: number) {
   if (factor === 1) return line;
+  const packages = scalePackages(line, factor);
+  if (packages) return packages;
   const match = line.match(leading);
   if (!match) return line;
   const [all, space = "", first = "", joiner, second] = match;
@@ -101,15 +124,13 @@ const spoons = new Set<Unit>(["tsp", "tbsp"]);
  * A line written in both systems ("14 oz / 400 g can") with only the amount
  * in the user's system, as written. Null for other lines.
  */
-function writtenInSystem(
-  line: string,
-  factor: number,
-  preferences: MeasurePreferences,
-): Displayed | null {
-  const plain = splitQuantity(line, factor);
-  const match = plain.quantity.match(leading);
-  const read = match && readUnit(plain.quantity.slice(match[0].length).trim());
-  const alternate = readAlternate(plain.rest);
+function writtenInSystem(line: string, preferences: MeasurePreferences) {
+  const match = line.match(leading);
+  if (!match?.[2]) return null;
+  const gap = line.slice(match[0].length).match(/^\s*/)?.[0] ?? "";
+  const read = readUnit(line.slice(match[0].length + gap.length));
+  const end = match[0].length + gap.length + (read?.written ?? 0);
+  const alternate = readAlternate(line.slice(end));
   if (
     !read ||
     !alternate ||
@@ -119,19 +140,10 @@ function writtenInSystem(
     isMetricUnit(read.unit) === isMetricUnit(alternate.unit)
   )
     return null;
-  const rest = plain.rest.slice(alternate.length);
-  const metric = preferences.unitSystem === "metric";
-  if (isMetricUnit(read.unit) === metric)
-    return { quantity: plain.quantity, rest };
-  return {
-    quantity: formatAmount({
-      quantity: alternate.quantity * factor,
-      quantityMax:
-        alternate.quantityMax === null ? null : alternate.quantityMax * factor,
-      unit: alternate.unit,
-    }),
-    rest,
-  };
+  const rest = line.slice(end + alternate.length);
+  if (isMetricUnit(read.unit) === (preferences.unitSystem === "metric"))
+    return line.slice(0, end) + rest;
+  return `${match[1] ?? ""}${formatAmount(alternate)}${rest}`;
 }
 
 /**
@@ -146,8 +158,10 @@ export function displayQuantity(
   preferences: MeasurePreferences,
   unit?: Unit | null,
 ): Displayed {
-  const plain =
-    writtenInSystem(line, factor, preferences) ?? splitQuantity(line, factor);
+  const plain = splitQuantity(
+    writtenInSystem(line, preferences) ?? line,
+    factor,
+  );
   const parsed = ingredient;
   if (
     !parsed?.quantity ||

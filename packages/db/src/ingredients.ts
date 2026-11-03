@@ -221,7 +221,8 @@ const amountPattern = new RegExp(
   String.raw`^(?:(${quantityPattern})|(${Object.keys(words).join("|")}|an?)(?![a-z]))(?:\s*(?:-|–|to)\s*(${quantityPattern})(?![\d/]))?\s*`,
   "i",
 );
-const containers = new Set<Unit>([
+/** Units that hold a package size, as in "400 g tin". */
+export const containers = new Set<Unit>([
   "tin",
   "can",
   "jar",
