@@ -95,6 +95,45 @@ type Displayed = {
   unit?: Unit;
 };
 
+const spoons = new Set<Unit>(["tsp", "tbsp"]);
+
+/**
+ * A line written in both systems ("14 oz / 400 g can") with only the amount
+ * in the user's system, as written. Null for other lines.
+ */
+function writtenInSystem(
+  line: string,
+  factor: number,
+  preferences: MeasurePreferences,
+): Displayed | null {
+  const plain = splitQuantity(line, factor);
+  const match = plain.quantity.match(leading);
+  const read = match && readUnit(plain.quantity.slice(match[0].length).trim());
+  const alternate = readAlternate(plain.rest);
+  if (
+    !read ||
+    !alternate ||
+    dimensionOf(read.unit) === "count" ||
+    spoons.has(read.unit) ||
+    spoons.has(alternate.unit) ||
+    isMetricUnit(read.unit) === isMetricUnit(alternate.unit)
+  )
+    return null;
+  const rest = plain.rest.slice(alternate.length);
+  const metric = preferences.unitSystem === "metric";
+  if (isMetricUnit(read.unit) === metric)
+    return { quantity: plain.quantity, rest };
+  return {
+    quantity: formatAmount({
+      quantity: alternate.quantity * factor,
+      quantityMax:
+        alternate.quantityMax === null ? null : alternate.quantityMax * factor,
+      unit: alternate.unit,
+    }),
+    rest,
+  };
+}
+
 /**
  * Like splitQuantity, but shows the amount in the user's units, or in
  * `unit` when they picked one. Only lines whose written amount matches the
@@ -107,7 +146,8 @@ export function displayQuantity(
   preferences: MeasurePreferences,
   unit?: Unit | null,
 ): Displayed {
-  const plain = splitQuantity(line, factor);
+  const plain =
+    writtenInSystem(line, factor, preferences) ?? splitQuantity(line, factor);
   const parsed = ingredient;
   if (
     !parsed?.quantity ||
@@ -170,7 +210,12 @@ export function displayQuantity(
     return value ? [{ unit: choice, label: formatAmount(value) }] : [];
   });
   if (converted.unit === parsed.unit)
-    return { ...plain, choices, unit: parsed.unit };
+    return {
+      ...splitQuantity(line, factor),
+      rest: written.slice(alternate?.length ?? 0),
+      choices,
+      unit: parsed.unit,
+    };
   return {
     quantity: `${match[1] ?? ""}${formatAmount(converted)}`.trim(),
     rest: written.slice(alternate?.length ?? 0),
@@ -186,7 +231,8 @@ export function displayLine(
   preferences: MeasurePreferences,
 ) {
   const shown = displayQuantity(line, 1, ingredient, preferences);
-  return shown.quantity === splitQuantity(line).quantity
+  const plain = splitQuantity(line);
+  return shown.quantity === plain.quantity && shown.rest === plain.rest
     ? line
     : `${shown.quantity}${shown.rest}`;
 }
