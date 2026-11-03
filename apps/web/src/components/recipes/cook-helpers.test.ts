@@ -23,7 +23,9 @@ describe("scaleIngredient", () => {
     expect(scaleIngredient("½ lemon", 3)).toBe("1½ lemon");
     expect(scaleIngredient("2-3 garlic cloves", 2)).toBe("4-6 garlic cloves");
     expect(scaleIngredient("1 tsp paprika", 1.5)).toBe("1½ tsp paprika");
-    expect(scaleIngredient("400g tin tomatoes", 2)).toBe("800g tin tomatoes");
+    expect(scaleIngredient("400g tin tomatoes", 2)).toBe(
+      "2 x 400g tins tomatoes",
+    );
   });
   it("leaves lines without a leading quantity alone", () => {
     expect(scaleIngredient("Salt, to taste", 2)).toBe("Salt, to taste");
@@ -182,6 +184,10 @@ describe("displayQuantity", () => {
       rest: " beef stock",
     });
     expect(show("1 tbsp (20 ml) oil", metric).quantity).toBe("1 tbsp");
+    expect(show(tomatoes, metric, 2)).toMatchObject({
+      quantity: "2",
+      rest: " x 400 g cans crushed tomatoes",
+    });
   });
   it("leaves lines whose text doesn't match the parsed amount", () => {
     expect(
