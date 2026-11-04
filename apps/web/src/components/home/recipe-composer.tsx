@@ -15,12 +15,11 @@ import {
   readImportQueue,
   writeImportQueue,
 } from "./import-draft";
-import { downscalePhoto, maxPhotos, photoBlobs } from "./import-photos";
+import { photoBlobs } from "./import-photos";
 import { ImportQueueCard } from "./import-queue-card";
 import { ImportReadySheet } from "./import-ready";
 import { ManualRecipe } from "./manual-recipe";
-
-type PickedPhoto = { id: string; blob: Blob; url: string };
+import { useImportPhotos } from "./use-import-photos";
 
 export function RecipeComposer() {
   const { data: session, isPending } = authClient.useSession();
@@ -43,11 +42,16 @@ function AccountComposer({
   const [manual, setManual] = useState(false);
   const [input, setInput] = useState("");
   const [queue, setQueue] = useState<PendingImport[]>([]);
-  const [photos, setPhotos] = useState<PickedPhoto[]>([]);
-  const [photoBusy, setPhotoBusy] = useState(false);
-  const [photoError, setPhotoError] = useState<string>();
-  const photosRef = useRef(photos);
-  photosRef.current = photos;
+  const {
+    photos,
+    photoBusy,
+    photoError,
+    showPhotos,
+    addPhotos,
+    removePhoto,
+    getPhotoBlobs,
+    clearPhotoError,
+  } = useImportPhotos();
   const queueRef = useRef(queue);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [loaded, setLoaded] = useState(false);
@@ -62,8 +66,10 @@ function AccountComposer({
     id: string;
     recipeId: string;
     recipeIds: string[];
+    open: boolean;
   } | null>(null);
-  const [readyOpen, setReadyOpen] = useState(false);
+  const setReadyOpen = (open: boolean) =>
+    setReady((current) => current && { ...current, open });
   const deleteRecipe = useMutation(
     trpc.recipes.delete.mutationOptions({
       onSettled: () =>
@@ -95,53 +101,6 @@ function AccountComposer({
     setLoaded(true);
   }, [key, userId]);
 
-  // Thumbnails hold object URLs; release them when the composer goes.
-  useEffect(
-    () => () => {
-      for (const photo of photosRef.current) URL.revokeObjectURL(photo.url);
-    },
-    [],
-  );
-
-  function showPhotos(next: Blob[]) {
-    for (const photo of photosRef.current) URL.revokeObjectURL(photo.url);
-    setPhotos(
-      next.map((blob) => ({
-        id: crypto.randomUUID(),
-        blob,
-        url: URL.createObjectURL(blob),
-      })),
-    );
-  }
-
-  async function addPhotos(files: File[]) {
-    const room = maxPhotos - photosRef.current.length;
-    setPhotoError(
-      files.length > room ? `Add up to ${maxPhotos} photos.` : undefined,
-    );
-    if (room <= 0) return;
-    setPhotoBusy(true);
-    const added: Blob[] = [];
-    try {
-      for (const file of files.slice(0, room))
-        added.push(await downscalePhoto(file));
-    } catch (error) {
-      setPhotoError(
-        error instanceof Error ? error.message : "Couldn't add this photo.",
-      );
-    } finally {
-      showPhotos([...photosRef.current.map((photo) => photo.blob), ...added]);
-      setPhotoBusy(false);
-    }
-  }
-
-  function removePhoto(id: string) {
-    const photo = photosRef.current.find((item) => item.id === id);
-    if (photo) URL.revokeObjectURL(photo.url);
-    setPhotos(photosRef.current.filter((item) => item.id !== id));
-    setPhotoError(undefined);
-  }
-
   function change(value: string) {
     setInput(value);
     try {
@@ -169,7 +128,7 @@ function AccountComposer({
   function submit(event: SubmitEvent) {
     event.preventDefault();
     const value = inputRef.current?.value.trim() ?? input.trim();
-    const picked = photosRef.current.map((photo) => photo.blob);
+    const picked = getPhotoBlobs();
     if (!loaded || sessionPending || photoBusy) return;
     if (value.length < 3 && !picked.length) return;
     if (!userId) {
@@ -190,7 +149,7 @@ function AccountComposer({
       return;
     }
     showPhotos([]);
-    setPhotoError(undefined);
+    clearPhotoError();
     change("");
     // Clear immediately as well, so a second submit cannot reuse the old text.
     if (inputRef.current) inputRef.current.value = "";
@@ -202,7 +161,7 @@ function AccountComposer({
       restoreInput !== undefined &&
       (!inputRef.current ||
         inputRef.current.value.trim() ||
-        photosRef.current.length)
+        getPhotoBlobs().length)
     )
       return false;
     const original = queueRef.current.find((item) => item.id === id);
@@ -333,8 +292,7 @@ function AccountComposer({
                   canEdit={!manual && !input.trim() && !photos.length}
                   onRemove={remove}
                   onOpen={(recipeId, recipeIds) => {
-                    setReady({ id: item.id, recipeId, recipeIds });
-                    setReadyOpen(true);
+                    setReady({ id: item.id, recipeId, recipeIds, open: true });
                   }}
                 />
               </li>
@@ -350,7 +308,7 @@ function AccountComposer({
         <ImportReadySheet
           key={ready.recipeId}
           recipeId={ready.recipeId}
-          open={readyOpen}
+          open={ready.open}
           onOpenChange={setReadyOpen}
           onSaved={finishReady}
           onDiscard={discardReady}

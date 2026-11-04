@@ -182,13 +182,14 @@ function showComposer() {
     queries: { retry: false },
     mutations: { retry: false },
   });
-  return render(
+  const view = render(
     createElement(
       QueryClientProvider,
       { client },
       createElement(RecipeComposer),
     ),
   );
+  return { ...view, client };
 }
 
 it("stops showing progress after a quota rejection and keeps the draft", async () => {
@@ -793,4 +794,51 @@ it("lets phones pick any image or take a photo with one input", () => {
   expect(
     screen.getByLabelText("Add recipe photos").getAttribute("accept"),
   ).toBe("image/*");
+});
+
+it("keeps destination choices on an unchanged refetch and resets them when saved placement changes", async () => {
+  const recipeId = "00000000-0000-4000-8000-000000000004";
+  createImport.mockResolvedValue({
+    kind: "saved",
+    id: "00000000-0000-4000-8000-000000000001",
+    recipeId,
+    title: "Lemon pasta",
+  });
+  readStatus.mockImplementation(() => createImport.mock.results[0]?.value);
+  const { client } = showComposer();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Open Lemon pasta" }),
+  );
+  const sheet = await screen.findByRole("dialog", {
+    name: "Ready to save: Lemon pasta",
+  });
+  const collection = await within(sheet).findByRole("button", {
+    name: "Weeknights",
+  });
+  fireEvent.click(collection);
+  expect(collection.getAttribute("aria-pressed")).toBe("true");
+  await act(() => client.invalidateQueries({ queryKey: ["recipe", recipeId] }));
+  expect(collection.getAttribute("aria-pressed")).toBe("true");
+  act(() => {
+    client.setQueryData<{
+      collectionIds: string[];
+      sharedWith: { id: string; personal: boolean }[];
+    }>(
+      ["recipe", recipeId],
+      (old) =>
+        old && {
+          ...old,
+          collectionIds: [],
+          sharedWith: [{ id: family, personal: false }],
+        },
+    );
+  });
+  await waitFor(() =>
+    expect(collection.getAttribute("aria-pressed")).toBe("false"),
+  );
+  expect(
+    within(sheet)
+      .getByRole("button", { name: "Family recipes" })
+      .getAttribute("aria-pressed"),
+  ).toBe("true");
 });
