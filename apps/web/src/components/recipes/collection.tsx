@@ -1,54 +1,38 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { getRouteApi, Link } from "@tanstack/react-router";
+import { getRouteApi } from "@tanstack/react-router";
 import {
   ArrowUpDown,
   CheckCheck,
-  FolderMinus,
-  FolderPlus,
   Heart,
-  History,
   LayoutGrid,
   List,
   MoreHorizontal,
   Search,
   SlidersHorizontal,
-  Tags as TagsIcon,
-  X,
 } from "lucide-react";
-import {
-  type CSSProperties,
-  type PointerEvent as ReactPointerEvent,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AddToCollectionSheet } from "@/components/collections/add-to-collection-sheet";
 import { CollectionSheet } from "@/components/collections/collection-sheet";
 import {
   type CollectionSummary,
-  collectionTone,
-  householdTone,
   useCollections,
   useInvalidateCollections,
 } from "@/components/collections/use-collections";
 import { useDeleteCollection } from "@/components/collections/use-delete-collection";
 import { ErrorNotice, LoadingState } from "@/components/feedback";
-import { HouseholdSwitch } from "@/components/households/household-switch";
 import {
-  BinderTabs,
   Chip,
   ChipRow,
   LargeTitle,
   Segmented,
-  toneColor,
   undoToast,
 } from "@/components/pantry";
 import { useTRPC, useTRPCClient } from "@/utils/trpc";
-import { AddRecipesButton } from "../shopping/add-recipes";
 import { BulkTagDialog } from "./bulk-tag-dialog";
 import { EmptyCollection } from "./empty-collection";
+import { CollectionMeta, LibraryBinder } from "./library-collections";
+import { LibrarySelectionBar } from "./library-selection-bar";
 import {
   FilterSheet,
   type LibraryFilters,
@@ -58,12 +42,12 @@ import {
 } from "./library-sheets";
 import { RecipePagination, recipePageSize, useRecipePage } from "./pagination";
 import { RecipeCard, type RecipeView } from "./recipe-card";
+import { useLibrarySearch } from "./use-library-search";
+import { useLibrarySelection } from "./use-library-selection";
 import { useLibraryView } from "./use-library-view";
 
 const collectionRoute = getRouteApi("/_auth/recipes/");
 const allTab = "all";
-const longPressMs = 500;
-const searchDebounceMs = 250;
 const plural = (count: number) =>
   `${count} ${count === 1 ? "recipe" : "recipes"}`;
 
@@ -75,45 +59,6 @@ const viewOptions = [
     icon: <LayoutGrid size={18} aria-hidden="true" />,
   },
 ] as const;
-
-type Selection = { key: string; active: boolean; ids: string[] };
-
-function CollectionMeta({ collection }: { collection?: CollectionSummary }) {
-  if (!collection)
-    return (
-      <span className="library-meta">
-        Yours and shared with you
-        <Link to="/recipes/imports" className="library-meta-link">
-          <History size={14} aria-hidden="true" /> Recent imports
-        </Link>
-      </span>
-    );
-  const shared = collection.sharedWith;
-  return (
-    <span className="library-meta">
-      {shared.length ? (
-        <span className="library-dots" aria-hidden="true">
-          {shared.slice(0, 4).map((household) => (
-            <i
-              key={household.id}
-              style={
-                {
-                  "--hc": toneColor(householdTone(household.color)),
-                } as CSSProperties
-              }
-            />
-          ))}
-        </span>
-      ) : null}
-      {collection.isOwner
-        ? shared.length
-          ? `Shared with ${shared.map((item) => item.name).join(", ")}`
-          : "Just you"
-        : `From ${collection.owner.name}`}
-      {collection.description ? ` · ${collection.description}` : ""}
-    </span>
-  );
-}
 
 export function Collection() {
   const trpc = useTRPC();
@@ -202,28 +147,15 @@ export function Collection() {
     "filters" | "sort" | "create" | "manage" | "add" | "tag" | null
   >(null);
   const [managed, setManaged] = useState<CollectionSummary>();
-  // Choosing recipes for an empty collection: selection on All with a target.
-  const [pickTarget, setPickTarget] = useState<CollectionSummary | null>(null);
-  const selectionKey = collectionId ?? allTab;
-  const [selection, setSelection] = useState<Selection>({
-    key: selectionKey,
-    active: false,
-    ids: [],
-  });
-  // Changing collections clears the bulk selection.
-  if (selection.key !== selectionKey) {
-    const picking = !!pickTarget && selectionKey === allTab;
-    setSelection({ key: selectionKey, active: picking, ids: [] });
-    if (!picking && pickTarget) setPickTarget(null);
-  }
-  const selectedIds = selection.ids;
-  const bulkMode = selection.active;
-  const setSelectedIds = (update: (current: string[]) => string[]) =>
-    setSelection((old) => ({ ...old, ids: update(old.ids) }));
-  const endSelection = () => {
-    setSelection((old) => ({ ...old, active: false, ids: [] }));
-    setPickTarget(null);
-  };
+  const {
+    selectedIds,
+    bulkMode,
+    pickTarget,
+    startSelection,
+    endSelection,
+    toggleSelected,
+    chooseForCollection,
+  } = useLibrarySelection(collectionId ?? allTab);
 
   const recipes = query.isError ? [] : (query.data?.items ?? []);
   const total = query.data?.total ?? 0;
@@ -237,22 +169,9 @@ export function Collection() {
       resetScroll: false,
     });
 
-  // The input stays instant; the URL (and so the query) follows a typing pause.
-  const [searchText, setSearchText] = useState(search);
-  const searchTimer = useRef<number | undefined>(undefined);
-  const typeSearch = (text: string) => {
-    setSearchText(text);
-    window.clearTimeout(searchTimer.current);
-    searchTimer.current = window.setTimeout(() => {
-      searchTimer.current = undefined;
-      updateFilters({ q: text || undefined });
-    }, searchDebounceMs);
-  };
-  useEffect(() => () => window.clearTimeout(searchTimer.current), []);
-  // Clearing filters or navigating back changes the URL out from under the input.
-  useEffect(() => {
-    if (searchTimer.current === undefined) setSearchText(search);
-  }, [search]);
+  const { searchText, typeSearch } = useLibrarySearch(search, (text) =>
+    updateFilters({ q: text || undefined }),
+  );
   const clearFilters = () =>
     updateFilters({
       favourites: undefined,
@@ -281,38 +200,6 @@ export function Collection() {
       : [...selectedTags, id];
     updateFilters({ tags: next.length ? next.join(",") : undefined });
   };
-
-  // Long-press (or right-click) a collection tab to manage it.
-  const pressTimer = useRef<number | undefined>(undefined);
-  const pressStart = useRef<{ x: number; y: number } | null>(null);
-  const tabCollection = (target: EventTarget, root: HTMLElement) => {
-    const tab = (target as Element).closest?.('[role="tab"]');
-    if (!tab) return undefined;
-    const index = [...root.querySelectorAll('[role="tab"]')].indexOf(tab);
-    return index > 0 ? visibleCollections[index - 1] : undefined;
-  };
-  const cancelPress = () => {
-    window.clearTimeout(pressTimer.current);
-    pressStart.current = null;
-  };
-  const onBinderPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const collection = tabCollection(event.target, event.currentTarget);
-    if (!collection) return;
-    pressStart.current = { x: event.clientX, y: event.clientY };
-    pressTimer.current = window.setTimeout(() => {
-      pressStart.current = null;
-      openManage(collection);
-    }, longPressMs);
-  };
-  const onBinderPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const start = pressStart.current;
-    if (
-      start &&
-      Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10
-    )
-      cancelPress();
-  };
-  useEffect(() => () => window.clearTimeout(pressTimer.current), []);
 
   const removeFromCollection = (collection: CollectionSummary) => {
     const ids = [...selectedIds];
@@ -343,14 +230,6 @@ export function Collection() {
       .catch((error: Error) => toast.error(error.message));
   };
 
-  const tabs = [
-    { id: allTab, label: "All" },
-    ...visibleCollections.map((item) => ({
-      id: item.id,
-      label: item.name,
-      tone: collectionTone(item),
-    })),
-  ];
   const quickTags = (tags.data ?? []).slice(0, 6);
 
   return (
@@ -359,33 +238,13 @@ export function Collection() {
       className="library-page"
       data-selecting={bulkMode || undefined}
     >
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: long-press shortcut; the ••• button is the accessible path */}
-      <div
-        className="library-binder"
-        onPointerDown={onBinderPointerDown}
-        onPointerMove={onBinderPointerMove}
-        onPointerUp={cancelPress}
-        onPointerCancel={cancelPress}
-        onPointerLeave={cancelPress}
-        onContextMenu={(event) => {
-          const collection = tabCollection(event.target, event.currentTarget);
-          if (!collection) return;
-          event.preventDefault();
-          cancelPress();
-          openManage(collection);
-        }}
-      >
-        <BinderTabs
-          tabs={tabs}
-          value={collectionId ?? allTab}
-          onChange={selectCollection}
-          label="Collections"
-          onAdd={() => setSheet("create")}
-          addLabel="New collection"
-          panelId="library-panel"
-        />
-        <HouseholdSwitch className="library-household" />
-      </div>
+      <LibraryBinder
+        collections={visibleCollections}
+        collectionId={collectionId}
+        onManage={openManage}
+        onSelect={selectCollection}
+        onCreate={() => setSheet("create")}
+      />
 
       <div id="library-panel" className="library-content page-width">
         <LargeTitle
@@ -499,9 +358,7 @@ export function Collection() {
               <button
                 type="button"
                 className="library-text-button"
-                onClick={() =>
-                  setSelection((old) => ({ ...old, active: true }))
-                }
+                onClick={startSelection}
               >
                 <CheckCheck size={14} aria-hidden="true" /> Select
               </button>
@@ -545,7 +402,7 @@ export function Collection() {
               onChooseRecipes={
                 current?.isOwner
                   ? () => {
-                      setPickTarget(current);
+                      chooseForCollection(current);
                       selectCollection(allTab);
                     }
                   : undefined
@@ -576,12 +433,7 @@ export function Collection() {
                     bulkMode
                       ? {
                           selected: selectedIds.includes(recipe.id),
-                          toggle: () =>
-                            setSelectedIds((ids) =>
-                              ids.includes(recipe.id)
-                                ? ids.filter((id) => id !== recipe.id)
-                                : [...ids, recipe.id],
-                            ),
+                          toggle: () => toggleSelected(recipe.id),
                         }
                       : undefined
                   }
@@ -595,70 +447,17 @@ export function Collection() {
         </LoadingState>
 
         {bulkMode && (
-          <section className="library-bulk-bar" aria-label="Selected recipes">
-            <div className="library-bulk-summary">
-              <strong aria-live="polite">{selectedIds.length} selected</strong>
-              <button
-                type="button"
-                className="icon-button"
-                aria-label="Cancel recipe selection"
-                onClick={endSelection}
-              >
-                <X size={20} aria-hidden="true" />
-              </button>
-            </div>
-            {selectedIds.length > 100 && (
-              <p role="status">Choose up to 100 recipes.</p>
-            )}
-            <div className="library-bulk-actions">
-              {pickTarget ? (
-                <button
-                  type="button"
-                  className="button button-primary"
-                  disabled={selectedIds.length === 0}
-                  onClick={() => addToTarget(pickTarget)}
-                >
-                  <FolderPlus size={18} aria-hidden="true" /> Add to{" "}
-                  {pickTarget.name}
-                </button>
-              ) : (
-                <>
-                  <AddRecipesButton recipeIds={selectedIds} compact />
-                  <button
-                    type="button"
-                    className="button button-small button-outline"
-                    disabled={selectedIds.length === 0}
-                    onClick={() => setSheet("add")}
-                  >
-                    <FolderPlus size={17} aria-hidden="true" /> Add to
-                    collection
-                  </button>
-                  {current?.isOwner ? (
-                    <button
-                      type="button"
-                      className="button button-small button-outline"
-                      disabled={selectedIds.length === 0}
-                      onClick={() => removeFromCollection(current)}
-                    >
-                      <FolderMinus size={17} aria-hidden="true" /> Remove
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="button button-small button-outline"
-                    disabled={
-                      selectedIds.length === 0 ||
-                      selectedIds.length > 100 ||
-                      !tags.data?.length
-                    }
-                    onClick={() => setSheet("tag")}
-                  >
-                    <TagsIcon size={17} aria-hidden="true" /> Tag
-                  </button>
-                </>
-              )}
-            </div>
-          </section>
+          <LibrarySelectionBar
+            selectedIds={selectedIds}
+            pickTarget={pickTarget}
+            current={current}
+            hasTags={!!tags.data?.length}
+            onCancel={endSelection}
+            onAddToTarget={addToTarget}
+            onAddToCollection={() => setSheet("add")}
+            onRemove={() => current && removeFromCollection(current)}
+            onTag={() => setSheet("tag")}
+          />
         )}
       </div>
 
