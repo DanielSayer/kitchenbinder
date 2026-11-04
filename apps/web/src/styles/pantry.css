@@ -92,7 +92,12 @@ body:has(.pantry-sheet-root) {
   box-shadow: var(--e3);
   padding: 0 16px
     calc(max(20px, env(safe-area-inset-bottom)) + var(--sheet-bleed));
-  transform: translateY(var(--drawer-swipe-movement-y, 0px));
+  transform: translateY(
+    calc(
+      var(--drawer-snap-point-offset, 0px) +
+      var(--drawer-swipe-movement-y, 0px)
+    )
+  );
   transition: transform var(--t-sheet) var(--spring);
   will-change: transform;
   outline: none;
@@ -115,7 +120,12 @@ body:has(.pantry-sheet-root) {
 }
 /* Parent sheets recede behind a nested one. */
 .pantry-sheet[data-nested-drawer-open] {
-  transform: translateY(var(--drawer-swipe-movement-y, 0px))
+  transform: translateY(
+      calc(
+        var(--drawer-snap-point-offset, 0px) +
+        var(--drawer-swipe-movement-y, 0px)
+      )
+    )
     scale(calc(1 - var(--nested-drawers, 0) * 0.04));
   transform-origin: 50% 0;
 }
@@ -193,11 +203,33 @@ body:has(.pantry-sheet-root) {
   margin: 0 -16px;
   padding: 0 16px 4px;
 }
+/* At half height the sheet bottom is off screen; lift the footer by the snap
+   offset so its actions stay pinned to the visible bottom edge. */
 .pantry-sheet-footer {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding-top: 12px;
+  margin: 0 -16px;
+  padding: 12px 16px 0;
+  background: var(--card);
+  transform: translateY(calc(var(--drawer-snap-point-offset, 0px) * -1));
+  transition: transform var(--t-sheet) var(--spring);
+}
+/* Fill the gap between the lifted footer and the sheet's bottom padding. */
+.pantry-sheet-footer::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: calc(var(--drawer-snap-point-offset, 0px) + 40px);
+  background: inherit;
+  pointer-events: none;
+}
+.pantry-sheet[data-swiping] .pantry-sheet-footer {
+  transition-duration: 0ms;
 }
 
 @media (min-width: 700px) {
@@ -271,6 +303,13 @@ body:has(.pantry-sheet-root) {
   .pantry-sheet-body {
     margin: 0 -20px;
     padding: 0 20px 4px;
+  }
+  .pantry-sheet-footer {
+    margin: 0 -20px;
+    padding: 12px 20px 0;
+  }
+  .pantry-sheet-footer::after {
+    display: none;
   }
 }
 

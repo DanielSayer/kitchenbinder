@@ -1,9 +1,11 @@
 import { Drawer } from "@base-ui/react/drawer";
 import { X } from "lucide-react";
 import {
+  type FocusEvent,
   type ReactNode,
   type RefObject,
   useRef,
+  useState,
   useSyncExternalStore,
 } from "react";
 
@@ -27,6 +29,32 @@ export type SheetProps = {
 
 /** Keep in sync with the 700px breakpoint in pantry.css. */
 const DESKTOP_QUERY = "(min-width: 700px)";
+
+/** Mobile stops: half height, then full. Short sheets collapse to one. */
+const SNAP_POINTS: Drawer.Root.SnapPoint[] = [0.5, 1];
+const HALF = 0.5;
+const FULL = 1;
+
+const nonTextInputTypes = new Set([
+  "button",
+  "checkbox",
+  "color",
+  "file",
+  "image",
+  "radio",
+  "range",
+  "reset",
+  "submit",
+]);
+
+/** Fields that raise the soft keyboard. */
+function isTextEntry(element: EventTarget) {
+  if (element instanceof HTMLTextAreaElement) return true;
+  if (element instanceof HTMLInputElement) {
+    return !nonTextInputTypes.has(element.type);
+  }
+  return element instanceof HTMLElement && element.isContentEditable;
+}
 
 const focusableSelector = [
   "a[href]",
@@ -63,7 +91,8 @@ function useDesktop() {
 /**
  * Bottom sheet on mobile, dialog (or side panel) on desktop. Built on Base UI
  * Drawer: swipe to dismiss with velocity, focus trap, scroll lock, Esc /
- * backdrop close, focus restore and software keyboard handling.
+ * backdrop close, focus restore and software keyboard handling. On mobile,
+ * tall sheets open at half height and drag up to full.
  */
 export function Sheet({
   open,
@@ -81,12 +110,25 @@ export function Sheet({
   const popup = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
   const side = isDesktop && desktop === "side";
+  const [snapPoint, setSnapPoint] = useState<Drawer.Root.SnapPoint | null>(
+    HALF,
+  );
+  // Typing at half height hides the field behind the keyboard: go full.
+  const expandForTyping = (event: FocusEvent) => {
+    if (isTextEntry(event.target)) setSnapPoint(FULL);
+  };
 
   return (
     <Drawer.Root
       open={open}
       onOpenChange={(next) => onOpenChange(next)}
       swipeDirection={side ? "right" : "down"}
+      snapPoints={isDesktop ? undefined : SNAP_POINTS}
+      snapPoint={isDesktop ? undefined : snapPoint}
+      onSnapPointChange={setSnapPoint}
+      onOpenChangeComplete={(isOpen) => {
+        if (!isOpen) setSnapPoint(HALF);
+      }}
     >
       <Drawer.VirtualKeyboardProvider>
         <Drawer.Portal>
@@ -95,6 +137,7 @@ export function Sheet({
             <Drawer.Popup
               ref={popup}
               className={["pantry-sheet", className].filter(Boolean).join(" ")}
+              onFocus={expandForTyping}
               initialFocus={() =>
                 initialFocus?.current ??
                 firstFocusable(body.current) ??
