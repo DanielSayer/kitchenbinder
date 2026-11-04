@@ -33,7 +33,7 @@ Added regression tests cover:
 - Library selection resets and preserving a destination while choosing recipes on All.
 - Search debouncing, URL navigation, and cancelling pending searches on unmount.
 - Keeping destination choices across unchanged refetches and resetting them after saved placement changes.
-- Releasing thumbnail URLs on removal, replacement, and unmount, and retaining picked photos when another file fails preparation.
+- Releasing thumbnail URLs on removal, replacement, and unmount, retaining picked photos when another file fails preparation, and ignoring conversions that settle after unmount without starting the next file or creating new thumbnail URLs.
 
 Rendered interactions are exercised in jsdom. No manual browser or device verification is claimed.
 

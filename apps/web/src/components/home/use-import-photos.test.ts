@@ -2,12 +2,50 @@
 
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import * as importPhotos from "./import-photos";
 import { useImportPhotos } from "./use-import-photos";
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
+
+it.each(["resolve", "reject"])(
+  "stops preparing thumbnails when conversion %s after unmount",
+  async (outcome) => {
+    let finish = (_blob: Blob) => {};
+    let fail = (_error: Error) => {};
+    const conversion = new Promise<Blob>((resolve, reject) => {
+      finish = resolve;
+      fail = reject;
+    });
+    const prepare = vi
+      .spyOn(importPhotos, "downscalePhoto")
+      .mockReturnValue(conversion);
+    const create = vi.fn(() => "blob:existing");
+    const revoke = vi.fn();
+    vi.stubGlobal("URL", { createObjectURL: create, revokeObjectURL: revoke });
+    const { result, unmount } = renderHook(useImportPhotos);
+    act(() => result.current.showPhotos([new Blob(["existing"])]));
+    let pending: Promise<void> | undefined;
+    act(() => {
+      pending = result.current.addPhotos([
+        new File(["a"], "a.jpg", { type: "image/jpeg" }),
+        new File(["b"], "b.jpg", { type: "image/jpeg" }),
+      ]);
+    });
+    unmount();
+    await act(async () => {
+      if (outcome === "resolve") finish(new Blob(["prepared"]));
+      else fail(new Error("Conversion failed"));
+      await pending;
+    });
+    expect(prepare).toHaveBeenCalledOnce();
+    expect(create).toHaveBeenCalledOnce();
+    expect(revoke).toHaveBeenCalledExactlyOnceWith("blob:existing");
+  },
+);
 
 it("releases removed, replaced, and unmounted thumbnail URLs", () => {
   const create = vi

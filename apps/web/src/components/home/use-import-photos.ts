@@ -43,13 +43,16 @@ export function useImportPhotos() {
   });
   const photosRef = useRef(state.photos);
   photosRef.current = state.photos;
+  const lifetime = useRef<AbortController | null>(null);
   // Thumbnails hold object URLs; release them when the composer goes.
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    const controller = new AbortController();
+    lifetime.current = controller;
+    return () => {
+      controller.abort();
       for (const photo of photosRef.current) URL.revokeObjectURL(photo.url);
-    },
-    [],
-  );
+    };
+  }, []);
 
   function showPhotos(next: Blob[]) {
     for (const photo of photosRef.current) URL.revokeObjectURL(photo.url);
@@ -64,6 +67,8 @@ export function useImportPhotos() {
   }
 
   async function addPhotos(files: File[]) {
+    const signal = lifetime.current?.signal;
+    if (!signal || signal.aborted) return;
     const room = maxPhotos - photosRef.current.length;
     dispatch({
       type: "error",
@@ -73,17 +78,25 @@ export function useImportPhotos() {
     dispatch({ type: "busy", busy: true });
     const added: Blob[] = [];
     try {
-      for (const file of files.slice(0, room))
-        added.push(await downscalePhoto(file));
+      for (const file of files.slice(0, room)) {
+        const blob = await downscalePhoto(file);
+        if (signal.aborted) return;
+        added.push(blob);
+      }
     } catch (error) {
-      dispatch({
-        type: "error",
-        error:
-          error instanceof Error ? error.message : "Couldn't add this photo.",
-      });
+      if (!signal.aborted)
+        dispatch({
+          type: "error",
+          error:
+            error instanceof Error ? error.message : "Couldn't add this photo.",
+        });
     } finally {
-      showPhotos([...photosRef.current.map((photo) => photo.blob), ...added]);
-      dispatch({ type: "busy", busy: false });
+      // A conversion already in progress can finish after cleanup. Do not
+      // create new URLs or start another conversion for a closed composer.
+      if (!signal.aborted) {
+        showPhotos([...photosRef.current.map((photo) => photo.blob), ...added]);
+        dispatch({ type: "busy", busy: false });
+      }
     }
   }
 
