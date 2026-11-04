@@ -5,7 +5,7 @@ This branch starts at `742ba3b` on `origin/master`. It preserves product behavio
 ## State ownership
 
 - Recipe editing uses `recipe-editor-state.ts` for draft fields, their baseline and revision, save status, and conflict-review transitions. `recipe-conflict-review.tsx` owns the review presentation and focus. Storage access and save orchestration remain outside the reducer.
-- Meal editing uses `meal-editor-state.ts` for search/note changes, servings defaults, review choices, and draft rebasing. `use-meal-draft.ts` owns persistence and save orchestration, including fetching the current plan before merging. Details and conflict review have separate components.
+- Meal editing uses `meal-editor-state.ts` for recipe selection, search/note changes, servings defaults, review choices, and draft rebasing. `use-meal-draft.ts` owns servings parsing and new/edit defaults, persistence, and save orchestration, including fetching the current plan before merging. Details and conflict review have separate components.
 - Library selection uses `use-library-selection.ts` for selected IDs, selection mode, collection scope, and the target collection. Leaving a collection clears the selection. Picking recipes on All retains the destination until selection ends or another collection is opened.
 - Shopping queries and optimistic mutations live in `use-shopping-items.ts`. The query cache remains the source of server data. Quick-entry text and its retry ID update together. Swipe rows, item editing, and pure grocery grouping have separate files.
 - Photo preparation and thumbnail URL ownership live in `use-import-photos.ts`, using ordinary local state for photos, preparation status, and errors. The composer still owns queue admission and durable request IDs. The ready recipe and its sheet-open state update together.
@@ -29,6 +29,7 @@ Existing recipe and meal tests cover restored drafts, baseline revisions, indepe
 
 Added regression tests cover:
 
+- Meal recipe changes, preserving custom portions and the original baseline, new and duplicate meal defaults, and opening details for ambiguous servings.
 - Quick-entry retry IDs and preserving newer typing after success or failure.
 - Library selection resets and preserving a destination while choosing recipes on All.
 - Search debouncing, URL navigation, and cancelling pending searches on unmount.
@@ -44,3 +45,9 @@ Validation completed:
 - `pnpm check`: all 440 checked files passed.
 - `pnpm --filter web build`: client and server production artifacts built successfully.
 - `git diff --check origin/master`: passed.
+
+Review follow-up verification:
+
+- Photo hook and composer suites: 23 tests passed, including conversions that resolve or reject after unmount. Deferred conversion is mocked; no device conversion check is claimed.
+- Planner suites: 17 tests passed, including recipe selection, servings defaults, and draft-baseline preservation.
+- `pnpm --filter web check-types`, `pnpm check`, the web production build, and `git diff --check` passed.

@@ -72,6 +72,7 @@ export function MealEditor({
     pending,
     saveError,
     set,
+    selectRecipe,
     setReview,
     chooseConflict,
     setDetailsOpen,
@@ -115,19 +116,8 @@ export function MealEditor({
   const selectedRecipe = selected.data;
   useEffect(() => {
     if (!selectedRecipe) return;
-    const match = selectedRecipe.servings
-      ?.trim()
-      .match(/^(?:serves?\s*)?(\d+)(?:\s*(?:servings?|people|portions?))?$/i);
-    const servings = match?.[1];
-    if (servings) initialiseServings(servings, editing);
-    else setDetailsOpen(true);
-  }, [selectedRecipe, initialiseServings, setDetailsOpen, editing]);
-  const pickRecipe = (id: string) =>
-    set({
-      kind: "recipe",
-      recipeId: id,
-      baseServings: draft.recipeId === id ? draft.baseServings : "",
-    });
+    initialiseServings(selectedRecipe.servings);
+  }, [selectedRecipe, initialiseServings]);
   const shown = recipes.isError ? [] : (recipes.data?.items ?? []);
   const sources =
     planner.data?.meals.filter(
@@ -346,7 +336,7 @@ export function MealEditor({
                   selectedId={
                     draft.kind === "recipe" ? draft.recipeId : undefined
                   }
-                  onPick={pickRecipe}
+                  onPick={selectRecipe}
                 />
               )}
               <div
@@ -431,7 +421,7 @@ export function MealEditor({
                         checked={
                           draft.kind === "recipe" && draft.recipeId === entry.id
                         }
-                        onChange={() => pickRecipe(entry.id)}
+                        onChange={() => selectRecipe(entry.id)}
                       />
                       <RecipeCover
                         id={entry.id}
