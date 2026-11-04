@@ -1,19 +1,15 @@
+import { Drawer } from "@base-ui/react/drawer";
 import { X } from "lucide-react";
 import {
-  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
-  type PointerEvent as ReactPointerEvent,
   type RefObject,
-  useEffect,
-  useId,
   useRef,
-  useState,
+  useSyncExternalStore,
 } from "react";
-import { createPortal } from "react-dom";
 
 export type SheetProps = {
   open: boolean;
-  /** Called with false on Esc, backdrop tap, drag-down or the close button. */
+  /** Called with false on Esc, backdrop tap, swipe-down or the close button. */
   onOpenChange: (open: boolean) => void;
   /** Accessible title. Shown as the sheet heading unless `hideTitle`. */
   title: ReactNode;
@@ -24,10 +20,13 @@ export type SheetProps = {
   footer?: ReactNode;
   /** Layout from 700px up. Mobile is always a bottom sheet. */
   desktop?: "center" | "side";
-  /** Element to focus on open. Defaults to the first focusable element. */
+  /** Element to focus on open. Defaults to the first focusable body element. */
   initialFocus?: RefObject<HTMLElement | null>;
   className?: string;
 };
+
+/** Keep in sync with the 700px breakpoint in pantry.css. */
+const DESKTOP_QUERY = "(min-width: 700px)";
 
 const focusableSelector = [
   "a[href]",
@@ -38,35 +37,33 @@ const focusableSelector = [
   "[tabindex]:not([tabindex='-1'])",
 ].join(",");
 
-/** Keep in sync with --t-sheet; exit animation duration. */
-export const SHEET_EXIT_MS = 260;
-const DRAG_CLOSE_PX = 90;
-/** Visual viewport this much shorter than the layout viewport = keyboard up. */
-const KEYBOARD_PX = 120;
-const FOCUS_GAP_PX = 16;
-
-/** Scroll `body` (only) so the focused field clears its edges. */
-function revealFocused(body: HTMLElement) {
-  const field = document.activeElement;
-  if (!(field instanceof HTMLElement) || !body.contains(field)) return;
-  const fieldBox = field.getBoundingClientRect();
-  const bodyBox = body.getBoundingClientRect();
-  if (fieldBox.bottom > bodyBox.bottom - FOCUS_GAP_PX) {
-    body.scrollTop += fieldBox.bottom - bodyBox.bottom + FOCUS_GAP_PX;
-  } else if (fieldBox.top < bodyBox.top + FOCUS_GAP_PX) {
-    body.scrollTop -= bodyBox.top - fieldBox.top + FOCUS_GAP_PX;
-  }
+function firstFocusable(root: HTMLElement | null) {
+  if (!root) return null;
+  return (
+    Array.from(root.querySelectorAll<HTMLElement>(focusableSelector)).find(
+      (element) => !element.closest("[hidden],[inert]"),
+    ) ?? null
+  );
 }
 
-function focusables(root: HTMLElement) {
-  return Array.from(
-    root.querySelectorAll<HTMLElement>(focusableSelector),
-  ).filter((element) => !element.closest("[hidden],[inert]"));
+function subscribeDesktop(onChange: () => void) {
+  const query = window.matchMedia?.(DESKTOP_QUERY);
+  query?.addEventListener("change", onChange);
+  return () => query?.removeEventListener("change", onChange);
+}
+
+function useDesktop() {
+  return useSyncExternalStore(
+    subscribeDesktop,
+    () => window.matchMedia?.(DESKTOP_QUERY).matches ?? false,
+    () => false,
+  );
 }
 
 /**
- * Bottom sheet on mobile, dialog (or side panel) on desktop.
- * Modal: traps focus, closes on Esc / backdrop / drag-down, restores focus.
+ * Bottom sheet on mobile, dialog (or side panel) on desktop. Built on Base UI
+ * Drawer: swipe to dismiss with velocity, focus trap, scroll lock, Esc /
+ * backdrop close, focus restore and software keyboard handling.
  */
 export function Sheet({
   open,
@@ -80,177 +77,59 @@ export function Sheet({
   initialFocus,
   className,
 }: SheetProps) {
-  const [mounted, setMounted] = useState(open);
-  const [dragY, setDragY] = useState(0);
-  const root = useRef<HTMLDivElement>(null);
-  const panel = useRef<HTMLDivElement>(null);
+  const isDesktop = useDesktop();
+  const popup = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
-  const dragStart = useRef<number | null>(null);
-  const restoreFocus = useRef<HTMLElement | null>(null);
-  const onOpenChangeRef = useRef(onOpenChange);
-  onOpenChangeRef.current = onOpenChange;
-  const titleId = useId();
-  const descriptionId = useId();
+  const side = isDesktop && desktop === "side";
 
-  useEffect(() => {
-    if (open) {
-      setMounted(true);
-      return;
-    }
-    const timer = window.setTimeout(() => setMounted(false), SHEET_EXIT_MS);
-    return () => window.clearTimeout(timer);
-  }, [open]);
-
-  // Focus in on open, restore on close; lock page scroll while open.
-  useEffect(() => {
-    if (!open || !mounted) return;
-    restoreFocus.current = document.activeElement as HTMLElement | null;
-    const root = panel.current;
-    if (root) {
-      const target =
-        initialFocus?.current ??
-        (body.current && focusables(body.current)[0]) ??
-        root;
-      target.focus({ preventScroll: true });
-    }
-    const { overflow } = document.body.style;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = overflow;
-      restoreFocus.current?.focus?.({ preventScroll: true });
-    };
-  }, [open, mounted, initialFocus]);
-
-  // Mobile keyboards shrink the visual viewport but not the layout viewport
-  // fixed elements use, so a bottom sheet ends up under the keyboard. Pin the
-  // root to the visual viewport and keep the focused field in view.
-  useEffect(() => {
-    const viewport = window.visualViewport;
-    const element = root.current;
-    if (!open || !mounted || !viewport || !element) return;
-    let frame = 0;
-    const sync = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        const keyboard =
-          document.documentElement.clientHeight - viewport.height > KEYBOARD_PX;
-        element.style.setProperty("--vv-top", `${viewport.offsetTop}px`);
-        element.style.setProperty("--vv-height", `${viewport.height}px`);
-        element.toggleAttribute("data-keyboard", keyboard);
-        if (keyboard && body.current) revealFocused(body.current);
-      });
-    };
-    sync();
-    viewport.addEventListener("resize", sync);
-    viewport.addEventListener("scroll", sync);
-    element.addEventListener("focusin", sync);
-    return () => {
-      cancelAnimationFrame(frame);
-      viewport.removeEventListener("resize", sync);
-      viewport.removeEventListener("scroll", sync);
-      element.removeEventListener("focusin", sync);
-    };
-  }, [open, mounted]);
-
-  if (!mounted || typeof document === "undefined") return null;
-
-  const close = () => onOpenChangeRef.current(false);
-
-  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Escape") {
-      event.stopPropagation();
-      close();
-      return;
-    }
-    if (event.key !== "Tab" || !panel.current) return;
-    const items = focusables(panel.current);
-    const first = items[0];
-    const last = items[items.length - 1];
-    if (!first || !last) {
-      event.preventDefault();
-      return;
-    }
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  };
-
-  const onDragStart = (event: ReactPointerEvent<HTMLDivElement>) => {
-    dragStart.current = event.clientY;
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-  };
-  const onDragMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (dragStart.current === null) return;
-    setDragY(Math.max(0, event.clientY - dragStart.current));
-  };
-  const onDragEnd = () => {
-    if (dragStart.current === null) return;
-    dragStart.current = null;
-    if (dragY > DRAG_CLOSE_PX) close();
-    setDragY(0);
-  };
-
-  return createPortal(
-    <div
-      ref={root}
-      className="pantry-sheet-root"
-      data-state={open ? "open" : "closed"}
-      data-desktop={desktop}
+  return (
+    <Drawer.Root
+      open={open}
+      onOpenChange={(next) => onOpenChange(next)}
+      swipeDirection={side ? "right" : "down"}
     >
-      <div className="pantry-sheet-scrim" aria-hidden="true" onClick={close} />
-      <div
-        ref={panel}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={description ? descriptionId : undefined}
-        tabIndex={-1}
-        className={["pantry-sheet", className].filter(Boolean).join(" ")}
-        style={
-          dragY
-            ? { transform: `translateY(${dragY}px)`, transition: "none" }
-            : undefined
-        }
-        onKeyDown={onKeyDown}
-      >
-        <div
-          className="pantry-sheet-handle"
-          aria-hidden="true"
-          onPointerDown={onDragStart}
-          onPointerMove={onDragMove}
-          onPointerUp={onDragEnd}
-          onPointerCancel={onDragEnd}
-        >
-          <span />
-        </div>
-        <div className="pantry-sheet-head" data-hidden={hideTitle || undefined}>
-          <h2 id={titleId} className="pantry-sheet-title">
-            {title}
-          </h2>
-          <button
-            type="button"
-            className="pantry-sheet-close"
-            aria-label="Close"
-            onClick={close}
-          >
-            <X size={20} aria-hidden="true" />
-          </button>
-          {description ? (
-            <p id={descriptionId} className="pantry-sheet-description">
-              {description}
-            </p>
-          ) : null}
-        </div>
-        <div ref={body} className="pantry-sheet-body">
-          {children}
-        </div>
-        {footer ? <div className="pantry-sheet-footer">{footer}</div> : null}
-      </div>
-    </div>,
-    document.body,
+      <Drawer.VirtualKeyboardProvider>
+        <Drawer.Portal>
+          <Drawer.Backdrop className="pantry-sheet-scrim" />
+          <Drawer.Viewport className="pantry-sheet-root" data-desktop={desktop}>
+            <Drawer.Popup
+              ref={popup}
+              className={["pantry-sheet", className].filter(Boolean).join(" ")}
+              initialFocus={() =>
+                initialFocus?.current ??
+                firstFocusable(body.current) ??
+                popup.current
+              }
+            >
+              <div className="pantry-sheet-handle" aria-hidden="true">
+                <span />
+              </div>
+              <div
+                className="pantry-sheet-head"
+                data-hidden={hideTitle || undefined}
+              >
+                <Drawer.Title className="pantry-sheet-title">
+                  {title}
+                </Drawer.Title>
+                <Drawer.Close className="pantry-sheet-close" aria-label="Close">
+                  <X size={20} aria-hidden="true" />
+                </Drawer.Close>
+                {description ? (
+                  <Drawer.Description className="pantry-sheet-description">
+                    {description}
+                  </Drawer.Description>
+                ) : null}
+              </div>
+              <Drawer.Content ref={body} className="pantry-sheet-body">
+                {children}
+              </Drawer.Content>
+              {footer ? (
+                <div className="pantry-sheet-footer">{footer}</div>
+              ) : null}
+            </Drawer.Popup>
+          </Drawer.Viewport>
+        </Drawer.Portal>
+      </Drawer.VirtualKeyboardProvider>
+    </Drawer.Root>
   );
 }

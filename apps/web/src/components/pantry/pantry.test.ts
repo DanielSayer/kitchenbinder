@@ -6,8 +6,9 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
-import { createElement, useState } from "react";
+import { createElement, useRef, useState } from "react";
 import { toast } from "sonner";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { initialsOf, isYouPath } from "../shell/destinations";
@@ -23,7 +24,6 @@ vi.mock("sonner", () => ({ toast: vi.fn(() => "toast-id") }));
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
-  document.body.style.overflow = "";
 });
 
 function renderSheet(onOpenChange = vi.fn()) {
@@ -39,12 +39,33 @@ function renderSheet(onOpenChange = vi.fn()) {
 }
 
 describe("Sheet", () => {
-  it("renders a labelled modal dialog and focuses its first control", () => {
+  it("renders a labelled dialog and focuses its first control", async () => {
     renderSheet();
-    const dialog = screen.getByRole("dialog", { name: "Save to" });
-    expect(dialog.getAttribute("aria-modal")).toBe("true");
-    expect(document.activeElement).toBe(screen.getByText("First"));
-    expect(document.body.style.overflow).toBe("hidden");
+    screen.getByRole("dialog", { name: "Save to" });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByText("First")),
+    );
+  });
+
+  it("focuses initialFocus when given", async () => {
+    function Harness() {
+      const target = useRef<HTMLButtonElement>(null);
+      return createElement(
+        Sheet,
+        {
+          open: true,
+          onOpenChange: vi.fn(),
+          title: "Pick",
+          initialFocus: target,
+        },
+        createElement("button", { type: "button" }, "First"),
+        createElement("button", { type: "button", ref: target }, "Target"),
+      );
+    }
+    render(createElement(Harness));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByText("Target")),
+    );
   });
 
   it("closes on Escape", () => {
@@ -60,50 +81,6 @@ describe("Sheet", () => {
     fireEvent.click(scrim);
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(onOpenChange).toHaveBeenCalledTimes(2);
-  });
-
-  it("traps Tab focus inside the sheet", () => {
-    renderSheet();
-    const dialog = screen.getByRole("dialog");
-    screen.getByText("Last").focus();
-    fireEvent.keyDown(dialog, { key: "Tab" });
-    expect(document.activeElement).toBe(
-      screen.getByRole("button", { name: "Close" }),
-    );
-    fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
-    expect(document.activeElement).toBe(screen.getByText("Last"));
-  });
-
-  it("pins to the visual viewport when the keyboard opens", () => {
-    vi.useFakeTimers();
-    const viewport = Object.assign(new EventTarget(), {
-      height: 800,
-      offsetTop: 0,
-    });
-    vi.stubGlobal("visualViewport", viewport);
-    vi.spyOn(document.documentElement, "clientHeight", "get").mockReturnValue(
-      800,
-    );
-    renderSheet();
-    const root = document.querySelector<HTMLElement>(".pantry-sheet-root");
-    if (!root) throw new Error("missing root");
-    act(() => {
-      vi.runAllTimers();
-    });
-    expect(root.hasAttribute("data-keyboard")).toBe(false);
-
-    viewport.height = 450;
-    viewport.offsetTop = 30;
-    act(() => {
-      viewport.dispatchEvent(new Event("resize"));
-      vi.runAllTimers();
-    });
-    expect(root.style.getPropertyValue("--vv-height")).toBe("450px");
-    expect(root.style.getPropertyValue("--vv-top")).toBe("30px");
-    expect(root.hasAttribute("data-keyboard")).toBe(true);
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
-    vi.useRealTimers();
   });
 
   it("unmounts after closing and restores focus", () => {

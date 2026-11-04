@@ -36,58 +36,88 @@
   gap: 8px;
 }
 
-/* Sheet */
-/* --vv-*: visual viewport, set by Sheet so it rides above the keyboard. */
-.pantry-sheet-root {
+/* Sheet: Base UI Drawer. Base UI sets data-starting/ending-style for enter
+   and exit, data-swiping while dragging, and --drawer-swipe-* while swiping.
+   --sheet-bleed extends the panel below the screen so overscroll never shows
+   a gap. --drawer-keyboard-inset lifts the sheet above the soft keyboard. */
+.pantry-sheet-scrim {
   position: fixed;
-  top: var(--vv-top, 0);
-  left: 0;
-  right: 0;
-  height: var(--vv-height, 100%);
+  inset: 0;
+  z-index: 60;
+  min-height: 100dvh;
+  background: var(--scrim);
+  opacity: calc(1 - var(--drawer-swipe-progress, 0));
+  transition: opacity var(--t-sheet) var(--spring);
+}
+.pantry-sheet-scrim[data-starting-style],
+.pantry-sheet-scrim[data-ending-style] {
+  opacity: 0;
+}
+.pantry-sheet-scrim[data-swiping] {
+  transition-duration: 0ms;
+}
+.pantry-sheet-scrim[data-ending-style] {
+  transition-duration: calc(var(--drawer-swipe-strength, 1) * 400ms);
+}
+.pantry-sheet-root {
+  --sheet-bleed: 3rem;
+  position: fixed;
+  inset: 0;
   z-index: 60;
   display: flex;
   align-items: flex-end;
   justify-content: center;
+  padding-bottom: var(--drawer-keyboard-inset, 0px);
   overscroll-behavior: none;
+  touch-action: none;
 }
 /* No rubber-band / pull-to-refresh on the page behind an open sheet. */
 html:has(.pantry-sheet-root),
 body:has(.pantry-sheet-root) {
   overscroll-behavior: none;
 }
-.pantry-sheet-scrim {
-  position: absolute;
-  inset: 0;
-  background: var(--scrim);
-  animation: pantry-fade-in var(--t-base) var(--ease);
-}
 .pantry-sheet {
   position: relative;
   width: 100%;
-  max-height: min(88dvh, calc(var(--vv-height, 100dvh) - 16px));
+  max-height: calc(
+    min(88dvh, 100dvh - var(--drawer-keyboard-inset, 0px) - 16px) +
+    var(--sheet-bleed)
+  );
+  margin-bottom: calc(var(--sheet-bleed) * -1);
   display: flex;
   flex-direction: column;
   background: var(--card);
   color: var(--ink);
   border-radius: var(--r-xl) var(--r-xl) 0 0;
   box-shadow: var(--e3);
-  padding: 0 16px max(20px, env(safe-area-inset-bottom));
+  padding: 0 16px
+    calc(max(20px, env(safe-area-inset-bottom)) + var(--sheet-bleed));
+  transform: translateY(var(--drawer-swipe-movement-y, 0px));
   transition: transform var(--t-sheet) var(--spring);
-  animation: pantry-sheet-up var(--t-sheet) var(--spring);
+  will-change: transform;
   outline: none;
+  touch-action: none;
+}
+.pantry-sheet[data-starting-style],
+.pantry-sheet[data-ending-style] {
+  transform: translateY(calc(100% - var(--sheet-bleed) + 2px));
+}
+.pantry-sheet[data-swiping] {
+  transition-duration: 0ms;
+  user-select: none;
+}
+.pantry-sheet[data-ending-style] {
+  transition-duration: calc(var(--drawer-swipe-strength, 1) * 400ms);
 }
 /* Keyboard covers the home indicator; no safe-area gap above it. */
-.pantry-sheet-root[data-keyboard] .pantry-sheet {
-  padding-bottom: 12px;
+.pantry-sheet-root[style*="--drawer-keyboard-inset"] .pantry-sheet {
+  padding-bottom: calc(12px + var(--sheet-bleed));
 }
-.pantry-sheet-root[data-state="closed"] .pantry-sheet {
-  animation: pantry-sheet-down 260ms var(--ease) forwards;
-}
-.pantry-sheet-root[data-state="closed"] .pantry-sheet-scrim {
-  animation: pantry-fade-out 260ms var(--ease) forwards;
-}
-.pantry-sheet-root[data-state="closed"] {
-  pointer-events: none;
+/* Parent sheets recede behind a nested one. */
+.pantry-sheet[data-nested-drawer-open] {
+  transform: translateY(var(--drawer-swipe-movement-y, 0px))
+    scale(calc(1 - var(--nested-drawers, 0) * 0.04));
+  transform-origin: 50% 0;
 }
 .pantry-sheet-handle {
   display: grid;
@@ -95,7 +125,6 @@ body:has(.pantry-sheet-root) {
   height: 24px;
   margin: 0 -16px;
   cursor: grab;
-  touch-action: none;
 }
 .pantry-sheet-handle span {
   width: 40px;
@@ -160,6 +189,7 @@ body:has(.pantry-sheet-root) {
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
+  touch-action: auto;
   margin: 0 -16px;
   padding: 0 16px 4px;
 }
@@ -172,21 +202,32 @@ body:has(.pantry-sheet-root) {
 
 @media (min-width: 700px) {
   .pantry-sheet-root {
+    --sheet-bleed: 0px;
     align-items: center;
     padding: 24px;
+    touch-action: auto;
   }
   .pantry-sheet {
     width: min(520px, 100%);
-    max-height: min(720px, 90dvh, calc(var(--vv-height, 100dvh) - 48px));
+    max-height: min(720px, 90dvh);
+    margin-bottom: 0;
     border-radius: var(--r-xl);
     box-shadow:
       var(--e2),
       0 30px 80px -20px rgba(60, 35, 20, 0.35);
-    padding: 20px 20px 20px;
-    animation: pantry-pop-in var(--t-base) var(--spring);
+    padding: 20px;
+    touch-action: auto;
+    transition:
+      transform var(--t-base) var(--spring),
+      opacity var(--t-base) var(--ease);
   }
-  .pantry-sheet-root[data-state="closed"] .pantry-sheet {
-    animation: pantry-pop-out 200ms var(--ease) forwards;
+  .pantry-sheet[data-starting-style],
+  .pantry-sheet[data-ending-style] {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  .pantry-sheet[data-ending-style] {
+    transition-duration: 200ms;
   }
   .pantry-sheet-root[data-desktop="side"] {
     justify-content: flex-end;
@@ -196,10 +237,19 @@ body:has(.pantry-sheet-root) {
   .pantry-sheet-root[data-desktop="side"] .pantry-sheet {
     width: min(440px, 100%);
     max-height: none;
-    animation: pantry-side-in var(--t-sheet) var(--spring);
+    opacity: 1;
+    transform: translateX(var(--drawer-swipe-movement-x, 0px));
+    transition: transform var(--t-sheet) var(--spring);
   }
-  .pantry-sheet-root[data-desktop="side"][data-state="closed"] .pantry-sheet {
-    animation: pantry-side-out 220ms var(--ease) forwards;
+  .pantry-sheet-root[data-desktop="side"] .pantry-sheet[data-starting-style],
+  .pantry-sheet-root[data-desktop="side"] .pantry-sheet[data-ending-style] {
+    transform: translateX(calc(100% + 12px));
+  }
+  .pantry-sheet-root[data-desktop="side"] .pantry-sheet[data-swiping] {
+    transition-duration: 0ms;
+  }
+  .pantry-sheet-root[data-desktop="side"] .pantry-sheet[data-ending-style] {
+    transition-duration: calc(var(--drawer-swipe-strength, 1) * 300ms);
   }
   .pantry-sheet-handle {
     display: none;
@@ -227,43 +277,6 @@ body:has(.pantry-sheet-root) {
 @keyframes pantry-fade-in {
   from {
     opacity: 0;
-  }
-}
-@keyframes pantry-fade-out {
-  to {
-    opacity: 0;
-  }
-}
-@keyframes pantry-sheet-up {
-  from {
-    transform: translateY(105%);
-  }
-}
-@keyframes pantry-sheet-down {
-  to {
-    transform: translateY(105%);
-  }
-}
-@keyframes pantry-pop-in {
-  from {
-    opacity: 0;
-    transform: translateY(12px) scale(0.97);
-  }
-}
-@keyframes pantry-pop-out {
-  to {
-    opacity: 0;
-    transform: translateY(8px) scale(0.98);
-  }
-}
-@keyframes pantry-side-in {
-  from {
-    transform: translateX(105%);
-  }
-}
-@keyframes pantry-side-out {
-  to {
-    transform: translateX(105%);
   }
 }
 
@@ -785,8 +798,6 @@ body:has(.pantry-sheet-root) {
 @media (prefers-reduced-motion: reduce) {
   .pantry-sheet,
   .pantry-sheet-scrim,
-  .pantry-sheet-root[data-state] .pantry-sheet,
-  .pantry-sheet-root[data-state] .pantry-sheet-scrim,
   .pantry-chip,
   .pantry-seg label,
   .pantry-divider,
