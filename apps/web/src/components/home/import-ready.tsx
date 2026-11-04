@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { useTRPC } from "@/utils/trpc";
 import { type Destination, useSavedMessage } from "./destination";
@@ -43,12 +43,19 @@ export function ImportReadySheet({
           .map((item) => item.id),
       }
     : null;
-  const [destination, setDestination] = useState<Destination | null>(null);
-  // Start from where the recipe already is, once per opened recipe.
   const initialKey = initial ? JSON.stringify(initial) : "";
-  useEffect(() => {
-    if (initialKey) setDestination(JSON.parse(initialKey) as Destination);
-  }, [initialKey]);
+  const [selection, setSelection] = useState({
+    source: initialKey,
+    destination: initial,
+  });
+  // Reset an override only when the saved destination changes. Refetching the
+  // same destination leaves the user's choices intact.
+  if (initial && selection.source !== initialKey) {
+    setSelection({ source: initialKey, destination: initial });
+  }
+  const destination = selection.destination;
+  const setDestination = (destination: Destination) =>
+    setSelection({ source: initialKey, destination });
 
   const share = useMutation(trpc.recipes.share.mutationOptions());
   const unshare = useMutation(trpc.recipes.unshare.mutationOptions());
