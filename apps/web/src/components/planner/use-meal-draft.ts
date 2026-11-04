@@ -82,14 +82,22 @@ export function useMealDraft({
   const [storageFailed, setStorageFailed] = useState(false);
   const set = (values: Partial<MealDraft>) =>
     dispatch({ type: "change", values });
+  const selectRecipe = (id: string) => dispatch({ type: "recipe", id });
   const setDetailsOpen = useCallback(
     (open: boolean) => dispatch({ type: "details", open }),
     [],
   );
   const initialiseServings = useCallback(
-    (servings: string, editing: boolean) =>
-      dispatch({ type: "servings", servings, editing }),
-    [],
+    (recipeServings: string | null | undefined) => {
+      const servings = recipeServings
+        ?.trim()
+        .match(
+          /^(?:serves?\s*)?(\d+)(?:\s*(?:servings?|people|portions?))?$/i,
+        )?.[1];
+      if (servings) dispatch({ type: "servings", servings, editing });
+      else dispatch({ type: "details", open: true });
+    },
+    [editing],
   );
   const setReview = (review: MealReview | null) =>
     dispatch({ type: "review", review });
@@ -237,6 +245,7 @@ export function useMealDraft({
     pending: save.isPending || busy,
     saveError: save.error?.message,
     set,
+    selectRecipe,
     setReview,
     chooseConflict,
     setDetailsOpen,

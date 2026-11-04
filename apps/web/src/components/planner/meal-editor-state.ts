@@ -25,6 +25,7 @@ type EditorState = {
 
 type Action =
   | { type: "change"; values: Partial<MealDraft> }
+  | { type: "recipe"; id: string }
   | { type: "search" | "note"; text: string }
   | { type: "servings"; servings: string; editing: boolean }
   | { type: "details"; open: boolean }
@@ -66,6 +67,15 @@ export function mealEditorReducer(
   switch (action.type) {
     case "change":
       return withFields(state, action.values);
+    case "recipe":
+      return withFields(state, {
+        kind: "recipe",
+        recipeId: action.id,
+        baseServings:
+          state.stored.fields.recipeId === action.id
+            ? state.stored.fields.baseServings
+            : "",
+      });
     case "search": {
       const draft = state.stored.fields;
       const next = { ...state, query: action.text };
