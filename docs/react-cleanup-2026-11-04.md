@@ -8,7 +8,7 @@ This branch starts at `742ba3b` on `origin/master`. It preserves product behavio
 - Meal editing uses `meal-editor-state.ts` for search/note changes, servings defaults, review choices, and draft rebasing. `use-meal-draft.ts` owns persistence and save orchestration, including fetching the current plan before merging. Details and conflict review have separate components.
 - Library selection uses `use-library-selection.ts` for selected IDs, selection mode, collection scope, and the target collection. Leaving a collection clears the selection. Picking recipes on All retains the destination until selection ends or another collection is opened.
 - Shopping queries and optimistic mutations live in `use-shopping-items.ts`. The query cache remains the source of server data. Quick-entry text and its retry ID update together. Swipe rows, item editing, and pure grocery grouping have separate files.
-- Photo preparation and thumbnail URL ownership live in `use-import-photos.ts`. The composer still owns queue admission and durable request IDs. The ready recipe and its sheet-open state update together.
+- Photo preparation and thumbnail URL ownership live in `use-import-photos.ts`, using ordinary local state for photos, preparation status, and errors. The composer still owns queue admission and durable request IDs. The ready recipe and its sheet-open state update together.
 - Household invite controls and ownership forms have their own files. Household management still owns its existing cache updates, undo callbacks, and navigation.
 
 TanStack Query already owns server state. These changes use local reducers for local workflows; they do not introduce a second cache or a global store.
