@@ -3,7 +3,9 @@ import { X } from "lucide-react";
 import {
   type ReactNode,
   type RefObject,
+  useEffect,
   useRef,
+  useState,
   useSyncExternalStore,
 } from "react";
 
@@ -78,13 +80,17 @@ export function Sheet({
   className,
 }: SheetProps) {
   const isDesktop = useDesktop();
+  // Sheets mounted already open (`{x && <Sheet open />}`) get no enter
+  // transition from Base UI; open on the next frame so they slide in.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const popup = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
   const side = isDesktop && desktop === "side";
 
   return (
     <Drawer.Root
-      open={open}
+      open={open && mounted}
       onOpenChange={(next) => onOpenChange(next)}
       swipeDirection={side ? "right" : "down"}
     >
