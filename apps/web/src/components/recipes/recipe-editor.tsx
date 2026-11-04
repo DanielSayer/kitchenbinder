@@ -4,11 +4,11 @@ import {
   type ReactNode,
   type SubmitEvent,
   useEffect,
+  useReducer,
   useRef,
-  useState,
 } from "react";
 import { ErrorNotice } from "../feedback";
-
+import { RecipeConflictReview } from "./recipe-conflict-review";
 import {
   type RecipeDraft,
   readDraftBase,
@@ -18,20 +18,13 @@ import {
   recipeFields,
   writeRecipeDraft,
 } from "./recipe-draft";
-import { RecipeFields } from "./recipe-fields";
 import {
-  mergeRecipeDraft,
-  parseRecipeDraft,
-  recipeFieldNames,
-} from "./recipe-merge";
-
-type SavedRecipe = { content: RecipeContent; revision: number };
-type Review = {
-  saved: SavedRecipe;
-  merged: RecipeDraft;
-  conflicts: (keyof RecipeDraft)[];
-  choices: Partial<Record<keyof RecipeDraft, "mine" | "saved">>;
-};
+  initialRecipeEditor,
+  recipeEditorReducer,
+  type SavedRecipe,
+} from "./recipe-editor-state";
+import { RecipeFields } from "./recipe-fields";
+import { mergeRecipeDraft, parseRecipeDraft } from "./recipe-merge";
 
 export function RecipeEditor({
   content,
@@ -68,37 +61,38 @@ export function RecipeEditor({
   saveAction?: ReactNode;
   recoveryAction?: ReactNode;
 }) {
-  const [initial] = useState(() => recipeFields(content));
-  const [base, setBase] = useState<RecipeDraft | null>(initial);
-  const [baseRevision, setBaseRevision] = useState<number | null>(
-    savedRevision ?? null,
+  const [state, dispatch] = useReducer(
+    recipeEditorReducer,
+    { content, savedRevision },
+    initialRecipeEditor,
   );
-  const [fields, setFields] = useState(initial);
-  const [revision, setRevision] = useState(0);
-  const [review, setReview] = useState<Review | null>(null);
-  const [preview, setPreview] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const {
+    initial,
+    base,
+    baseRevision,
+    fields,
+    revision,
+    screen,
+    busy,
+    validation,
+    storageFailed,
+  } = state;
+  const review = screen.kind === "editing" ? null : screen.review;
   const saving = useRef(false);
-  const [validation, setValidation] = useState("");
-  const [storageFailed, setStorageFailed] = useState(false);
-  const heading = useRef<HTMLHeadingElement>(null);
   const dirty = JSON.stringify(fields) !== JSON.stringify(base ?? initial);
 
   useEffect(() => {
     const draft = readRecipeDraft(draftKey);
     if (draft) {
-      setFields(draft);
+      dispatch({
+        type: "restore",
+        fields: draft,
+        base: readDraftBase(draftKey),
+        baseRevision: readDraftRevision(draftKey),
+      });
       onDraftChange?.(draft);
-      setBase(readDraftBase(draftKey));
-      setBaseRevision(readDraftRevision(draftKey));
-      setRevision((value) => value + 1);
     }
   }, [draftKey, onDraftChange]);
-
-  const reviewScreen = review ? (preview ? "preview" : "choices") : "editing";
-  useEffect(() => {
-    if (reviewScreen !== "editing") heading.current?.focus();
-  }, [reviewScreen]);
 
   useBlocker({
     shouldBlockFn: () =>
@@ -124,7 +118,10 @@ export function RecipeEditor({
     nextBase = base,
     nextRevision = baseRevision,
   ) {
-    setStorageFailed(!writeRecipeDraft(draftKey, next, nextRevision, nextBase));
+    dispatch({
+      type: "storage",
+      failed: !writeRecipeDraft(draftKey, next, nextRevision, nextBase),
+    });
   }
 
   function discard(close: boolean) {
@@ -134,15 +131,15 @@ export function RecipeEditor({
     )
       return;
     if (!writeRecipeDraft(draftKey, null)) {
-      setStorageFailed(true);
-      setValidation("Couldn't clear the saved draft. Please try again.");
+      dispatch({ type: "storage", failed: true });
+      dispatch({
+        type: "validation",
+        message: "Couldn't clear the saved draft. Please try again.",
+      });
       return;
     }
-    setFields(base ?? initial);
+    dispatch({ type: "discard" });
     onDraftChange?.(base ?? initial);
-    setRevision((value) => value + 1);
-    setValidation("");
-    setStorageFailed(false);
     if (close) onCancel();
   }
 
@@ -156,12 +153,14 @@ export function RecipeEditor({
     const parsed = parseRecipeDraft(next);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
-      setValidation(`${issue?.path.join(" ")}: ${issue?.message}`);
+      dispatch({
+        type: "validation",
+        message: `${issue?.path.join(" ")}: ${issue?.message}`,
+      });
       return;
     }
     saving.current = true;
-    setBusy(true);
-    setValidation("");
+    dispatch({ type: "saving" });
     try {
       if (copy && onSaveCopy) {
         await onSaveCopy(parsed.data);
@@ -177,8 +176,10 @@ export function RecipeEditor({
           const savedFields = recipeFields(saved.content);
           const result = mergeRecipeDraft(original, draft, savedFields);
           if (result.conflicts.length) {
-            setReview({ ...result, saved, choices: {} });
-            setPreview(false);
+            dispatch({
+              type: "review",
+              review: { ...result, saved, choices: {} },
+            });
             return;
           }
           draft = result.merged;
@@ -188,28 +189,33 @@ export function RecipeEditor({
         const result = parseRecipeDraft(draft);
         if (!result.success)
           throw new Error("Check the recipe fields before saving.");
-        setFields(draft);
+        dispatch({
+          type: "rebase",
+          fields: draft,
+          base: original,
+          baseRevision: expectedRevision,
+        });
         onDraftChange?.(draft);
-        setBase(original);
-        setBaseRevision(expectedRevision);
-        setRevision((value) => value + 1);
         persist(draft, original, expectedRevision);
-        setReview(null);
         if ((await onSave(result.data, expectedRevision)) !== "conflict")
           return;
       }
-      setValidation(
-        "This recipe changed again. Your draft is safe. Try saving again.",
-      );
+      dispatch({
+        type: "validation",
+        message:
+          "This recipe changed again. Your draft is safe. Try saving again.",
+      });
     } catch (cause) {
-      setValidation(
-        cause instanceof Error
-          ? cause.message
-          : "Couldn't save. Your draft is still here. Please try again.",
-      );
+      dispatch({
+        type: "validation",
+        message:
+          cause instanceof Error
+            ? cause.message
+            : "Couldn't save. Your draft is still here. Please try again.",
+      });
     } finally {
       saving.current = false;
-      setBusy(false);
+      dispatch({ type: "settled" });
     }
   }
 
@@ -233,133 +239,29 @@ export function RecipeEditor({
       onChange={(event) => {
         if (review) return;
         const next = readRecipeFields(event.currentTarget);
-        setFields(next);
+        dispatch({ type: "change", fields: next });
         onDraftChange?.(next);
         persist(next);
       }}
     >
       <fieldset disabled={pending || busy}>
         {review ? (
-          <section
-            className="recipe-review"
-            aria-labelledby="recipe-review-title"
-          >
-            <h2 id="recipe-review-title" tabIndex={-1} ref={heading}>
-              {preview ? "Saved recipe" : "Choose what to keep"}
-            </h2>
-            {preview ? (
-              <>
-                <p>Your draft is still here. Go back when you're ready.</p>
-                <dl className="recipe-review-preview">
-                  {recipeFieldNames.map(({ name, label }) => (
-                    <div key={name}>
-                      <dt>{label}</dt>
-                      <dd>
-                        {recipeFields(review.saved.content)[name] || "Empty"}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-                <button
-                  type="button"
-                  className="button button-outline"
-                  onClick={() => setPreview(false)}
-                >
-                  Back to choices
-                </button>
-              </>
-            ) : (
-              <>
-                <p>
-                  This recipe changed while you were editing. Choose below where
-                  both versions differ. Other changes are combined for you.
-                </p>
-                {recipeFieldNames
-                  .filter((field) => review.conflicts.includes(field.name))
-                  .map(({ name, label }) => (
-                    <fieldset className="recipe-review-field" key={name}>
-                      <legend>{label}</legend>
-                      <div className="recipe-review-options">
-                        {(["mine", "saved"] satisfies ("mine" | "saved")[]).map(
-                          (choice) => (
-                            <label
-                              className="recipe-review-option"
-                              key={choice}
-                            >
-                              <span>
-                                <input
-                                  type="radio"
-                                  name={`choice-${name}`}
-                                  value={choice}
-                                  required
-                                  checked={review.choices[name] === choice}
-                                  onChange={() =>
-                                    setReview({
-                                      ...review,
-                                      choices: {
-                                        ...review.choices,
-                                        [name]: choice,
-                                      },
-                                    })
-                                  }
-                                />
-                                {choice === "mine" ? "Mine" : "Saved"}
-                              </span>{" "}
-                              <span className="recipe-review-value">
-                                {(choice === "mine"
-                                  ? review.merged[name]
-                                  : recipeFields(review.saved.content)[name]) ||
-                                  "Empty"}
-                              </span>
-                            </label>
-                          ),
-                        )}
-                      </div>
-                    </fieldset>
-                  ))}
-                <div className="editor-actions">
-                  <button
-                    type="button"
-                    className="button button-outline"
-                    onClick={() => {
-                      setReview(null);
-                      setValidation("");
-                    }}
-                  >
-                    Back to editing
-                  </button>
-                  <button type="submit" className="button button-primary">
-                    {busy || pending ? "Saving..." : "Save recipe"}
-                  </button>
-                </div>
-                <div className="recipe-review-alternatives">
-                  <button
-                    type="button"
-                    className="text-button"
-                    onClick={() => setPreview(true)}
-                  >
-                    View saved recipe
-                  </button>
-                  {onSaveCopy && (
-                    <button
-                      type="button"
-                      className="text-button"
-                      onClick={() =>
-                        void save(fields, base, baseRevision, true)
-                      }
-                    >
-                      Save my draft as a copy
-                    </button>
-                  )}
-                </div>
-                {onSaveCopy && (
-                  <p className="recipe-review-hint">
-                    Copies are saved to your personal collection.
-                  </p>
-                )}
-              </>
-            )}
-          </section>
+          <RecipeConflictReview
+            key={screen.kind}
+            review={review}
+            preview={screen.kind === "preview"}
+            pending={pending || busy}
+            onPreview={(show) => dispatch({ type: "preview", show })}
+            onChoose={(field, choice) =>
+              dispatch({ type: "choose", field, choice })
+            }
+            onEdit={() => dispatch({ type: "edit" })}
+            onSaveCopy={
+              onSaveCopy
+                ? () => void save(fields, base, baseRevision, true)
+                : undefined
+            }
+          />
         ) : (
           <>
             <RecipeFields key={revision} content={fields} />
