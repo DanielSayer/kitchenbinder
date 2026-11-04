@@ -1,362 +1,38 @@
-import type { AppRouter } from "@prep-sheet/api/routers/index";
-import {
-  combinedQuantity,
-  groceryGroup,
-  shoppingCategories,
-} from "@prep-sheet/db/shopping-plan";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { inferRouterOutputs } from "@trpc/server";
 import {
   BookOpen,
-  Check,
   ChevronDown,
   ChevronRight,
   Eraser,
-  House,
   MoreHorizontal,
   Plus,
   Trash2,
 } from "lucide-react";
-import {
-  Fragment,
-  type PointerEvent as ReactPointerEvent,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-import { toast } from "sonner";
+import { Fragment, useEffect, useState } from "react";
 import {
   useHousehold,
   useHouseholdScope,
 } from "@/components/households/household-context";
-import {
-  EmptyState,
-  LargeTitle,
-  Segmented,
-  Sheet,
-  undoToast,
-} from "@/components/pantry";
+import { EmptyState, LargeTitle, Segmented, Sheet } from "@/components/pantry";
 import { useMeasurePreferences } from "@/components/preferences";
 import { PageBar } from "@/components/shell/page-bar";
 import { authClient } from "@/lib/auth-client";
-import { useTRPC, useTRPCClient } from "@/utils/trpc";
 import { ErrorNotice, LoadingState } from "../feedback";
 import { MealListNotice } from "../planner/plan-shop";
-import { displayLine } from "../recipes/scale-ingredients";
 import { RecipePicker } from "./add-recipes";
 import { AisleHeading, ShopProgress } from "./aisles";
 import { ShoppingListAction } from "./generated-list";
-
-type Item = inferRouterOutputs<AppRouter>["shopping"]["list"][number];
-type Status = Item["status"];
-type Mode = "aisle" | "recipe";
-/** A list row: one line, or lines of one item that add up, with their total. */
-type Entry =
-  | { item: Item }
-  | { key: string; name: string; quantity: string; items: Item[] };
+import { ItemSheet } from "./item-sheet";
+import { ShopRow } from "./shop-row";
+import {
+  type Entry,
+  type Item,
+  type Mode,
+  shoppingGroups,
+} from "./shopping-groups";
+import { useShoppingItems } from "./use-shopping-items";
 
 const modeKey = "shopping-group-mode";
 const hintKey = "shopping-swipe-hint";
-const SWIPE_COMMIT_PX = 96;
-
-function errorText(cause: unknown, fallback: string) {
-  return cause instanceof Error ? cause.message : fallback;
-}
-
-function useDraft(key: string, initial: string) {
-  const [value, setValue] = useState(() => {
-    try {
-      return localStorage.getItem(key) ?? initial;
-    } catch {
-      return initial;
-    }
-  });
-  const update = (text: string) => {
-    setValue(text);
-    try {
-      if (text === initial) localStorage.removeItem(key);
-      else localStorage.setItem(key, text);
-    } catch {
-      /* Keep input in memory when storage is unavailable. */
-    }
-  };
-  return [value, update] as const;
-}
-
-/**
- * One list row. Tap to tick; swipe left (or the Have it button, shown on
- * desktop and to keyboard/screen-reader users) to mark it already at home.
- */
-function ShopRow({
-  item,
-  label,
-  quantity,
-  expanded,
-  note,
-  swipeable,
-  nudge,
-  onToggle,
-  onHave,
-  onNeed,
-  onMore,
-}: {
-  item: Item;
-  /** Name for a combined row, in place of the item's text. */
-  label?: string;
-  /** Combined total, shown beside the name. */
-  quantity?: string | null;
-  /** Set for combined rows: whether their lines are shown. */
-  expanded?: boolean;
-  note?: string | null;
-  swipeable: boolean;
-  nudge?: boolean;
-  onToggle: () => void;
-  onHave: () => void;
-  onNeed: () => void;
-  onMore: () => void;
-}) {
-  const [dx, setDx] = useState(0);
-  const [dragging, setDragging] = useState(false);
-  const row = useRef<HTMLDivElement>(null);
-  const drag = useRef<{ x: number; y: number; axis?: "x" } | null>(null);
-  const offset = useRef(0);
-  const swiped = useRef(false);
-  const move = (value: number) => {
-    offset.current = value;
-    setDx(value);
-  };
-  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!swipeable || (event.pointerType === "mouse" && event.button !== 0))
-      return;
-    drag.current = { x: event.clientX, y: event.clientY };
-    swiped.current = false;
-  };
-  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const current = drag.current;
-    if (!current) return;
-    const mx = event.clientX - current.x;
-    const my = event.clientY - current.y;
-    if (!current.axis) {
-      if (Math.abs(mx) > 8 && Math.abs(mx) > Math.abs(my)) {
-        current.axis = "x";
-        event.currentTarget.setPointerCapture?.(event.pointerId);
-        setDragging(true);
-      } else if (Math.abs(my) > 8) {
-        drag.current = null;
-        return;
-      } else return;
-    }
-    move(Math.min(0, mx));
-  };
-  const onPointerUp = () => {
-    const current = drag.current;
-    drag.current = null;
-    if (current?.axis !== "x") return;
-    swiped.current = true;
-    setDragging(false);
-    const width = row.current?.offsetWidth ?? 320;
-    if (offset.current < -Math.min(SWIPE_COMMIT_PX, width * 0.3)) {
-      move(-width);
-      window.setTimeout(onHave, 160);
-    } else move(0);
-  };
-  const onPointerCancel = () => {
-    drag.current = null;
-    setDragging(false);
-    move(0);
-  };
-  const bought = item.status === "bought";
-  const measures = useMeasurePreferences();
-  const name = label ?? item.text;
-  return (
-    <li className="shop-item" data-nudge={nudge || undefined}>
-      {swipeable && (
-        <div className="shop-under" aria-hidden="true">
-          <House size={18} />
-          Have it
-        </div>
-      )}
-      <div
-        ref={row}
-        className="shop-row"
-        data-done={item.status !== "needed" || undefined}
-        data-dragging={dragging || undefined}
-        data-swipe={swipeable || undefined}
-        style={dx ? { transform: `translateX(${dx}px)` } : undefined}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerCancel}
-        onClickCapture={(event) => {
-          if (!swiped.current) return;
-          swiped.current = false;
-          event.preventDefault();
-          event.stopPropagation();
-        }}
-      >
-        <label className="shop-tick">
-          <input
-            type="checkbox"
-            className="pantry-visually-hidden"
-            checked={bought}
-            aria-label={`${bought ? "Mark needed" : "Mark bought"}: ${name}`}
-            onChange={onToggle}
-          />
-          <span className="shop-check" aria-hidden="true">
-            <Check size={16} />
-          </span>
-          <span className="shop-text">
-            <b className="shop-name">
-              {label ?? displayLine(item.text, item.ingredient, measures)}
-            </b>{" "}
-            {note && <small>{note}</small>}
-          </span>
-          {quantity && <span className="shop-qty">{quantity}</span>}
-        </label>
-        {item.status === "needed" ? (
-          <button
-            type="button"
-            className="shop-have"
-            aria-label={`Already have it: ${name}`}
-            onClick={onHave}
-          >
-            <House size={16} aria-hidden="true" />
-            <span>Have it</span>
-          </button>
-        ) : item.status === "owned" ? (
-          <button
-            type="button"
-            className="shop-have"
-            data-visible
-            aria-label={`Need this: ${name}`}
-            onClick={onNeed}
-          >
-            Need this
-          </button>
-        ) : null}
-        <button
-          type="button"
-          className="icon-button shop-more"
-          aria-label={
-            expanded === undefined
-              ? `Actions for ${name}`
-              : `${expanded ? "Hide" : "Show"} lines for ${name}`
-          }
-          aria-expanded={expanded}
-          onClick={onMore}
-        >
-          <MoreHorizontal size={18} />
-        </button>
-      </div>
-    </li>
-  );
-}
-
-function ItemSheet({
-  item,
-  userId,
-  open,
-  onClose,
-  onStatus,
-  onRemove,
-}: {
-  item: Item;
-  userId: string;
-  open: boolean;
-  onClose: () => void;
-  onStatus: (status: Status) => void;
-  onRemove: () => void;
-}) {
-  const trpc = useTRPC();
-  const householdId = useHouseholdScope();
-  const client = useQueryClient();
-  const draftKey = `shopping:${userId}:${item.id}`;
-  const [draft, setDraft] = useDraft(draftKey, item.text);
-  const update = useMutation(
-    trpc.shopping.updateItem.mutationOptions({
-      onSuccess: async () => {
-        try {
-          localStorage.removeItem(draftKey);
-        } catch {
-          /* Optional draft storage. */
-        }
-        await client.invalidateQueries({ queryKey: trpc.shopping.pathKey() });
-        onClose();
-      },
-    }),
-  );
-  return (
-    <Sheet
-      open={open}
-      onOpenChange={(next) => {
-        if (!next && !update.isPending) onClose();
-      }}
-      title="Edit item"
-      footer={
-        <>
-          <button
-            type="submit"
-            form={`shop-edit-${item.id}`}
-            className="button button-primary button-block"
-            disabled={update.isPending || !draft.trim()}
-          >
-            {update.isPending ? "Saving..." : "Save"}
-          </button>
-          <div className="shop-sheet-secondary">
-            <button
-              type="button"
-              className="button button-ghost"
-              disabled={update.isPending}
-              onClick={() =>
-                onStatus(item.status === "needed" ? "owned" : "needed")
-              }
-            >
-              {item.status === "needed" ? "Have it" : "Need this"}
-            </button>
-            <button
-              type="button"
-              className="button button-ghost shop-remove"
-              disabled={update.isPending}
-              onClick={onRemove}
-            >
-              <Trash2 size={16} aria-hidden="true" />
-              Remove
-            </button>
-          </div>
-        </>
-      }
-    >
-      <form
-        id={`shop-edit-${item.id}`}
-        onSubmit={(event) => {
-          event.preventDefault();
-          update.mutate({
-            householdId,
-            kind: "text",
-            id: item.id,
-            text: draft,
-          });
-        }}
-      >
-        <label className="pick-field">
-          <span>Item</span>
-          <input
-            value={draft}
-            maxLength={2000}
-            disabled={update.isPending}
-            onChange={(event) => setDraft(event.target.value)}
-          />
-        </label>
-        {item.recipeTitle && (
-          <p className="meal-sheet-hint shop-sheet-from">
-            From {item.recipeTitle}
-          </p>
-        )}
-        <ErrorNotice message={update.error?.message} />
-      </form>
-    </Sheet>
-  );
-}
 
 export function ShoppingList() {
   const { data: session } = authClient.useSession();
@@ -366,13 +42,24 @@ export function ShoppingList() {
 }
 
 function ListScreen({ userId }: { userId: string }) {
-  const trpc = useTRPC();
-  const trpcClient = useTRPCClient();
   const householdId = useHouseholdScope();
   const household = useHousehold();
-  const client = useQueryClient();
-  const listKey = trpc.shopping.list.queryKey({ householdId });
-  const list = useQuery(trpc.shopping.list.queryOptions({ householdId }));
+  const {
+    list,
+    items,
+    needed,
+    bought,
+    owned,
+    add,
+    text,
+    setText,
+    submit,
+    changeStatus,
+    changeStatuses,
+    removeItem,
+    clearBought,
+    clearAll,
+  } = useShoppingItems(userId);
   const [mode, setModeState] = useState<Mode>(() => {
     try {
       return localStorage.getItem(modeKey) === "recipe" ? "recipe" : "aisle";
@@ -388,14 +75,14 @@ function ListScreen({ userId }: { userId: string }) {
       /* Optional preference. */
     }
   };
-  const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
-  const [picker, setPicker] = useState(false);
-  const [pickerKey, setPickerKey] = useState(0);
+  const [picker, setPicker] = useState({ open: false, key: 0 });
   const [more, setMore] = useState(false);
-  const [editing, setEditing] = useState<Item | null>(null);
-  const [editingOpen, setEditingOpen] = useState(false);
-  const [text, setText] = useDraft(`shopping:${userId}:new`, "");
-  const [newId, setNewId] = useState<string>(() => crypto.randomUUID());
+  const [editor, setEditor] = useState<{ item: Item; open: boolean } | null>(
+    null,
+  );
+  const editing = editor?.item;
+  const setEditingOpen = (open: boolean) =>
+    setEditor((current) => current && { ...current, open });
   const [nudge, setNudge] = useState(false);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const measures = useMeasurePreferences();
@@ -408,115 +95,6 @@ function ListScreen({ userId }: { userId: string }) {
       /* The hint is optional. */
     }
   }, []);
-  const refresh = () =>
-    client.invalidateQueries({ queryKey: trpc.shopping.pathKey() });
-  const statusUpdate = useMutation(trpc.shopping.updateItem.mutationOptions());
-  const changeStatus = (item: Item, status: Status, message?: string) =>
-    changeStatuses([item], status, message);
-  const changeStatuses = async (
-    targets: readonly Item[],
-    status: Status,
-    message?: string,
-  ) => {
-    const ids = new Set(targets.map((item) => item.id));
-    client.setQueryData(listKey, (old) =>
-      old?.map((entry) => (ids.has(entry.id) ? { ...entry, status } : entry)),
-    );
-    if (message)
-      undoToast(message, {
-        id: "shopping-status",
-        onUndo: () => {
-          for (const item of targets)
-            void changeStatus({ ...item, status }, item.status);
-        },
-      });
-    try {
-      await Promise.all(
-        targets.map((item) =>
-          statusUpdate.mutateAsync({
-            householdId,
-            kind: "status",
-            id: item.id,
-            status,
-          }),
-        ),
-      );
-    } catch (cause) {
-      toast.error(errorText(cause, "Couldn't update that item."));
-    } finally {
-      await refresh();
-    }
-  };
-  const unhide = (ids: readonly string[]) =>
-    setHidden((current) => {
-      const next = new Set(current);
-      for (const id of ids) next.delete(id);
-      return next;
-    });
-  // Undo, not "are you sure?": hide now, delete when the toast closes.
-  const removeLater = (
-    ids: readonly string[],
-    message: string,
-    commit: () => Promise<unknown>,
-  ) => {
-    if (!ids.length) return;
-    setHidden((current) => new Set([...current, ...ids]));
-    undoToast(message, {
-      onUndo: () => unhide(ids),
-      onCommit: async () => {
-        try {
-          await commit();
-          await Promise.all([
-            refresh(),
-            client.invalidateQueries({ queryKey: trpc.planner.pathKey() }),
-          ]);
-        } catch (cause) {
-          toast.error(errorText(cause, "Couldn't remove those items."));
-        } finally {
-          unhide(ids);
-        }
-      },
-    });
-  };
-  const removeItem = (item: Item) =>
-    removeLater([item.id], `Removed ${item.text}`, () =>
-      trpcClient.shopping.removeItem.mutate({ householdId, id: item.id }),
-    );
-  const add = useMutation(
-    trpc.shopping.addItem.mutationOptions({
-      // No toast: the new row is the confirmation, and a toast would cover
-      // the input during rapid entry.
-      onSuccess: async (_, input) => {
-        // A retry after a failed add: clear the restored text.
-        if (textRef.current === input.text) {
-          setText("");
-          setNewId(crypto.randomUUID());
-        }
-        await refresh();
-      },
-      // Put the text (and its id, so a resubmit stays idempotent) back
-      // unless the next item has been started.
-      onError: (_, input) => {
-        if (textRef.current) return;
-        setText(input.text);
-        setNewId(input.id);
-      },
-    }),
-  );
-  const textRef = useRef(text);
-  textRef.current = text;
-  // Clear on submit, not on success, so the input stays editable and
-  // focused (keyboard open) while the add saves.
-  const submit = () => {
-    if (!text.trim() || add.isPending) return;
-    add.mutate({ householdId, id: newId, text });
-    setText("");
-    setNewId(crypto.randomUUID());
-  };
-  const items = (list.data ?? []).filter((item) => !hidden.has(item.id));
-  const needed = items.filter((item) => item.status === "needed");
-  const bought = items.filter((item) => item.status === "bought");
-  const owned = items.filter((item) => item.status === "owned");
   const recipeCount = new Set(
     items.flatMap((item) => (item.recipeId ? [item.recipeId] : [])),
   ).size;
@@ -556,58 +134,12 @@ function ListScreen({ userId }: { userId: string }) {
         void changeStatus(item, "needed", `${item.text} back on the list`)
       }
       onMore={() => {
-        setEditing(item);
-        setEditingOpen(true);
+        setEditor({ item, open: true });
       }}
     />
   );
   // By aisle, lines of one item that add up share a row with their total.
-  const groups =
-    mode === "aisle"
-      ? shoppingCategories.flatMap((category) => {
-          const lines = needed.flatMap((item) => {
-            const group = groceryGroup(item.text, item.ingredient);
-            return group.category === category ? [{ item, group }] : [];
-          });
-          const byKey = new Map<string, Item[]>();
-          for (const { item, group } of lines)
-            if (group.key)
-              byKey.set(group.key, [...(byKey.get(group.key) ?? []), item]);
-          const entries: Entry[] = [];
-          const placed = new Set<string>();
-          for (const { item, group } of lines) {
-            const same = group.key ? (byKey.get(group.key) ?? []) : [];
-            const quantity =
-              same.length > 1 ? combinedQuantity(same, measures) : null;
-            if (!group.key || !quantity) entries.push({ item });
-            else if (!placed.has(group.key)) {
-              placed.add(group.key);
-              entries.push({
-                key: group.key,
-                name: group.name,
-                quantity,
-                items: same,
-              });
-            }
-          }
-          return entries.length
-            ? [{ key: category, title: category, category, entries }]
-            : [];
-        })
-      : [
-          ...needed
-            .reduce((map, item) => {
-              const key = item.plannedMealId ?? item.recipeId ?? "other";
-              map.set(key, [...(map.get(key) ?? []), item]);
-              return map;
-            }, new Map<string, Item[]>())
-            .entries(),
-        ].map(([key, entries]) => ({
-          key,
-          title: entries[0]?.recipeTitle ?? "Other groceries",
-          category: undefined,
-          entries: entries.map((item): Entry => ({ item })),
-        }));
+  const groups = shoppingGroups(needed, mode, measures);
   const entryRow = (entry: Entry) => {
     if ("item" in entry) return row(entry.item);
     const [first] = entry.items;
@@ -656,21 +188,8 @@ function ListScreen({ userId }: { userId: string }) {
     );
   };
   const openPicker = () => {
-    setPickerKey((current) => current + 1);
-    setPicker(true);
+    setPicker((current) => ({ key: current.key + 1, open: true }));
   };
-  const clearBought = () =>
-    removeLater(
-      bought.map((item) => item.id),
-      `Cleared ${bought.length} bought ${bought.length === 1 ? "item" : "items"}`,
-      () => trpcClient.shopping.clear.mutate({ householdId, scope: "bought" }),
-    );
-  const clearAll = () =>
-    removeLater(
-      items.map((item) => item.id),
-      "List cleared",
-      () => trpcClient.shopping.clear.mutate({ householdId, scope: "all" }),
-    );
   const editingItem = editing
     ? (items.find((item) => item.id === editing.id) ?? editing)
     : null;
@@ -918,11 +437,13 @@ function ListScreen({ userId }: { userId: string }) {
             </button>
           </div>
         </Sheet>
-        {pickerKey > 0 && (
+        {picker.key > 0 && (
           <RecipePicker
-            key={pickerKey}
-            open={picker}
-            onClose={() => setPicker(false)}
+            key={picker.key}
+            open={picker.open}
+            onClose={() =>
+              setPicker((current) => ({ ...current, open: false }))
+            }
           />
         )}
         {editingItem && (
@@ -930,7 +451,7 @@ function ListScreen({ userId }: { userId: string }) {
             key={editingItem.id}
             item={editingItem}
             userId={userId}
-            open={editingOpen}
+            open={editor?.open ?? false}
             onClose={() => setEditingOpen(false)}
             onStatus={(status) => {
               setEditingOpen(false);
