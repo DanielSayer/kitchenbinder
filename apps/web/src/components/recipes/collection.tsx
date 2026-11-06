@@ -9,6 +9,7 @@ import {
   MoreHorizontal,
   Search,
   SlidersHorizontal,
+  Sparkles,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -28,6 +29,7 @@ import {
   Segmented,
   undoToast,
 } from "@/components/pantry";
+import { DinnerSheet } from "@/components/planner/dinner-sheet";
 import { useTRPC, useTRPCClient } from "@/utils/trpc";
 import { BulkTagDialog } from "./bulk-tag-dialog";
 import { EmptyCollection } from "./empty-collection";
@@ -144,7 +146,7 @@ export function Collection() {
     Number(!!filters.cookedBefore);
 
   const [sheet, setSheet] = useState<
-    "filters" | "sort" | "create" | "manage" | "add" | "tag" | null
+    "filters" | "sort" | "create" | "manage" | "add" | "tag" | "dinner" | null
   >(null);
   const [managed, setManaged] = useState<CollectionSummary>();
   const {
@@ -251,6 +253,21 @@ export function Collection() {
           sub={<CollectionMeta collection={current} />}
           actions={
             <>
+              <button
+                type="button"
+                className="library-dinner"
+                aria-haspopup="dialog"
+                aria-label="What's for dinner?"
+                onClick={() => setSheet("dinner")}
+              >
+                <Sparkles
+                  className="library-dinner-icon"
+                  size={16}
+                  aria-hidden="true"
+                />
+                <span className="library-dinner-long">What's for dinner?</span>
+                <span className="library-dinner-short">Ideas</span>
+              </button>
               {current ? (
                 <button
                   type="button"
@@ -461,6 +478,11 @@ export function Collection() {
         )}
       </div>
 
+      <DinnerSheet
+        open={sheet === "dinner"}
+        onOpenChange={(open) => setSheet(open ? "dinner" : null)}
+        collectionId={collectionId}
+      />
       <FilterSheet
         open={sheet === "filters"}
         onOpenChange={(open) => setSheet(open ? "filters" : null)}
