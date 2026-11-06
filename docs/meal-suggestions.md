@@ -8,7 +8,8 @@ Deciding what to cook is slow; entering meals is not. Suggestions help a househo
 
 ## Placement
 
-Only in the planner's add-meal sheet, in the dish step, before the user types. Typing switches to the normal search. Picking a suggestion behaves exactly like picking a search result (servings, Review details and so on stay the same).
+- **Planner add-meal sheet**, in the dish step, before the user types. Typing switches to the normal search. Picking a suggestion behaves exactly like picking a search result (servings, Review details and so on stay the same).
+- **"What's for dinner?"** on the Recipes page, for spontaneous cooks. Same rows for this week (narrowed to the open collection), then **Cook now** (recipe in cook mode) or **Plan it** (planner add-meal sheet for today with the recipe picked). `apps/web/src/components/planner/dinner-sheet.tsx`.
 
 ## Pool
 
@@ -51,7 +52,6 @@ Rows always show. A row with too few candidates shows one card fewer and ends wi
 - Auto-planning a whole week.
 - AI auto-tagging (cuisine, main protein) to improve the tag cap.
 - User-adjustable thresholds.
-- Suggestions outside the planner.
 
 ## Implementation
 

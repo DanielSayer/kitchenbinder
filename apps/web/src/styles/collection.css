@@ -569,6 +569,41 @@
 .library-more {
   background: var(--oat);
 }
+.library-dinner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--card);
+  color: var(--ink);
+  font: 700 14px / 1 var(--sans);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.library-dinner-icon {
+  color: var(--tomato);
+}
+.library-dinner:hover {
+  background: var(--oat);
+}
+.library-dinner:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: 2px;
+}
+.library-dinner-short {
+  display: none;
+}
+@media (max-width: 559px) {
+  .library-dinner-long {
+    display: none;
+  }
+  .library-dinner-short {
+    display: inline;
+  }
+}
 .library-search {
   display: flex;
   align-items: center;

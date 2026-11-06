@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import type { inferRouterOutputs } from "@trpc/server";
 import { History, Plus, Shuffle, Sparkles, Star } from "lucide-react";
 import { useState } from "react";
+import { ErrorNotice, LoadingState } from "@/components/feedback";
 import { RecipeCover } from "@/components/pantry";
 import { useTRPC } from "@/utils/trpc";
 import { localDate } from "./dates";
@@ -51,6 +52,8 @@ export function SuggestionRows({
   radioName,
   selectedId,
   onPick,
+  heading = "Need ideas?",
+  standalone = false,
 }: {
   householdId?: string;
   weekStart: string;
@@ -58,6 +61,10 @@ export function SuggestionRows({
   radioName: string;
   selectedId?: string;
   onPick: (id: string) => void;
+  /** Section heading; null hides it but keeps Shuffle. */
+  heading?: string | null;
+  /** Main content, not optional help: show loading and errors. */
+  standalone?: boolean;
 }) {
   const trpc = useTRPC();
   const [shuffle, setShuffle] = useState(0);
@@ -71,12 +78,24 @@ export function SuggestionRows({
       shuffle,
     }),
   );
-  // Optional help: errors and loading leave the normal picker in charge.
-  if (!suggestions.data) return null;
+  if (!suggestions.data) {
+    // Optional help: errors and loading leave the normal picker in charge.
+    if (!standalone) return null;
+    return suggestions.isError ? (
+      <ErrorNotice
+        message="Couldn't load ideas."
+        retry={() => void suggestions.refetch()}
+      />
+    ) : (
+      <LoadingState pending label="Finding ideas…">
+        {null}
+      </LoadingState>
+    );
+  }
   return (
     <section className="suggest" aria-label="Suggestions">
       <div className="suggest-head">
-        <h3>Need ideas?</h3>
+        {heading ? <h3>{heading}</h3> : <span />}
         <button
           type="button"
           className="suggest-shuffle"
