@@ -99,14 +99,15 @@ describe("recipe photo upload route", () => {
           new AccountRequestLimit(10),
         ),
       );
-    for (const fields of [
+    const cases: Parameters<typeof upload>[0][] = [
       { recipeId: "not-a-uuid", photo: photo() },
       { recipeId },
       { recipeId, photo: [photo(), photo()] },
       { recipeId, photo: "text" },
       { recipeId, photo: photo(new TextEncoder().encode("<svg></svg>")) },
       { recipeId, photo: photo(new Uint8Array(1_572_865).fill(0xff)) },
-    ])
+    ];
+    for (const fields of cases)
       expect(await send(fields)).toMatchObject({
         status: 400,
         body: { error: { code: "BAD_REQUEST" } },

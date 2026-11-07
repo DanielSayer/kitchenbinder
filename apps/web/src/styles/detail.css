@@ -692,6 +692,25 @@
 .recipe-editing .recipe-title {
   margin-bottom: 18px;
 }
+.recipe-photo-field {
+  display: grid;
+  gap: 12px;
+  max-width: 800px;
+  margin: 0 auto 18px;
+}
+.recipe-photo-field .pantry-cover[data-size="hero"] {
+  height: clamp(160px, 30vw, 240px);
+}
+.recipe-photo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.recipe-photo-actions small {
+  color: var(--muted-ink);
+  font-size: 13px;
+}
 
 @media (min-width: 851px) {
   .recipe-hero {

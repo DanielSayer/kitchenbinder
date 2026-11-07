@@ -14,8 +14,9 @@ export default defineConfig({
     tsconfigPaths: true,
   },
   ssr: {
-    // PDFKit resolves private font modules relative to its own package.
-    external: ["@react-pdf/renderer"],
+    // PDFKit resolves private font modules relative to its own package; sharp
+    // loads its native binary from its platform package.
+    external: ["@react-pdf/renderer", "sharp"],
   },
   plugins: [
     localCacheRecovery(),
