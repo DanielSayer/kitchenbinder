@@ -1,18 +1,23 @@
 export const TRPC_MAX_BATCH_SIZE = 5;
 export const BODY_READ_TIMEOUT_MS = 15_000;
 export const PHOTO_UPLOAD_PATH = "/api/recipes/imports/photos";
+export const RECIPE_PHOTO_PATH = "/api/recipes/photo";
 
 export function bodyByteLimit(pathname) {
   if (pathname.startsWith("/api/trpc/")) return 1_572_864;
   if (pathname === "/api/polar/webhooks") return 262_144;
   // Five 1.5 MiB photos plus multipart framing and the request JSON.
   if (pathname === PHOTO_UPLOAD_PATH) return 8_388_608;
+  // One 1.5 MiB cover photo plus multipart framing.
+  if (pathname === RECIPE_PHOTO_PATH) return 1_638_400;
   return 16_384;
 }
 
 // Photo uploads may come from slow mobile connections.
 export function bodyReadTimeoutMs(pathname) {
-  return pathname === PHOTO_UPLOAD_PATH ? 60_000 : BODY_READ_TIMEOUT_MS;
+  return pathname === PHOTO_UPLOAD_PATH || pathname === RECIPE_PHOTO_PATH
+    ? 60_000
+    : BODY_READ_TIMEOUT_MS;
 }
 
 export function bodyRejection(status) {

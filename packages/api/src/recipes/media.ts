@@ -12,8 +12,10 @@ import {
 } from "@prep-sheet/db/recipe-photo";
 import { recipe } from "@prep-sheet/db/schema/recipe";
 import { env } from "@prep-sheet/env/server";
+import { TRPCError } from "@trpc/server";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import sharp from "sharp";
+import { ownedRecipe } from "../households/access";
 import { fetchImage } from "./fetch-page";
 
 // The worker is memory capped; process one image at a time without caching.
@@ -105,10 +107,8 @@ export async function promptPhoto(input: Buffer) {
 async function storePhoto(
   storage: Media,
   recipeId: string,
-  imageUrl: string,
-  referer?: string,
+  body: Buffer,
 ): Promise<RecipePhoto> {
-  const { body } = await fetchImage(imageUrl, referer);
   const photo = await processPhoto(body);
   const key = `${prefix}${recipeId}/${randomUUID()}`;
   for (const variant of photo.variants)
@@ -138,7 +138,8 @@ export async function attachRecipePhoto(
 ) {
   const storage = mediaStorage();
   if (!storage) return false;
-  const photo = await storePhoto(storage, recipeId, imageUrl, referer);
+  const { body } = await fetchImage(imageUrl, referer);
+  const photo = await storePhoto(storage, recipeId, body);
   const updated = await db
     .update(recipe)
     .set({ photo })
@@ -146,6 +147,43 @@ export async function attachRecipePhoto(
     .returning({ id: recipe.id });
   if (!updated.length) await deleteKeys(storage, photoObjects(photo.key));
   return updated.length > 0;
+}
+
+// One upload at a time per process keeps sharp's memory bounded on web.
+let uploads: Promise<unknown> = Promise.resolve();
+
+/**
+ * Store an uploaded photo as the recipe's cover, replacing any existing one.
+ * Owner only. Returns null when the recipe isn't the user's. Old objects are
+ * left for the sweep, since copies of the recipe may share them.
+ */
+export async function replaceRecipePhoto(
+  recipeId: string,
+  userId: string,
+  body: Buffer,
+) {
+  const storage = mediaStorage();
+  if (!storage)
+    throw new TRPCError({
+      code: "PRECONDITION_FAILED",
+      message: "Photo uploads aren't available right now.",
+    });
+  const owned = and(eq(recipe.id, recipeId), ownedRecipe(userId));
+  const [found] = await db.select({ id: recipe.id }).from(recipe).where(owned);
+  if (!found) return null;
+  const stored = uploads.then(() => storePhoto(storage, recipeId, body));
+  uploads = stored.catch(() => {});
+  const photo = await stored;
+  const updated = await db
+    .update(recipe)
+    .set({ photo, updatedAt: new Date() })
+    .where(owned)
+    .returning({ id: recipe.id });
+  if (!updated.length) {
+    await deleteKeys(storage, photoObjects(photo.key));
+    return null;
+  }
+  return photo;
 }
 
 function photoObjects(key: string) {

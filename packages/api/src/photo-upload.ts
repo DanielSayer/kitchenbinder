@@ -49,7 +49,7 @@ export async function readPhotoUpload(form: FormData) {
 
 const accounts = new AccountRequestLimit(10);
 const privateHeaders = { "Cache-Control": "private, no-store" };
-const statusCodes: Partial<Record<TRPCError["code"], number>> = {
+export const statusCodes: Partial<Record<TRPCError["code"], number>> = {
   BAD_REQUEST: 400,
   UNAUTHORIZED: 401,
   FORBIDDEN: 403,
@@ -60,7 +60,7 @@ const statusCodes: Partial<Record<TRPCError["code"], number>> = {
 };
 
 // Errors carry tRPC codes so the client treats them like recipes.create.
-function failure(
+export function failure(
   code: TRPCError["code"],
   message: string,
   headers: Record<string, string> = {},
