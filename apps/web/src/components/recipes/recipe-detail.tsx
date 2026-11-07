@@ -42,7 +42,7 @@ import {
   writeRecipeDraft,
 } from "./recipe-draft";
 import { RecipeEditor } from "./recipe-editor";
-import { RecipePhotoField } from "./recipe-photo-field";
+import { RecipePhotoField, useRecipePhoto } from "./recipe-photo-field";
 import { shortRecipeTime } from "./recipe-time";
 import { parseServings } from "./scale-ingredients";
 import { useRestoreRecipe } from "./use-restore-recipe";
@@ -93,6 +93,7 @@ export function RecipeDetail({ id }: { id: string }) {
   const [sheet, setSheet] = useState<"actions" | "collections" | null>(null);
   const [servings, setServings] = useState<number | null>(null);
   const restore = useRestoreRecipe();
+  const photo = useRecipePhoto(id);
   const progress = useIngredientProgress(
     userId ? `cooking-progress:${userId}:${id}` : undefined,
   );
@@ -243,6 +244,7 @@ export function RecipeDetail({ id }: { id: string }) {
                 title={data.title}
                 photo={data.photo}
                 tone={toneForTags(data.tags.map((tag) => tag.name))}
+                controls={photo}
               />
               <RecipeEditor
                 key={draftKey}
@@ -495,6 +497,7 @@ export function RecipeDetail({ id }: { id: string }) {
                 onOpenChange={(open) => setSheet(open ? "actions" : null)}
                 recipe={data}
                 onEdit={() => setEditing(true)}
+                onChangePhoto={photo.choose}
                 onDelete={() => remove.mutate({ id })}
                 onAddToCollection={() => setSheet("collections")}
               />
@@ -529,6 +532,7 @@ export function RecipeDetail({ id }: { id: string }) {
           )
         ) : null}
       </LoadingState>
+      {data?.isOwner ? photo.input : null}
     </main>
   );
 }
