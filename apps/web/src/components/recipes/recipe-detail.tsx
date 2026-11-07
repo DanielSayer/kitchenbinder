@@ -42,6 +42,7 @@ import {
   writeRecipeDraft,
 } from "./recipe-draft";
 import { RecipeEditor } from "./recipe-editor";
+import { RecipePhotoField } from "./recipe-photo-field";
 import { shortRecipeTime } from "./recipe-time";
 import { parseServings } from "./scale-ingredients";
 import { useRestoreRecipe } from "./use-restore-recipe";
@@ -237,6 +238,12 @@ export function RecipeDetail({ id }: { id: string }) {
                 <ArrowLeft size={17} aria-hidden="true" /> Back to recipe
               </button>
               <h1 className="recipe-title">Edit {data.title}</h1>
+              <RecipePhotoField
+                id={data.id}
+                title={data.title}
+                photo={data.photo}
+                tone={toneForTags(data.tags.map((tag) => tag.name))}
+              />
               <RecipeEditor
                 key={draftKey}
                 draftKey={draftKey}
