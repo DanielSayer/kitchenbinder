@@ -187,6 +187,7 @@ describe("body admission before parsers", () => {
       "/api/polar/webhooks",
       "/api/trpc/recipes.createManual",
       "/api/recipes/imports/photos",
+      "/api/recipes/photo",
     ]) {
       const result = await boundedRequest(
         new Request(`http://localhost${path}`, {
@@ -210,5 +211,11 @@ describe("body admission before parsers", () => {
     expect(result).toBeInstanceOf(Request);
     if (result instanceof Request)
       expect((await result.arrayBuffer()).byteLength).toBe(body.byteLength);
+  });
+
+  it("allows one full photo and a longer read on the cover photo route", () => {
+    const path = "/api/recipes/photo";
+    expect(bodyByteLimit(path)).toBeGreaterThan(1_572_864 + 32_768);
+    expect(bodyReadTimeoutMs(path)).toBe(60_000);
   });
 });

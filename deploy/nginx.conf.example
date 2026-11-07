@@ -104,6 +104,10 @@ server {
         client_max_body_size 8388608;
         include /etc/nginx/snippets/prep-sheet-proxy.conf;
     }
+    location = /api/recipes/photo {
+        client_max_body_size 1638400;
+        include /etc/nginx/snippets/prep-sheet-proxy.conf;
+    }
     location / {
         include /etc/nginx/snippets/prep-sheet-proxy.conf;
     }

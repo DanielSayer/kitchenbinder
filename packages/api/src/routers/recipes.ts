@@ -562,6 +562,21 @@ export const recipesRouter = router({
       if (result.ingredientsPendingAt) await notifyImportWorker();
       return result;
     }),
+  // Uploads go to /api/recipes/photo. Objects are left for the media sweep.
+  removePhoto: protectedProcedure
+    .input(idInput)
+    .mutation(async ({ input, ctx }) => {
+      const updated = await db
+        .update(recipe)
+        .set({ photo: null, updatedAt: new Date() })
+        .where(owned(input.id, ctx.session.user.id))
+        .returning({ id: recipe.id });
+      if (!updated.length) {
+        await requireOwnedRecipe(input.id, ctx.session.user.id);
+        throw missing();
+      }
+      return { success: true };
+    }),
   delete: protectedProcedure.input(idInput).mutation(async ({ input, ctx }) => {
     const deleted = await db
       .update(recipe)
