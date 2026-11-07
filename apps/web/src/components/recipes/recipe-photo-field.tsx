@@ -8,22 +8,18 @@ import { type PantryTone, RecipeCover } from "@/components/pantry";
 import { useTRPC, useTRPCClient } from "@/utils/trpc";
 import { uploadRecipePhoto } from "./recipe-photo";
 
-/** Cover photo controls. Changes save immediately, separate from the draft. */
-export function RecipePhotoField({
-  id,
-  title,
-  photo,
-  tone,
-}: {
-  id: string;
-  title: string;
-  photo: RecipePhoto | null;
-  tone?: PantryTone;
-}) {
+export type RecipePhotoControls = ReturnType<typeof useRecipePhoto>;
+
+/**
+ * Upload, replace or remove a recipe's cover. Render `input` once; `choose`
+ * opens the picker and must run inside a click. Changes save immediately.
+ */
+export function useRecipePhoto(id: string) {
   const trpc = useTRPC();
   const client = useTRPCClient();
   const queryClient = useQueryClient();
-  const input = useRef<HTMLInputElement>(null);
+  const picker = useRef<HTMLInputElement>(null);
+  const toastId = `recipe-photo-${id}`;
 
   async function apply(next: RecipePhoto | null) {
     queryClient.setQueryData(trpc.recipes.get.queryKey({ id }), (old) =>
@@ -33,24 +29,69 @@ export function RecipePhotoField({
   }
 
   const upload = useMutation({
-    mutationFn: async (file: File) =>
-      uploadRecipePhoto(id, await downscalePhoto(file)),
+    mutationFn: async (file: File) => {
+      toast.loading("Uploading photo...", { id: toastId });
+      return uploadRecipePhoto(id, await downscalePhoto(file));
+    },
     onSuccess: async (next) => {
       await apply(next);
-      toast.success("Photo saved.");
+      toast.success("Photo saved.", { id: toastId });
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toast.error(error.message, { id: toastId }),
   });
   const remove = useMutation({
     mutationFn: () => client.recipes.removePhoto.mutate({ id }),
     onSuccess: async () => {
       await apply(null);
-      toast.success("Photo removed.");
+      toast.success("Photo removed.", { id: toastId });
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toast.error(error.message, { id: toastId }),
   });
   const busy = upload.isPending || remove.isPending;
 
+  return {
+    busy,
+    uploading: upload.isPending,
+    removing: remove.isPending,
+    choose: () => {
+      if (!busy) picker.current?.click();
+    },
+    remove: () => {
+      if (!busy && window.confirm("Remove this recipe's photo?"))
+        remove.mutate();
+    },
+    input: (
+      <input
+        ref={picker}
+        type="file"
+        accept="image/*"
+        className="pantry-visually-hidden"
+        tabIndex={-1}
+        aria-hidden="true"
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = "";
+          if (file) upload.mutate(file);
+        }}
+      />
+    ),
+  };
+}
+
+/** Cover photo preview and controls on the edit screen. */
+export function RecipePhotoField({
+  id,
+  title,
+  photo,
+  tone,
+  controls,
+}: {
+  id: string;
+  title: string;
+  photo: RecipePhoto | null;
+  tone?: PantryTone;
+  controls: RecipePhotoControls;
+}) {
   return (
     <section className="recipe-photo-field" aria-label="Recipe photo">
       <RecipeCover
@@ -62,27 +103,14 @@ export function RecipePhotoField({
         size="hero"
       />
       <div className="recipe-photo-actions">
-        <input
-          ref={input}
-          type="file"
-          accept="image/*"
-          className="pantry-visually-hidden"
-          tabIndex={-1}
-          aria-hidden="true"
-          onChange={(event) => {
-            const file = event.currentTarget.files?.[0];
-            event.currentTarget.value = "";
-            if (file) upload.mutate(file);
-          }}
-        />
         <button
           type="button"
           className="button button-outline button-small"
-          disabled={busy}
-          onClick={() => input.current?.click()}
+          disabled={controls.busy}
+          onClick={controls.choose}
         >
           <ImagePlus size={18} aria-hidden="true" />
-          {upload.isPending
+          {controls.uploading
             ? "Uploading..."
             : photo
               ? "Change photo"
@@ -92,14 +120,11 @@ export function RecipePhotoField({
           <button
             type="button"
             className="button button-ghost button-small"
-            disabled={busy}
-            onClick={() => {
-              if (window.confirm("Remove this recipe's photo?"))
-                remove.mutate();
-            }}
+            disabled={controls.busy}
+            onClick={controls.remove}
           >
             <Trash2 size={18} aria-hidden="true" />
-            {remove.isPending ? "Removing..." : "Remove"}
+            {controls.removing ? "Removing..." : "Remove"}
           </button>
         ) : null}
         <small>Photo changes save straight away.</small>

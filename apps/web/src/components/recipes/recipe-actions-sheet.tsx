@@ -8,6 +8,7 @@ import {
   Copy,
   FileText,
   FolderPlus,
+  ImagePlus,
   Pencil,
   Tags as TagsIcon,
   Trash2,
@@ -73,6 +74,7 @@ export function RecipeActionsSheet({
   onOpenChange,
   recipe,
   onEdit,
+  onChangePhoto,
   onDelete,
   onAddToCollection,
 }: {
@@ -80,6 +82,8 @@ export function RecipeActionsSheet({
   onOpenChange: (open: boolean) => void;
   recipe: Recipe;
   onEdit: () => void;
+  // Opens the file picker, so it must run inside the click.
+  onChangePhoto: () => void;
   onDelete: () => void;
   onAddToCollection: () => void;
 }) {
@@ -266,6 +270,16 @@ export function RecipeActionsSheet({
                 onClick={() => {
                   close();
                   onEdit();
+                }}
+              />
+            ) : null}
+            {owner ? (
+              <ActionRow
+                icon={<ImagePlus size={20} aria-hidden="true" />}
+                label={recipe.photo ? "Change photo" : "Add photo"}
+                onClick={() => {
+                  onChangePhoto();
+                  close();
                 }}
               />
             ) : null}
