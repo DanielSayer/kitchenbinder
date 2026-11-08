@@ -130,6 +130,20 @@ GitHub serialises deployments and never cancels an active deployment to start
 another. A host lock also refuses overlapping release commands. Expect maintenance
 downtime while the backup, migration and startup run.
 
+Before pulling a deployment image, the helper removes obsolete Kitchenbinder and
+legacy Prep Sheet images. It preserves images referenced by any container, the
+current/candidate images and the last completed release's immediate rollback
+image. It leaves unrelated images, volumes and backup archives alone and never
+forces image removal. After a healthy deployment, it repeats cleanup with the
+replaced release retained for rollback.
+
+After cleanup, Docker's storage, containerd's snapshot storage when present and
+the configuration filesystem must each have at least 4 GiB free. A failed space
+check stops before the image pull, maintenance or database commands. The root
+helper supports `DEPLOY_MIN_FREE_BYTES` for an operator-selected threshold.
+Dry runs do not remove images. Install the updated trusted host helper as
+described above; deploying an application image alone does not update it.
+
 On failure after maintenance begins, the helper verifies the previous image
 against the current database. If compatible, it restores the saved configuration
 and starts that image. If incompatible, maintenance stays enabled for an operator
