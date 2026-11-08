@@ -28,6 +28,64 @@ compose() {
   docker compose --project-name deploy --env-file "$config/runtime.env" \
     --env-file "$config/capacity.env" -f "$app/deploy/compose.yml" "$@"
 }
+prune_images() {
+  python3 - "$config" "$@" <<'PY'
+import json, os, pathlib, shutil, subprocess, sys
+
+config = pathlib.Path(sys.argv[1])
+def docker(*args):
+    return subprocess.check_output(['docker', *args], text=True)
+
+# Protect every container, including stopped containers, plus the current and
+# candidate images and the last completed release's rollback image.
+containers = docker('container', 'ls', '--all', '--quiet').split()
+protected = set()
+if containers:
+    protected.update(item['Image'] for item in json.loads(docker('container', 'inspect', *containers)))
+references = list(sys.argv[2:])
+completed = sorted(config.glob('releases/*/completed'))
+if completed:
+    record = completed[-1].parent
+    references.extend((record / name).read_text().strip() for name in ('previous-image', 'candidate-image'))
+for reference in references:
+    result = subprocess.run(['docker', 'image', 'inspect', reference], text=True, capture_output=True)
+    if result.returncode:
+        # A candidate or older rollback reference may not be downloaded.
+        if 'No such image' in result.stderr:
+            continue
+        raise RuntimeError('Cannot inspect a protected deployment image')
+    protected.update(item['Id'] for item in json.loads(result.stdout))
+
+allowed = (
+    'ghcr.io/danielsayer/kitchenbinder@', 'ghcr.io/danielsayer/kitchenbinder:',
+    'ghcr.io/danielsayer/prep-sheet@', 'ghcr.io/danielsayer/prep-sheet:',
+    'kitchenbinder:',
+)
+image_ids = sorted(set(docker('image', 'ls', '--quiet', '--no-trunc').split()))
+removed = 0
+for item in json.loads(docker('image', 'inspect', *image_ids)) if image_ids else []:
+    refs = (item.get('RepoTags') or []) + (item.get('RepoDigests') or [])
+    if item['Id'] in protected or not refs or not all(ref.startswith(allowed) for ref in refs):
+        continue
+    # Never force image removal, prune volumes or touch another application's images.
+    subprocess.run(['docker', 'image', 'rm', item['Id']], check=True, stdout=subprocess.DEVNULL)
+    removed += 1
+print(f'Removed {removed} obsolete application images.', flush=True)
+
+# Containerd snapshots may live outside DockerRootDir. Check both filesystems.
+storage = {config, pathlib.Path(docker('info', '--format', '{{.DockerRootDir}}').strip())}
+containerd = pathlib.Path('/var/lib/containerd')
+if containerd.exists():
+    storage.add(containerd)
+minimum = int(os.environ.get('DEPLOY_MIN_FREE_BYTES', 4 * 1024**3))
+if minimum <= 0:
+    raise ValueError('DEPLOY_MIN_FREE_BYTES must be positive')
+for path in storage:
+    free = shutil.disk_usage(path).free
+    if free < minimum:
+        raise SystemExit(f'Insufficient deployment disk space at {path}: {free} bytes free; need {minimum}.')
+PY
+}
 database() {
   docker run --rm --memory 192m --cpus 0.5 --env-file "$config/migrate.env" "$1" \
     node packages/db/scripts/migrate.mjs "${@:2}"
@@ -70,6 +128,10 @@ for file in runtime.env capacity.env migrate.env backup.env nginx-maintenance.co
 done
 [[ -s "$nginx" && -s "$app/deploy/compose.yml" ]]
 docker login ghcr.io -u "$actor" --password-stdin >/dev/null
+previous=$(compose config --images | sort -u)
+[[ -n "$previous" && "$previous" != *$'\n'* ]]
+docker image inspect "$previous" >/dev/null
+if [[ $mode == deploy ]]; then prune_images "$previous" "$image"; fi
 docker pull "$image"
 actual_revision=$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')
 [[ "$actual_revision" == "$revision" ]]
@@ -86,9 +148,6 @@ if [[ $mode == check ]]; then
   exit 0
 fi
 
-previous=$(compose config --images | sort -u)
-[[ -n "$previous" && "$previous" != *$'\n'* ]]
-docker image inspect "$previous" >/dev/null
 docker pull postgres:18
 install -m 600 "$config/runtime.env" "$temporary/runtime.env"
 install -m 644 "$app/deploy/compose.yml" "$temporary/compose-before.yml"
@@ -155,4 +214,5 @@ systemctl reload nginx
 curl --fail --silent --show-error --retry 3 --max-time 20 https://kitchenbinder.app/health/ready >/dev/null
 printf '%s\n' "$revision" > "$release_record/completed"
 maintenance=0
+prune_images "$image" "$previous" || echo 'Image cleanup needs operator attention; deployment is healthy.' >&2
 echo "Deployed $revision. Both services healthy; public readiness passed."
