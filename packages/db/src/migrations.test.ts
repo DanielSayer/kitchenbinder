@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { afterAll, expect, it } from "vitest";
@@ -162,7 +162,7 @@ it("provisions a clean database with ICU and preserves all data on repeated migr
           "SELECT count(*)::int AS total FROM prep_sheet_migration",
         )
       ).rows[0].total,
-    ).toBe(16);
+    ).toBe(17);
     expect(
       (
         await client.query(
@@ -170,6 +170,81 @@ it("provisions a clean database with ICU and preserves all data on repeated migr
         )
       ).rows[0].natural,
     ).toBe(true);
+  });
+}, 60_000);
+
+const beforeAccountIdentity = readdirSync(
+  new URL("./migrations/", import.meta.url),
+)
+  .filter(
+    (name) =>
+      /^\d{4}_.+\.sql$/.test(name) &&
+      name < "0016_better_auth_account_identity.sql",
+  )
+  .sort();
+
+it("preserves legacy accounts and permits issuer-free accounts with provider-scoped identity", async () => {
+  await database(async (client, run) => {
+    await applyRecorded(client, beforeAccountIdentity);
+    await client.query(`
+      INSERT INTO "user" (id,name,email) VALUES ('auth-user','Existing person','auth@example.test');
+      INSERT INTO account(id,issuer,account_id,provider_id,user_id,access_token,updated_at)
+      VALUES ('legacy-google','https://accounts.google.com','shared-id','google','auth-user','preserved-token',now());
+    `);
+    const before = (await client.query("SELECT * FROM account")).rows;
+    expect(run()).toContain("verified");
+    expect((await client.query("SELECT * FROM account")).rows).toEqual(before);
+    await client.query(`
+      INSERT INTO account(id,account_id,provider_id,user_id,updated_at)
+      VALUES ('new-discord','shared-id','discord','auth-user',now());
+    `);
+    expect(
+      (await client.query("SELECT issuer FROM account WHERE id='new-discord'"))
+        .rows,
+    ).toEqual([{ issuer: null }]);
+    await expect(
+      client.query(`
+        INSERT INTO account(id,account_id,provider_id,user_id,updated_at)
+        VALUES ('duplicate-google','shared-id','google','auth-user',now());
+      `),
+    ).rejects.toMatchObject({ code: "23505" });
+    expect(run()).toContain("verified");
+    expect(run("--verify")).toContain("verified");
+  });
+}, 60_000);
+
+it("rejects ambiguous legacy provider identities and rolls back the account migration", async () => {
+  await database(async (client, run) => {
+    await applyRecorded(client, beforeAccountIdentity);
+    await client.query(`
+      INSERT INTO "user" (id,name,email) VALUES ('auth-user','Existing person','auth@example.test');
+      INSERT INTO account(id,issuer,account_id,provider_id,user_id,updated_at) VALUES
+        ('first-google','https://first.example.test','shared-id','google','auth-user',now()),
+        ('second-google','https://second.example.test','shared-id','google','auth-user',now());
+    `);
+    const before = (await client.query("SELECT * FROM account ORDER BY id"))
+      .rows;
+    expect(() => run()).toThrow(/Database migration failed/);
+    expect(
+      (await client.query("SELECT * FROM account ORDER BY id")).rows,
+    ).toEqual(before);
+    expect(
+      (
+        await client.query(`SELECT
+          to_regclass('public."account_issuer_accountId_uidx"') IS NOT NULL AS old_index,
+          to_regclass('public."account_providerId_accountId_uidx"') IS NULL AS new_index_absent,
+          (SELECT is_nullable FROM information_schema.columns
+            WHERE table_name='account' AND column_name='issuer') AS issuer_nullable,
+          (SELECT count(*)::int FROM prep_sheet_migration) AS migrations`)
+      ).rows,
+    ).toEqual([
+      {
+        old_index: true,
+        new_index_absent: true,
+        issuer_nullable: "NO",
+        migrations: 16,
+      },
+    ]);
   });
 }, 60_000);
 
