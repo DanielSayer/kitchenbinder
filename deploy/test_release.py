@@ -20,6 +20,27 @@ with (root/'calls').open('a') as log:
     log.write(json.dumps([name, *args])+'\n')
 if name == 'docker':
     if args[0] == 'login': sys.stdin.read()
+    images = [
+        {'Id': 'current-image', 'RepoTags': [], 'RepoDigests': ['ghcr.io/danielsayer/kitchenbinder@current']},
+        {'Id': 'rollback-image', 'RepoTags': [], 'RepoDigests': ['ghcr.io/danielsayer/kitchenbinder@rollback']},
+        {'Id': 'candidate-image', 'RepoTags': [], 'RepoDigests': ['ghcr.io/danielsayer/kitchenbinder@candidate']},
+        {'Id': 'stopped-image', 'RepoTags': [], 'RepoDigests': ['ghcr.io/danielsayer/kitchenbinder@stopped']},
+        {'Id': 'obsolete-image', 'RepoTags': [], 'RepoDigests': ['ghcr.io/danielsayer/prep-sheet@obsolete']},
+        {'Id': 'other-image', 'RepoTags': ['postgres:18'], 'RepoDigests': []},
+        {'Id': 'shared-image', 'RepoTags': ['kitchenbinder:old', 'other-app:latest'], 'RepoDigests': []},
+        {'Id': 'unknown-image', 'RepoTags': [], 'RepoDigests': []},
+    ]
+    if args[:2] == ['container', 'ls']: print('web-container\nstopped-container')
+    if args[:2] == ['container', 'inspect']:
+        if scenario == 'inspect_failure': sys.exit(1)
+        print(json.dumps([{'Image': 'current-image'}, {'Image': 'stopped-image'}]))
+    if args[:2] == ['image', 'ls']: print('\n'.join(image['Id'] for image in images))
+    if args[:2] == ['image', 'inspect'] and '--format' not in args:
+        aliases = {'previous-image': 'current-image', 'historical-rollback': 'rollback-image', 'historical-current': 'current-image'}
+        selected = [aliases.get(ref, 'candidate-image' if ref.startswith('ghcr.io/') else ref) for ref in args[2:]]
+        print(json.dumps([image for image in images if image['Id'] in selected]))
+    if args[0] == 'info': print(root)
+    if args[:2] == ['image', 'rm'] and scenario == 'cleanup_failure': sys.exit(1)
     if args[:2] == ['image', 'inspect'] and '--format' in args:
         print('c'*40 if scenario == 'wrong_revision' else 'a'*40)
     if args[0] == 'cp': pathlib.Path(args[-1]).write_text('candidate compose')
@@ -66,6 +87,11 @@ class ReleaseTests(unittest.TestCase):
             nginx.write_text("maintenance" if scenario == "forward_repair" else "serving")
             compose = app / "deploy/compose.yml"
             compose.write_text("original compose")
+            completed = config / "releases/20260101T000000Z-previous"
+            completed.mkdir(parents=True)
+            (completed / "completed").write_text("previous-revision")
+            (completed / "previous-image").write_text("historical-rollback")
+            (completed / "candidate-image").write_text("historical-current")
             result = subprocess.run(
                 ["bash", "deploy/release.sh", mode, DIGEST, REVISION, "DanielSayer"],
                 input="temporary-registry-token",
@@ -80,6 +106,7 @@ class ReleaseTests(unittest.TestCase):
                     "DEPLOY_CONFIG_ROOT": str(config),
                     "DEPLOY_BACKUP_ROOT": str(root / "backups"),
                     "DEPLOY_NGINX_FILE": str(nginx),
+                    "DEPLOY_MIN_FREE_BYTES": str(2**60 if scenario == "low_disk" else 1),
                 },
                 timeout=20,
             )
@@ -87,6 +114,8 @@ class ReleaseTests(unittest.TestCase):
             self.assertNotIn("temporary-registry-token", result.stdout + result.stderr)
             self.assertFalse(list(config.glob(".release-*")))
             for call in calls:
+                self.assertFalse("prune" in call)
+                self.assertNotEqual(call[:4], ["docker", "image", "rm", "--force"])
                 if call[:2] == ["docker", "compose"]:
                     self.assertIn(str(config / "capacity.env"), call)
                     self.assertIn("--project-name", call)
@@ -97,6 +126,46 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(any(call[:2] == ["docker", "run"] for call in calls))
         self.assertFalse(any("stop" in call or "up" in call for call in calls))
+        self.assertEqual(nginx, "serving")
+        self.assertIn("previous-image", runtime)
+        self.assertFalse(any(call[:3] == ["docker", "image", "rm"] for call in calls))
+
+    def test_cleanup_preserves_current_rollback_candidate_and_stopped_container_images(self):
+        result, calls, _, _ = self.run_release()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        removals = [call for call in calls if call[:3] == ["docker", "image", "rm"]]
+        self.assertTrue(removals)
+        self.assertTrue(all(call[-1] in ("obsolete-image", "rollback-image") for call in removals))
+        first_pull = next(index for index, call in enumerate(calls) if call[:2] == ["docker", "pull"])
+        self.assertEqual(
+            [call for call in calls[:first_pull] if call[:3] == ["docker", "image", "rm"]],
+            [["docker", "image", "rm", "obsolete-image"]],
+        )
+        # Once healthy, the replaced current image is the immediate rollback;
+        # the older rollback can be removed.
+        public_check = next(index for index, call in enumerate(calls) if call[0] == "curl")
+        self.assertIn(["docker", "image", "rm", "rollback-image"], calls[public_check + 1:])
+
+    def test_low_disk_fails_before_pull_maintenance_or_database_work(self):
+        result, calls, nginx, runtime = self.run_release("low_disk")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Insufficient deployment disk space", result.stderr)
+        self.assertFalse(any(call[:2] == ["docker", "pull"] for call in calls))
+        self.assertFalse(any("stop" in call or "up" in call for call in calls))
+        self.assertFalse(any(call[:2] == ["docker", "run"] for call in calls))
+        self.assertEqual(nginx, "serving")
+        self.assertIn("previous-image", runtime)
+
+    def test_failed_container_inspection_prevents_any_image_removal(self):
+        result, calls, nginx, _ = self.run_release("inspect_failure")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(any(call[:3] == ["docker", "image", "rm"] for call in calls))
+        self.assertEqual(nginx, "serving")
+
+    def test_cleanup_failure_keeps_current_release_serving(self):
+        result, calls, nginx, runtime = self.run_release("cleanup_failure")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(any(call[:2] == ["docker", "pull"] for call in calls))
         self.assertEqual(nginx, "serving")
         self.assertIn("previous-image", runtime)
 
