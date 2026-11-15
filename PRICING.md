@@ -10,7 +10,7 @@ Draft. Paid pricing and AI allowances are TBD based on costs.
 
 ## Paid — $X/month
 
-- Unlimited saved recipes, or a generous limit to be decided.
+- Unlimited saved recipes (review later).
 - A monthly allowance for AI imports and recipe generation.
 - Create and manage a shared household, if ready for launch. Free users can join.
 
