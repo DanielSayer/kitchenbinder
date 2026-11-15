@@ -6,8 +6,10 @@ import { env } from "@prep-sheet/env/server";
 import {
   APIError,
   createAuthEndpoint,
+  createAuthMiddleware,
   sessionMiddleware,
 } from "better-auth/api";
+import { signJWT } from "better-auth/plugins/jwt";
 import { z } from "zod";
 
 export const mcpResource = `${new URL(env.BETTER_AUTH_URL).origin}/api/mcp`;
@@ -44,7 +46,6 @@ export const oauthOptions = {
 
 const identity = z.object({
   sub: z.string().min(1),
-  sid: z.string().min(1),
   client_id: z.string().min(1),
   aud: z.union([z.string(), z.array(z.string())]),
   scope: z.string(),
@@ -53,10 +54,54 @@ const identity = z.object({
   cnf: z.unknown().optional(),
 });
 
-/** Uses the provider's local signature, expiry, client and session validation. */
+const issuedToken = z.looseObject({ access_token: z.string() });
+const issuedClaims = identity
+  .omit({ client_id: true })
+  .extend({
+    azp: z.string().min(1),
+    exp: z.number(),
+  })
+  .loose();
+const issuedHeader = z.object({ typ: z.literal("at+jwt"), kid: z.string() });
+
+/** The provider has no option to omit sid from its built-in JWT grants. */
+const detachMcpSession = createAuthMiddleware(async (ctx) => {
+  const response = issuedToken.safeParse(ctx.context.returned);
+  if (!response.success) return;
+  const [headerPart, payloadPart] = response.data.access_token.split(".");
+  if (!headerPart || !payloadPart) return; // Opaque access tokens are unchanged.
+  // Decode only the token just minted by the provider, never request input.
+  const header = issuedHeader.parse(
+    JSON.parse(Buffer.from(headerPart, "base64url").toString("utf8")),
+  );
+  const claims = issuedClaims.parse(
+    JSON.parse(Buffer.from(payloadPart, "base64url").toString("utf8")),
+  );
+  const audiences = typeof claims.aud === "string" ? [claims.aud] : claims.aud;
+  if (!audiences.includes(mcpResource)) return;
+  const { sid: _sessionId, ...payload } = claims;
+  return ctx.json({
+    ...response.data,
+    access_token: await signJWT(ctx, {
+      payload,
+      header: { typ: header.typ },
+      signingKeyId: header.kid,
+    }),
+  });
+});
+
+/** Uses the provider's local signature, expiry and client validation. */
 export function mcpIdentityPlugin() {
   return {
     id: "kitchenbinder-mcp",
+    hooks: {
+      after: [
+        {
+          matcher: (ctx: { path?: string }) => ctx.path === "/oauth2/token",
+          handler: detachMcpSession,
+        },
+      ],
+    },
     endpoints: {
       mcpIdentity: createAuthEndpoint(
         "/mcp/identity",
@@ -79,7 +124,7 @@ export function mcpIdentityPlugin() {
           if (
             !audiences.includes(mcpResource) ||
             !claims.scope.split(" ").includes("kitchenbinder") ||
-            claims.cnf
+            claims.cnf !== undefined
           ) {
             throw new APIError("UNAUTHORIZED");
           }
@@ -103,7 +148,6 @@ export function mcpIdentityPlugin() {
           }
           return {
             userId: claims.sub,
-            sessionId: claims.sid,
             clientId: claims.client_id,
           };
         },

@@ -140,3 +140,21 @@ export async function issueToken(
     );
   return tokenResult.parse(await response.json());
 }
+
+export async function refreshToken(
+  refreshToken: string,
+  clientId: string,
+  send: Send = testAuth.handler,
+) {
+  return send(
+    new Request("http://localhost:3001/api/auth/oauth2/token", {
+      method: "POST",
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        client_id: clientId,
+        refresh_token: refreshToken,
+        resource: mcpResource,
+      }),
+    }),
+  );
+}

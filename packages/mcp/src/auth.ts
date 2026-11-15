@@ -2,8 +2,30 @@ import type { Context } from "@prep-sheet/api/context";
 import { auth } from "@prep-sheet/auth";
 import { mcpResource } from "@prep-sheet/auth/oauth";
 import { db } from "@prep-sheet/db";
-import { session, user } from "@prep-sheet/db/schema/auth";
-import { and, eq, gt } from "drizzle-orm";
+import { user } from "@prep-sheet/db/schema/auth";
+import { eq } from "drizzle-orm";
+
+function assistantContext(account: typeof user.$inferSelect): Context {
+  // tRPC's protected procedures use only session.user. This request-local
+  // adapter is never persisted and cannot authenticate a browser session.
+  const now = new Date();
+  return {
+    auth: null,
+    session: {
+      user: account,
+      session: {
+        id: `mcp:${account.id}`,
+        token: "",
+        userId: account.id,
+        createdAt: now,
+        updatedAt: now,
+        expiresAt: now,
+        ipAddress: null,
+        userAgent: null,
+      },
+    },
+  };
+}
 
 export async function tokenContext(request: Request): Promise<Context | null> {
   let identity: Awaited<ReturnType<typeof auth.api.mcpIdentity>>;
@@ -19,17 +41,10 @@ export async function tokenContext(request: Request): Promise<Context | null> {
     throw error;
   }
   const [result] = await db
-    .select({ user, session })
-    .from(session)
-    .innerJoin(user, eq(user.id, session.userId))
-    .where(
-      and(
-        eq(session.id, identity.sessionId),
-        eq(user.id, identity.userId),
-        gt(session.expiresAt, new Date()),
-      ),
-    );
-  return result ? { auth: null, session: result } : null;
+    .select()
+    .from(user)
+    .where(eq(user.id, identity.userId));
+  return result ? assistantContext(result) : null;
 }
 export function authenticationRequired() {
   return Response.json(
