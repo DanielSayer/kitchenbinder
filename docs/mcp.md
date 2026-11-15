@@ -66,7 +66,7 @@ Copy the link from `/mcp`, paste it into the assistant's custom connections sett
 
 ## Remaining review
 
-- TODO(architect): verify the exact Claude and ChatGPT menu labels in `apps/web/src/lib/assistant-guides.ts` and test each hosted client's production connection. Their plan/workspace availability can vary.
+- Menu labels in `apps/web/src/lib/assistant-guides.ts` verified against Claude/OpenAI help docs on 2026-11-15. ChatGPT custom connections are Business/Enterprise/Edu only. Hosted Claude/ChatGPT production connections still untested.
 - Review `/mcp`, consent and Settings at desktop and mobile widths when browser automation is available.
 - The provider's refresh/revocation operations use its adapter operations rather than an application-wide transaction. The live-consent check denies disconnected clients; simultaneous refresh/reconnect across multiple workers remains an upstream concurrency consideration.
 - Date defaults use Brisbane because the account model has no saved timezone. Explicit date ranges are available for other timezones.
