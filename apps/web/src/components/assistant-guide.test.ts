@@ -82,13 +82,13 @@ it("switches client instructions and shows a free user's upgrade note", async ()
     { exact: false },
   );
   fireEvent.click(screen.getByRole("button", { name: "ChatGPT" }));
-  expect(screen.getByText(/Turn on developer mode/)).toBeTruthy();
+  expect(screen.getByText(/Add custom MCP server/)).toBeTruthy();
   expect(
     screen
       .getByRole("button", { name: "ChatGPT" })
       .getAttribute("aria-pressed"),
   ).toBe("true");
   expect(
-    screen.queryByText("Choose Connectors, then Add custom connector."),
+    screen.queryByText("Choose Add, then Add custom connector."),
   ).toBeNull();
 });
