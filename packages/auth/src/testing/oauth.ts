@@ -19,8 +19,10 @@ export const tokenResult = z.object({
 });
 export const registrationResult = z.object({ client_id: z.string() });
 
-export async function registerClient() {
-  const response = await testAuth.handler(
+type Send = (request: Request) => Promise<Response>;
+
+export async function registerClient(send: Send = testAuth.handler) {
+  const response = await send(
     new Request("http://localhost:3001/api/auth/oauth2/register", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -57,10 +59,12 @@ export async function authorize({
   cookie,
   clientId,
   resource = mcpResource,
+  send = testAuth.handler,
 }: {
   cookie: string;
   clientId: string;
   resource?: string;
+  send?: Send;
 }) {
   const verifier = randomBytes(32).toString("base64url");
   const query = new URLSearchParams({
@@ -74,20 +78,19 @@ export async function authorize({
     state: randomBytes(16).toString("hex"),
     prompt: "consent",
   });
-  const response = await testAuth.handler(
+  const response = await send(
     new Request(`http://localhost:3001/api/auth/oauth2/authorize?${query}`, {
       headers: { cookie, accept: "text/html" },
     }),
   );
-  const location = response.headers.get("location");
-  if (!location)
-    throw new Error(
-      `Authorize failed: ${response.status} ${await response.text()}`,
-    );
+  const location =
+    response.headers.get("location") ??
+    (response.ok ? redirectResult.parse(await response.json()).url : null);
+  if (!location) throw new Error(`Authorize failed: ${response.status}`);
   const signedQuery = new URL(location, "http://localhost:3001").search.slice(
     1,
   );
-  const consentResponse = await testAuth.handler(
+  const consentResponse = await send(
     new Request("http://localhost:3001/api/auth/oauth2/consent", {
       method: "POST",
       headers: { cookie, "content-type": "application/json" },
@@ -119,9 +122,13 @@ export function exchangeBody(grant: Awaited<ReturnType<typeof authorize>>) {
     resource: grant.resource,
   });
 }
-export async function issueToken(cookie: string, clientId: string) {
-  const grant = await authorize({ cookie, clientId });
-  const response = await testAuth.handler(
+export async function issueToken(
+  cookie: string,
+  clientId: string,
+  send: Send = testAuth.handler,
+) {
+  const grant = await authorize({ cookie, clientId, send });
+  const response = await send(
     new Request("http://localhost:3001/api/auth/oauth2/token", {
       method: "POST",
       body: exchangeBody(grant),

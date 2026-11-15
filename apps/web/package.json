@@ -34,7 +34,8 @@
     "sharp": "^0.35.5",
     "sonner": "catalog:",
     "tailwindcss": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "@prep-sheet/mcp": "workspace:*"
   },
   "devDependencies": {
     "@prep-sheet/config": "workspace:*",

@@ -4,7 +4,8 @@ export const PHOTO_UPLOAD_PATH = "/api/recipes/imports/photos";
 export const RECIPE_PHOTO_PATH = "/api/recipes/photo";
 
 export function bodyByteLimit(pathname) {
-  if (pathname.startsWith("/api/trpc/")) return 1_572_864;
+  if (pathname === "/api/mcp" || pathname.startsWith("/api/trpc/"))
+    return 1_572_864;
   if (pathname === "/api/polar/webhooks") return 262_144;
   // Five 1.5 MiB photos plus multipart framing and the request JSON.
   if (pathname === PHOTO_UPLOAD_PATH) return 8_388_608;

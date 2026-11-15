@@ -22,6 +22,25 @@ function streamingRequest(
 }
 
 describe("body admission before parsers", () => {
+  it("admits long MCP recipes within the bounded tRPC-sized budget", async () => {
+    const result = await boundedRequest(
+      new Request("http://localhost/api/mcp", {
+        method: "POST",
+        body: "a".repeat(32_000),
+      }),
+    );
+    expect(result).toBeInstanceOf(Request);
+    const rejected = await boundedRequest(
+      new Request("http://localhost/api/mcp", {
+        method: "POST",
+        headers: {
+          "content-length": String(bodyByteLimit("/api/mcp") + 1),
+        },
+        body: "a",
+      }),
+    );
+    expect(rejected instanceof Response && rejected.status).toBe(413);
+  });
   it("forwards the real development server's request wrapper without changing its metadata or bytes", async () => {
     // Resolve the adapter from TanStack so this exercises the version used by Vite.
     const webRequire = createRequire(

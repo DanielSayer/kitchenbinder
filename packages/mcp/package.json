@@ -1,0 +1,30 @@
+{
+  "name": "@prep-sheet/mcp",
+  "type": "module",
+  "exports": {
+    ".": {
+      "default": "./src/index.ts"
+    },
+    "./*": {
+      "default": "./src/*.ts"
+    }
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.4.0",
+    "@prep-sheet/api": "workspace:*",
+    "@prep-sheet/auth": "workspace:*",
+    "@prep-sheet/db": "workspace:*",
+    "@prep-sheet/env": "workspace:*",
+    "drizzle-orm": "^0.45.4",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@prep-sheet/config": "workspace:*",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "@modelcontextprotocol/client": "^2.4.0"
+  }
+}
