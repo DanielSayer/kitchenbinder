@@ -22,6 +22,7 @@
 @import "./styles/install-app.css";
 @import "./styles/shell.css";
 @import "./styles/pantry.css";
+@import "./styles/assistants.css";
 .mobile-screen-title {
   display: none;
 }

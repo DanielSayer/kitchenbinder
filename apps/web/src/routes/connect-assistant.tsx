@@ -32,21 +32,21 @@ function Consent() {
     }
   }
   return (
-    <main id="main-content" className="page-width you-page">
+    <main id="main-content" className="page-width assistant-page">
       <LargeTitle>Connect your AI assistant</LargeTitle>
-      <section className="pantry-card space-y-5 p-6">
+      <section className="assistant-card space-y-5">
         {isPending ? (
-          <p>Checking your sign-in?</p>
+          <p>Checking your sign-in...</p>
         ) : session ? (
           <>
             <p>
               Connect as <strong>{session.user.name}</strong>?
             </p>
             <p>
-              Your assistant will be able to read your recipes, households, meal
-              plans and shopping lists. It can save recipes, change planned
-              meals and update shopping lists on your behalf, including shared
-              households you belong to.
+              Your assistant will be able to read your account profile, recipes,
+              households, meal plans and shopping lists. It can save recipes,
+              change planned meals and update shopping lists on your behalf,
+              including shared households you belong to.
             </p>
             <p>
               Only approve this if you started the connection in your assistant.
@@ -61,7 +61,7 @@ function Consent() {
                 disabled={pending}
                 onClick={() => void decide(true)}
               >
-                {pending ? "Connecting?" : "Allow connection"}
+                {pending ? "Connecting..." : "Allow connection"}
               </button>
               <button
                 type="button"
