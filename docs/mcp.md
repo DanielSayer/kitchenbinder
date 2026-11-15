@@ -28,6 +28,8 @@ Results contain concise text plus JSON in `structuredContent.data`. Tools have Z
 
 Recipe creation accepts original ingredient lines, never model-supplied unit objects. Optional source URLs are retained in recipe notes because `createManual` deliberately has no structured source-URL field. This keeps its existing data contract. Notes plus source text must fit its existing 2,000-character limit.
 
+`plan_meal` can omit both `baseServings` and `servings`. It uses the planner UI's shared parser for a recipe's whole-number servings, such as `Serves 4` or `4 people`. Missing, ambiguous or out-of-range counts use 2, the UI's initial cook/eat portions. The UI still asks for an original serving count when it cannot parse one. MCP defaults cook/eat servings to the base; either value can be explicitly overridden with an integer from 1 to 100. Identical meal retries retain the saved base if the recipe's servings have changed.
+
 For safe retries, reuse `recipeId` with an identical recipe submission. Changed content with the same ID returns a conflict. Shopping batches can use a stable `requestId`; an identical retry recovers existing items. Partial errors return added item IDs and a failed index. Retry the unchanged full batch with the same ID. Reusing a meal ID recovers an identical addition; changed meal details with that ID return a conflict. Meal removal requires the revision returned by `get_meal_plan`; stale revisions fail and must be reviewed before retrying. Default week dates use Australia/Brisbane and the user's saved week-start preference.
 
 ## Local checks

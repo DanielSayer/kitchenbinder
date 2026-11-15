@@ -4,7 +4,11 @@ import { AccountRequestLimit } from "@prep-sheet/api/account-request-limit";
 import type { Context } from "@prep-sheet/api/context";
 import { appRouter } from "@prep-sheet/api/routers/index";
 import { mcpResource } from "@prep-sheet/auth/oauth";
-import { calendarDate } from "@prep-sheet/db/meal-planner";
+import {
+  calendarDate,
+  defaultMealServings,
+  plannerRecipeServings,
+} from "@prep-sheet/db/meal-planner";
 import { z } from "zod";
 import { addDays, thisWeek } from "./dates";
 import { accountPlan } from "./entitlement";
@@ -19,6 +23,7 @@ const household = {
     ),
 };
 const line = z.string().trim().min(1).max(2000);
+const portionCount = z.number().int().min(1).max(100);
 const read = {
   readOnlyHint: true,
   destructiveHint: false,
@@ -350,15 +355,15 @@ export function createKitchenBinderServer(context: Context) {
     "plan_meal",
     {
       description:
-        "Add a recipe to a household's meal plan on YYYY-MM-DD. Meal slot is Breakfast, Lunch, Dinner or empty for no slot. Supply baseServings from the recipe and servings to cook/eat. This adds a meal without replacing existing meals. Reuse mealId for identical retries. Concurrent plan changes return a conflict; read and review the new plan before retrying.",
+        "Add a recipe to a household's meal plan on YYYY-MM-DD. Meal slot is Breakfast, Lunch, Dinner or empty for no slot. baseServings defaults to the recipe's whole-number servings, or 2 if unavailable. servings to cook/eat defaults to that base. Both can be overridden with 1 to 100. This adds a meal without replacing existing meals. Reuse mealId for identical retries. Concurrent plan changes return a conflict; read and review the new plan before retrying.",
       inputSchema: z.object({
         ...household,
         recipeId: z.uuid(),
         mealId: z.uuid().optional(),
         date: calendarDate,
         slot: z.enum(["", "Breakfast", "Lunch", "Dinner"]).default("Dinner"),
-        baseServings: z.number().int().min(1).max(100),
-        servings: z.number().int().min(1).max(100),
+        baseServings: portionCount.optional(),
+        servings: portionCount.optional(),
       }),
       annotations: write,
     },
@@ -374,15 +379,29 @@ export function createKitchenBinderServer(context: Context) {
       run(async () => {
         const plan = await caller.planner.get({ householdId });
         const existing = plan.meals.find((meal) => meal.id === mealId);
+        let base = baseServings;
+        if (base === undefined) {
+          if (existing?.kind === "recipe" && existing.recipeId === recipeId) {
+            // A retry keeps the original base even if the recipe has since changed.
+            base = existing.baseServings;
+          } else {
+            const saved = await caller.recipes.get({ id: recipeId });
+            const parsed = portionCount.safeParse(
+              Number(plannerRecipeServings(saved.content.servings)),
+            );
+            base = parsed.success ? parsed.data : defaultMealServings;
+          }
+        }
+        const portions = servings ?? base;
         if (existing) {
           if (
             existing.kind !== "recipe" ||
             existing.recipeId !== recipeId ||
             existing.date !== date ||
             existing.slot !== slot ||
-            existing.baseServings !== baseServings ||
-            existing.cook !== servings ||
-            existing.eat !== servings
+            existing.baseServings !== base ||
+            existing.cook !== portions ||
+            existing.eat !== portions
           ) {
             return result(
               "This meal ID belongs to an earlier plan. Review that meal and use a new mealId for a different addition.",
@@ -405,9 +424,9 @@ export function createKitchenBinderServer(context: Context) {
             recipeId,
             date,
             slot,
-            baseServings,
-            cook: servings,
-            eat: servings,
+            baseServings: base,
+            cook: portions,
+            eat: portions,
           },
         });
         return result(`Meal planned for ${date}${slot ? `, ${slot}` : ""}.`, {

@@ -1,4 +1,8 @@
-import { type Meal, mealInput } from "@prep-sheet/db/meal-planner";
+import {
+  type Meal,
+  mealInput,
+  plannerRecipeServings,
+} from "@prep-sheet/db/meal-planner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useTRPC } from "@/utils/trpc";
@@ -89,11 +93,7 @@ export function useMealDraft({
   );
   const initialiseServings = useCallback(
     (recipeServings: string | null | undefined) => {
-      const servings = recipeServings
-        ?.trim()
-        .match(
-          /^(?:serves?\s*)?(\d+)(?:\s*(?:servings?|people|portions?))?$/i,
-        )?.[1];
+      const servings = plannerRecipeServings(recipeServings);
       if (servings) dispatch({ type: "servings", servings, editing });
       else dispatch({ type: "details", open: true });
     },
