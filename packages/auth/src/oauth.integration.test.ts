@@ -121,4 +121,60 @@ describe("assistant OAuth with PostgreSQL", () => {
     );
     expect(refresh.ok).toBe(false);
   });
+  it("accepts sessionless identities while retaining token and grant checks", async () => {
+    const { client_id: clientId } = await registerClient();
+    clients.push(clientId);
+    const login = await signIn(`${randomUUID()}@example.test`);
+    users.push(login.user.id);
+    await issueToken(login.cookie, clientId);
+    const [consent] = await db
+      .select()
+      .from(oauthConsent)
+      .where(eq(oauthConsent.clientId, clientId));
+    if (!consent) throw new Error("Missing consent");
+    const claims = {
+      iss: "http://localhost:3001/api/auth",
+      sub: login.user.id,
+      azp: clientId,
+      aud: mcpResource,
+      scope: "kitchenbinder offline_access",
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + 3600,
+      kitchenbinder_grant: consent.id,
+    };
+    const valid = await testAuth.api.signJWT({ body: { payload: claims } });
+    expect(
+      await testAuth.api.mcpIdentity({
+        headers: new Headers({ authorization: `Bearer ${valid.token}` }),
+      }),
+    ).toMatchObject({ userId: login.user.id, clientId });
+    for (const overrides of [
+      { aud: "https://wrong.example.test/api" },
+      { scope: "offline_access" },
+      { kitchenbinder_grant: randomUUID() },
+      { cnf: { jkt: "bound-key" } },
+      { cnf: null },
+      { exp: Math.floor(Date.now() / 1000) - 1 },
+    ]) {
+      const invalid = await testAuth.api.signJWT({
+        body: { payload: { ...claims, ...overrides } },
+      });
+      await expect(
+        testAuth.api.mcpIdentity({
+          headers: new Headers({ authorization: `Bearer ${invalid.token}` }),
+        }),
+      ).rejects.toBeDefined();
+    }
+    const signatureParts = valid.token.split(".");
+    const signature = signatureParts[2];
+    if (!signature) throw new Error("Missing signature");
+    signatureParts[2] = `${signature[0] === "A" ? "B" : "A"}${signature.slice(1)}`;
+    await expect(
+      testAuth.api.mcpIdentity({
+        headers: new Headers({
+          authorization: `Bearer ${signatureParts.join(".")}`,
+        }),
+      }),
+    ).rejects.toBeDefined();
+  });
 });

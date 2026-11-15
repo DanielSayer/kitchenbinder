@@ -6,20 +6,29 @@ import {
   Client,
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
+import { completeAccountDeletion } from "@prep-sheet/api/account-deletion";
 import { auth } from "@prep-sheet/auth";
 import {
   issueToken,
+  refreshToken,
   registerClient,
   signIn,
   testAuth,
+  tokenResult,
 } from "@prep-sheet/auth/testing/oauth";
 import { db } from "@prep-sheet/db";
-import { user } from "@prep-sheet/db/schema/auth";
+import { session, user } from "@prep-sheet/db/schema/auth";
 import { billingAccount } from "@prep-sheet/db/schema/billing";
 import { household } from "@prep-sheet/db/schema/household";
 import { recipeImport } from "@prep-sheet/db/schema/import";
-import { oauthClient, oauthConsent } from "@prep-sheet/db/schema/oauth";
+import {
+  oauthAccessToken,
+  oauthClient,
+  oauthConsent,
+  oauthRefreshToken,
+} from "@prep-sheet/db/schema/oauth";
 import { recipe } from "@prep-sheet/db/schema/recipe";
+import { accountDeletionRequest } from "@prep-sheet/db/schema/support";
 import { count, eq, inArray } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -131,6 +140,101 @@ afterAll(async () => {
 });
 
 describe("real OAuth and Streamable HTTP MCP connection", () => {
+  it.each(["expired", "deleted", "signed out"])(
+    "keeps access and refresh working after web sessions are %s",
+    async (mode) => {
+      const login = await signIn(`${randomUUID()}@example.test`);
+      userIds.push(login.user.id);
+      await db.insert(billingAccount).values({
+        userId: login.user.id,
+        status: "active",
+        validUntil: new Date(Date.now() + 86400_000),
+      });
+      const { client_id: clientId } = await registerClient(send);
+      clientIds.push(clientId);
+      const tokens = await issueToken(login.cookie, clientId, send);
+      if (!tokens.refresh_token) throw new Error("Missing refresh token");
+      const connection = await connect(tokens.access_token);
+      if (mode === "expired") {
+        await db
+          .update(session)
+          .set({ expiresAt: new Date(0) })
+          .where(eq(session.userId, login.user.id));
+      } else if (mode === "deleted") {
+        await db.delete(session).where(eq(session.userId, login.user.id));
+      } else {
+        await testAuth.api.signOut({
+          headers: new Headers({ cookie: login.cookie }),
+        });
+      }
+      const sessions = await db
+        .select()
+        .from(session)
+        .where(eq(session.userId, login.user.id));
+      expect(sessions.every((entry) => entry.expiresAt <= new Date())).toBe(
+        true,
+      );
+      expect(
+        data(
+          await connection.callTool({
+            name: "get_account_overview",
+            arguments: {},
+          }),
+        ),
+      ).toMatchObject({ name: "MCP test", plan: "pro" });
+      const refreshed = await refreshToken(
+        tokens.refresh_token,
+        clientId,
+        send,
+      );
+      expect(refreshed.status).toBe(200);
+      const next = tokenResult.parse(await refreshed.json());
+      expect(next.refresh_token).toBeDefined();
+      const renewed = await connect(next.access_token);
+      expect(
+        data(
+          await renewed.callTool({
+            name: "get_account_overview",
+            arguments: {},
+          }),
+        ),
+      ).toMatchObject({ name: "MCP test", plan: "pro" });
+    },
+  );
+  it("rejects deleted users immediately and cascades their OAuth grants", async () => {
+    const login = await signIn(`${randomUUID()}@example.test`);
+    userIds.push(login.user.id);
+    const { client_id: clientId } = await registerClient(send);
+    clientIds.push(clientId);
+    const tokens = await issueToken(login.cookie, clientId, send);
+    if (!tokens.refresh_token) throw new Error("Missing refresh token");
+    expect(
+      (await (await connect(tokens.access_token)).listTools()).tools,
+    ).toHaveLength(11);
+    const requestId = randomUUID();
+    await db
+      .insert(accountDeletionRequest)
+      .values({ id: requestId, userId: login.user.id });
+    await completeAccountDeletion(requestId);
+    expect(
+      (
+        await fetch(`${base}/api/mcp`, {
+          headers: { authorization: `Bearer ${tokens.access_token}` },
+        })
+      ).status,
+    ).toBe(401);
+    for (const table of [oauthConsent, oauthAccessToken, oauthRefreshToken]) {
+      expect(
+        await db
+          .select({ id: table.id })
+          .from(table)
+          .where(eq(table.userId, login.user.id)),
+      ).toHaveLength(0);
+    }
+    expect((await refreshToken(tokens.refresh_token, clientId, send)).ok).toBe(
+      false,
+    );
+  });
   it("challenges missing, malformed and wrong-audience tokens without accepting a login cookie", async () => {
     for (const headers of [
       {},

@@ -4,10 +4,10 @@ Kitchenbinder Pro users can connect an assistant at `/api/mcp`. The public `/mcp
 
 ## Architecture
 
-- `packages/mcp` defines the eleven tools, creates one SDK server per request, resolves bearer tokens to a real user/session and invokes `appRouter.createCaller(context)`.
+- `packages/mcp` defines the eleven tools, creates one SDK server per request, resolves bearer tokens to an existing user and invokes `appRouter.createCaller(context)`. Its typed, non-persisted session adapter supplies `session.user`; the household, recipe, planner, shopping, preferences and billing paths use no other session fields.
 - `apps/web/src/routes/api/mcp.ts` serves GET, POST and DELETE through `@modelcontextprotocol/server` 2.4.0 `createMcpHandler`. Legacy support stays enabled as `legacy: "stateless"`. Legacy GET/DELETE session operations return 405 because the server has no persistent MCP sessions. Modern and legacy Streamable HTTP tool calls are supported.
 - `packages/auth/src/oauth.ts` configures Better Auth's jwt plugin and `@better-auth/oauth-provider` 1.7.18. Dynamic registration, PKCE, user consent and refresh tokens use the provider. Login reuses Google/Discord on `/login`; the client plugin preserves the provider-signed authorisation query through social sign-in.
-- The provider issues tokens for the configured `BETTER_AUTH_URL` origin plus `/api/mcp`. Every HTTP request verifies the signature, issuer, expiry, client, real login session, audience, `kitchenbinder` scope and live consent. A signed access-token claim binds the token to its exact consent ID, so reconnecting cannot revive a revoked JWT. Cookies alone cannot authenticate an MCP request. DPoP-bound tokens are rejected, since this endpoint accepts bearer tokens only.
+- The provider issues tokens for the configured `BETTER_AUTH_URL` origin plus `/api/mcp`. Every HTTP request uses `requireActiveAccessToken` to verify the signature, issuer, expiry and client, then checks the audience, `kitchenbinder` scope, live consent and existing user. A signed access-token claim binds the token to its exact consent ID, so reconnecting cannot revive a revoked JWT. Cookies alone cannot authenticate an MCP request. Tokens with a `cnf` claim are rejected, since this endpoint accepts bearer tokens only.
 - Every tool invocation reads `billing_account` and applies the same `allowance()` policy used by billing status. Free and lapsed accounts can authorise a connection but receive a tool error with `/pricing`. Trial users have Pro entitlement while their trial is valid.
 - Existing household permissions, recipe capacity, parsing, validation and planner revision checks remain in tRPC. Omitted household IDs mean the personal household. The app's current household is stored in the browser and is not inferred by a remote client. Recipe search covers all accessible recipes.
 - Both HTTP admission and tool work use `AccountRequestLimit(120)` per user per minute. A shopping batch costs one tool-work unit per line. Limits are per process, as with tRPC; aggregate limits belong at the edge. MCP bodies have the same bounded 1.5 MiB budget as tRPC.
@@ -54,12 +54,17 @@ Keep tokens out of saved commands, logs and committed files. For synthetic local
 
 ## Connecting and disconnecting
 
+Assistant access belongs to the user's OAuth consent, independently of website sign-in. Signing out, deleting web sessions or letting them expire does not disconnect an assistant. The provider's refresh grant checks the refresh token, client and user without requiring the original session. Clients must request `offline_access` to obtain refresh tokens and preserve them across sign-out. Normal access-token expiry and refresh-token expiry/rotation still apply.
+
+In oauth-provider 1.7.18, the built-in JWT grants always include the original `sid` when available, and `requireActiveAccessToken` rejects tokens with an ended `sid`. There is no provider option to omit that claim. A Better Auth after hook on successful `/oauth2/token` responses re-signs MCP JWTs without `sid` using the public `better-auth/plugins/jwt` signing API. It preserves the signing key, `at+jwt` type and all other claims, including expiry and the consent binding. It reads only the provider's minted response. Both code exchange and refresh, including rotation replay, pass through this hook. No provider code is patched.
+
+Account deletion removes the user inside `completeAccountDeletion`'s transaction. The OAuth consent, refresh-token and access-token foreign keys already cascade on user deletion in migration `0017`; no extra deletes or migration are needed. MCP checks the user and consent on every request, so outstanding JWTs immediately receive 401. Refresh also fails once the user and tokens are deleted.
+
 Copy the link from `/mcp`, paste it into the assistant's custom connections settings, then sign in and approve access. Settings links to the guide and lists connected assistants. Disconnect revokes that user's client token family and removes consent. MCP also checks consent on every request so an existing JWT stops working immediately. Removing a connection only in the assistant's settings depends on that client's revocation behaviour; disconnect in Kitchenbinder to guarantee the server denies further calls.
 
 ## Remaining review
 
 - TODO(architect): verify the exact Claude and ChatGPT menu labels in `apps/web/src/lib/assistant-guides.ts` and test each hosted client's production connection. Their plan/workspace availability can vary.
 - Review `/mcp`, consent and Settings at desktop and mobile widths when browser automation is available.
-- The login-session lifetime also bounds an assistant connection. Expired or removed login sessions require reconnection even if the assistant still has a token.
 - The provider's refresh/revocation operations use its adapter operations rather than an application-wide transaction. The live-consent check denies disconnected clients; simultaneous refresh/reconnect across multiple workers remains an upstream concurrency consideration.
 - Date defaults use Brisbane because the account model has no saved timezone. Explicit date ranges are available for other timezones.
