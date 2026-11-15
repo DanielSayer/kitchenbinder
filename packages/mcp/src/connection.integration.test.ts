@@ -336,6 +336,22 @@ describe("real OAuth and Streamable HTTP MCP connection", () => {
       );
     const meal = plan.meals[0];
     if (!meal) throw new Error("Missing planned meal");
+    const retry = {
+      mealId: meal.id,
+      recipeId: savedRecipeId,
+      date: "2026-11-16",
+      baseServings: 4,
+      servings: 4,
+    };
+    data(await client.callTool({ name: "plan_meal", arguments: retry }));
+    expect(
+      (
+        await client.callTool({
+          name: "plan_meal",
+          arguments: { ...retry, date: "2026-11-17" },
+        })
+      ).isError,
+    ).toBe(true);
     const stale = await client.callTool({
       name: "remove_planned_meal",
       arguments: { mealId: meal.id, revision: plan.revision - 1 },
@@ -447,5 +463,20 @@ describe("real OAuth and Streamable HTTP MCP connection", () => {
         })
       ).status,
     ).toBe(401);
+    const clientId = clientIds[0];
+    if (!clientId) throw new Error("Missing client");
+    const reconnected = await issueToken(paid.cookie, clientId, send);
+    // Re-consenting immediately must never revive a disconnected JWT, even
+    // when both grants were created within the same timestamp second.
+    expect(
+      (
+        await fetch(`${base}/api/mcp`, {
+          headers: { authorization: `Bearer ${token}` },
+        })
+      ).status,
+    ).toBe(401);
+    expect(
+      (await (await connect(reconnected.access_token)).listTools()).tools,
+    ).toHaveLength(11);
   });
 });

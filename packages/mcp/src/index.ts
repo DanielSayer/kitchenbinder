@@ -22,8 +22,8 @@ export async function handleMcpRequest(request: Request): Promise<Response> {
   if (origin && !allowedOrigins.has(origin))
     return new Response("Origin not allowed.", { status: 403 });
   const context = await tokenContext(request);
-  if (!context) return authenticationRequired();
-  const retryAfter = requests.take(context.session?.user.id ?? "");
+  if (!context?.session) return authenticationRequired();
+  const retryAfter = requests.take(context.session.user.id);
   if (retryAfter !== null)
     return new Response("Too many requests. Try again shortly.", {
       status: 429,
