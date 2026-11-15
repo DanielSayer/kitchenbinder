@@ -1,4 +1,8 @@
-import { type MealInput, mealInput } from "@prep-sheet/db/meal-planner";
+import {
+  defaultMealServings,
+  type MealInput,
+  mealInput,
+} from "@prep-sheet/db/meal-planner";
 import { z } from "zod";
 
 export const mealDraftSchema = z.object({
@@ -44,8 +48,10 @@ export function initialMealDraft(
     kind: meal?.kind ?? "recipe",
     recipeId: meal?.kind === "recipe" ? meal.recipeId : (recipeId ?? ""),
     baseServings: meal?.kind === "recipe" ? String(meal.baseServings) : "",
-    cook: meal?.kind === "recipe" ? String(meal.cook) : "2",
-    eat: meal?.kind === "recipe" ? String(meal.eat) : "2",
+    cook:
+      meal?.kind === "recipe" ? String(meal.cook) : String(defaultMealServings),
+    eat:
+      meal?.kind === "recipe" ? String(meal.eat) : String(defaultMealServings),
     sourceId: meal?.kind === "leftovers" ? meal.sourceId : "",
     portions: meal?.kind === "leftovers" ? String(meal.portions) : "2",
     description: meal?.kind === "out" ? meal.description : "",

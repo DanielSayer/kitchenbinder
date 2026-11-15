@@ -12,6 +12,17 @@ export const calendarDate = z.iso
     "Choose a date between 2000 and 2100.",
   );
 const portions = z.number().int().min(1).max(100);
+export const defaultMealServings = 2;
+
+// Keep the recipe's exact whole-number servings text for planner draft inputs.
+export function plannerRecipeServings(servings: string | null | undefined) {
+  return servings
+    ?.trim()
+    .match(
+      /^(?:serves?\s*)?(\d+)(?:\s*(?:servings?|people|portions?))?$/i,
+    )?.[1];
+}
+
 const common = {
   id: z.uuid(),
   date: calendarDate,
