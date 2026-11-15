@@ -20,6 +20,24 @@ export const oauthOptions = {
   allowUnauthenticatedClientRegistration: true,
   clientRegistrationDefaultResources: [mcpResource],
   resources: [{ identifier: mcpResource, name: "Kitchenbinder" }],
+  extensions: [
+    {
+      claims: {
+        accessToken: async ({ ctx, user, client }) => {
+          if (!user) return {};
+          const consent = await ctx.context.adapter.findOne<{ id: string }>({
+            model: "oauthConsent",
+            where: [
+              { field: "clientId", value: client.clientId },
+              { field: "userId", value: user.id },
+            ],
+          });
+          if (!consent) throw new APIError("UNAUTHORIZED");
+          return { kitchenbinder_grant: consent.id };
+        },
+      },
+    },
+  ],
   // Resource/client administration is never part of an assistant connection.
   resourcePrivileges: () => false,
 } satisfies OAuthOptions<string[]>;
@@ -31,6 +49,7 @@ const identity = z.object({
   aud: z.union([z.string(), z.array(z.string())]),
   scope: z.string(),
   iat: z.number(),
+  kitchenbinder_grant: z.string().min(1),
   cnf: z.unknown().optional(),
 });
 
@@ -67,7 +86,7 @@ export function mcpIdentityPlugin() {
           // Deleting a provider consent alone does not revoke an existing JWT.
           // Check the grant on every request, including grants recreated after revoke.
           const consent = await ctx.context.adapter.findOne<{
-            createdAt: Date;
+            id: string;
             scopes: string[];
           }>({
             model: "oauthConsent",
@@ -77,9 +96,8 @@ export function mcpIdentityPlugin() {
             ],
           });
           if (
-            !consent ||
-            !consent.scopes.includes("kitchenbinder") ||
-            Math.floor(consent.createdAt.getTime() / 1000) > claims.iat
+            !consent?.scopes.includes("kitchenbinder") ||
+            consent.id !== claims.kitchenbinder_grant
           ) {
             throw new APIError("UNAUTHORIZED");
           }

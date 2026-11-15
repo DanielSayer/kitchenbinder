@@ -373,6 +373,29 @@ export function createKitchenBinderServer(context: Context) {
     }) =>
       run(async () => {
         const plan = await caller.planner.get({ householdId });
+        const existing = plan.meals.find((meal) => meal.id === mealId);
+        if (existing) {
+          if (
+            existing.kind !== "recipe" ||
+            existing.recipeId !== recipeId ||
+            existing.date !== date ||
+            existing.slot !== slot ||
+            existing.baseServings !== baseServings ||
+            existing.cook !== servings ||
+            existing.eat !== servings
+          ) {
+            return result(
+              "This meal ID belongs to an earlier plan. Review that meal and use a new mealId for a different addition.",
+              { code: "CONFLICT", mealId },
+              true,
+            );
+          }
+          return result("This meal is already planned.", {
+            mealId,
+            date,
+            slot,
+          });
+        }
         await caller.planner.save({
           householdId,
           revision: plan.revision,
