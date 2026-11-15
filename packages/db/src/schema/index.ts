@@ -5,6 +5,7 @@ export * from "./collection";
 export * from "./household";
 export * from "./import";
 export * from "./meal-planner";
+export * from "./oauth";
 export * from "./preference";
 export * from "./recipe";
 export * from "./shopping";

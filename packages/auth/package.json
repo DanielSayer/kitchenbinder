@@ -13,6 +13,7 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
+    "@better-auth/oauth-provider": "1.7.18",
     "@prep-sheet/db": "workspace:*",
     "@prep-sheet/env": "workspace:*",
     "better-auth": "catalog:",

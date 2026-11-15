@@ -1,11 +1,15 @@
+import { oauthProvider } from "@better-auth/oauth-provider";
 import { createDb } from "@prep-sheet/db";
 import { ensurePersonalHousehold } from "@prep-sheet/db/households";
 import * as schema from "@prep-sheet/db/schema/auth";
+import * as oauthSchema from "@prep-sheet/db/schema/oauth";
 import { env } from "@prep-sheet/env/server";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { createAuthMiddleware, freshSessionMiddleware } from "better-auth/api";
+import { jwt } from "better-auth/plugins";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
+import { mcpIdentityPlugin, oauthOptions } from "./oauth";
 import { createAuthRateLimitStorage } from "./rate-limit";
 
 export function createAuth() {
@@ -15,7 +19,7 @@ export function createAuth() {
     database: drizzleAdapter(db, {
       provider: "pg",
 
-      schema: schema,
+      schema: { ...schema, ...oauthSchema },
     }),
     trustedOrigins: [env.BETTER_AUTH_URL],
     advanced: {
@@ -82,7 +86,12 @@ export function createAuth() {
     onAPIError: {
       errorURL: `${env.BETTER_AUTH_URL.replace(/\/$/, "")}/login`,
     },
-    plugins: [tanstackStartCookies()],
+    plugins: [
+      jwt(),
+      oauthProvider(oauthOptions),
+      mcpIdentityPlugin(),
+      tanstackStartCookies(),
+    ],
   });
 }
 
