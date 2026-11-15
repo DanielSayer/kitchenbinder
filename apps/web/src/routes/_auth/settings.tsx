@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Billing } from "@/components/billing";
+import { ConnectedAssistants } from "@/components/connected-assistants";
 import { ErrorNotice, LoadingState } from "@/components/feedback";
 import {
   useHousehold,
@@ -126,6 +127,9 @@ function You() {
         >
           Preferences
         </YouRow>
+        <YouRow icon={<Sparkles size={20} />} to="/mcp">
+          Connect your AI assistant
+        </YouRow>
         <InstallButton className="pantry-row">
           <span className="pantry-row-icon">
             <Download size={20} aria-hidden="true" />
@@ -147,6 +151,8 @@ function You() {
           Linked accounts
         </YouRow>
       </div>
+
+      <ConnectedAssistants />
 
       <p className="grouped-label">Help &amp; privacy</p>
       <div className="pantry-list">
@@ -208,6 +214,7 @@ function YouRow({
   sub?: ReactNode;
   to?:
     | "/recipes/deleted"
+    | "/mcp"
     | "/privacy"
     | "/settings/tags"
     | "/settings/preferences"
