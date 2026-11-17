@@ -1,8 +1,5 @@
-import {
-  type Meal,
-  mealInput,
-  plannerRecipeServings,
-} from "@prep-sheet/db/meal-planner";
+import { baseServings } from "@prep-sheet/db/ingredient-line";
+import { type Meal, mealInput } from "@prep-sheet/db/meal-planner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useTRPC } from "@/utils/trpc";
@@ -93,7 +90,8 @@ export function useMealDraft({
   );
   const initialiseServings = useCallback(
     (recipeServings: string | null | undefined) => {
-      const servings = plannerRecipeServings(recipeServings);
+      const base = baseServings(recipeServings);
+      const servings = base && base <= 100 ? String(base) : null;
       if (servings) dispatch({ type: "servings", servings, editing });
       else dispatch({ type: "details", open: true });
     },
