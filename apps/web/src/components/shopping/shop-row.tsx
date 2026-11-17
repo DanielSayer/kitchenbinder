@@ -1,3 +1,4 @@
+import { displayLine } from "@prep-sheet/db/ingredient-line";
 import { Check, House, MoreHorizontal } from "lucide-react";
 import {
   type PointerEvent as ReactPointerEvent,
@@ -5,7 +6,6 @@ import {
   useState,
 } from "react";
 import { useMeasurePreferences } from "@/components/preferences";
-import { displayLine } from "../recipes/scale-ingredients";
 import type { Item } from "./shopping-groups";
 
 const SWIPE_COMMIT_PX = 96;

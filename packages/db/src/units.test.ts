@@ -5,6 +5,7 @@ import {
   convertQuantity,
   densityOf,
   formatAmount,
+  formatQuantity,
   type MeasurePreferences,
   preferredAmount,
   unitChoices,
@@ -124,5 +125,14 @@ describe("formatting", () => {
     [amount(132, "g"), "130 g"],
   ])("formats %j as %s", (value, text) =>
     expect(formatAmount(value)).toBe(text),
+  );
+  it.each([
+    [0.3, "⅓"],
+    [1.74, "1¾"],
+    [1.97, "2"],
+    [12.4, "12"],
+    [0.05, "¼"],
+  ])("formats kitchen quantity %d as %s", (value, text) =>
+    expect(formatQuantity(value)).toBe(text),
   );
 });

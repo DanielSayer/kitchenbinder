@@ -1,9 +1,11 @@
 import {
+  displayQuantity,
+  type Ingredient,
   type IngredientLine,
-  parseIngredient,
+  ingredientLines,
+  type MeasurePreferences,
   type Unit,
-} from "@prep-sheet/db/ingredients";
-import type { MeasurePreferences } from "@prep-sheet/db/units";
+} from "@prep-sheet/db/ingredient-line";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,18 +14,13 @@ import {
   DropdownMenuTrigger,
 } from "@prep-sheet/ui/components/dropdown-menu";
 import { useState } from "react";
-import { displayQuantity } from "./scale-ingredients";
 
 /** Parsed form of each line, from the recipe's stored data when it has it. */
 export function parsedIngredients(
   texts: readonly string[],
   lines: readonly IngredientLine[] | null | undefined,
 ) {
-  const known = new Map(lines?.map((line) => [line.text, line]));
-  return texts.map((text) => {
-    const line = known.get(text);
-    return line ? line.parsed : parseIngredient(text);
-  });
+  return ingredientLines(texts, lines).map((line) => line.parsed);
 }
 
 /** Units the cook has switched lines to, by ingredient key. */
@@ -50,7 +47,7 @@ export function IngredientText({
 }: {
   text: string;
   factor: number;
-  ingredient: ReturnType<typeof parseIngredient>;
+  ingredient: Ingredient | null;
   unit: Unit | null;
   onUnitChange: (unit: Unit) => void;
   preferences: MeasurePreferences;

@@ -1,4 +1,7 @@
-import type { IngredientLine } from "@prep-sheet/db/ingredients";
+import {
+  baseServings,
+  type IngredientLine,
+} from "@prep-sheet/db/ingredient-line";
 import type { RecipeContent } from "@prep-sheet/db/recipe-content";
 import {
   defaultMeasurePreferences,
@@ -13,7 +16,6 @@ import {
   parsedIngredients,
   useUnitChoices,
 } from "./ingredient-text";
-import { parseServings } from "./scale-ingredients";
 
 type Pane = "ingredients" | "method";
 const panes = [
@@ -79,7 +81,7 @@ export function RecipeBody({
   const own = useIngredientProgress(progress ? undefined : progressKey);
   const { checked, update, storageFailed } = progress ?? own;
   const [pane, setPane] = useState<Pane>("ingredients");
-  const base = parseServings(content.servings);
+  const base = baseServings(content.servings);
   const [ownServings, setOwnServings] = useState(base);
   const servings = controlledServings ?? ownServings ?? base;
   const setServings = onServingsChange ?? setOwnServings;

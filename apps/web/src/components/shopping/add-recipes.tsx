@@ -20,7 +20,7 @@ import {
   recipePageSize,
   useRecipePage,
 } from "../recipes/pagination";
-import { formatServings } from "../recipes/scale-ingredients";
+import { formatServings } from "../recipes/servings-label";
 import { useDebouncedValue } from "../use-debounced-value";
 
 export function AddRecipesButton({

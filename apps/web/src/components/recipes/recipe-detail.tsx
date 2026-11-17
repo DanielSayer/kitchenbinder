@@ -1,3 +1,4 @@
+import { baseServings } from "@prep-sheet/db/ingredient-line";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getRouteApi,
@@ -44,7 +45,6 @@ import {
 import { RecipeEditor } from "./recipe-editor";
 import { RecipePhotoField, useRecipePhoto } from "./recipe-photo-field";
 import { shortRecipeTime } from "./recipe-time";
-import { parseServings } from "./scale-ingredients";
 import { useRestoreRecipe } from "./use-restore-recipe";
 
 const detailRoute = getRouteApi("/_auth/recipes/$recipeId");
@@ -205,7 +205,7 @@ export function RecipeDetail({ id }: { id: string }) {
   const data = recipe.data;
   const content = data?.content;
   const measures = useMeasurePreferences();
-  const base = parseServings(content?.servings);
+  const base = baseServings(content?.servings);
   const factor = base && servings ? servings / base : 1;
   const keys = content ? ingredientKeys(content.ingredients) : [];
   const time = content ? shortRecipeTime(content) : null;
