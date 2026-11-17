@@ -1,9 +1,9 @@
 import { z } from "zod";
 import {
-  isIngredientHeading,
-  parseQuantity,
-  quantityPattern,
-} from "./ingredients";
+  type Ingredient,
+  type IngredientLine,
+  ingredientLines,
+} from "./ingredient-line";
 
 export const calendarDate = z.iso
   .date()
@@ -13,15 +13,6 @@ export const calendarDate = z.iso
   );
 const portions = z.number().int().min(1).max(100);
 export const defaultMealServings = 2;
-
-// Keep the recipe's exact whole-number servings text for planner draft inputs.
-export function plannerRecipeServings(servings: string | null | undefined) {
-  return servings
-    ?.trim()
-    .match(
-      /^(?:serves?\s*)?(\d+)(?:\s*(?:servings?|people|portions?))?$/i,
-    )?.[1];
-}
 
 const common = {
   id: z.uuid(),
@@ -60,6 +51,8 @@ export type Meal =
   | (Extract<MealInput, { kind: "recipe" }> & {
       title: string;
       ingredients: string[];
+      /** Each line's parse, from the recipe when planned. Older meals lack it. */
+      ingredientData?: IngredientLine[];
     });
 export const coverageInput = z
   .object({
@@ -86,6 +79,8 @@ export type Demand = {
   recipeId: string;
   title: string;
   text: string;
+  /** Parse of the line at ×1. Older trips lack it. */
+  parsed?: Ingredient | null;
   factor: number;
   servings: number;
 };
@@ -140,21 +135,23 @@ export function shoppingDemands(meals: Meal[], coverage: Coverage): Demand[] {
       meal.kind === "recipe" &&
       meal.date >= coverage.start &&
       meal.date <= coverage.end
-        ? meal.ingredients.flatMap((text, position) =>
-            // Headings such as "For the sauce:" aren't things to buy.
-            isIngredientHeading(text)
-              ? []
-              : [
-                  {
-                    key: `${meal.id}:${position}`,
-                    mealId: meal.id,
-                    recipeId: meal.recipeId,
-                    title: meal.title,
-                    text,
-                    factor: meal.cook / meal.baseServings,
-                    servings: meal.cook,
-                  },
-                ],
+        ? ingredientLines(meal.ingredients, meal.ingredientData).flatMap(
+            (line, position) =>
+              // Headings such as "For the sauce:" aren't things to buy.
+              line.heading
+                ? []
+                : [
+                    {
+                      key: `${meal.id}:${position}`,
+                      mealId: meal.id,
+                      recipeId: meal.recipeId,
+                      title: meal.title,
+                      text: line.text,
+                      parsed: line.parsed,
+                      factor: meal.cook / meal.baseServings,
+                      servings: meal.cook,
+                    },
+                  ],
           )
         : [],
     )
@@ -177,29 +174,4 @@ export function tripIsStale(meals: Meal[], trip: MealTrip) {
       return !previous || !sameDemand(demand, previous);
     })
   );
-}
-
-const leadingQuantity = new RegExp(String.raw`^(${quantityPattern})\s*(.*)$`);
-export function scaleIngredient(
-  text: string,
-  factor: number,
-): { text: string; uncertain: boolean } {
-  if (Math.abs(factor - 1) < 0.000001) return { text, uncertain: false };
-  const match = text.match(leadingQuantity);
-  if (!match?.[1] || !match[2] || /^(?:[-–,./]|to\b|or\b)/i.test(match[2])) {
-    return {
-      text: `${text} [check quantity for ×${Number(factor.toFixed(3))} recipe]`,
-      uncertain: true,
-    };
-  }
-  const quantity = parseQuantity(match[1]);
-  if (!Number.isFinite(quantity) || quantity <= 0)
-    return {
-      text: `${text} [check quantity for ×${Number(factor.toFixed(3))} recipe]`,
-      uncertain: true,
-    };
-  return {
-    text: `${Number((quantity * factor).toFixed(3))} ${match[2]}`,
-    uncertain: false,
-  };
 }

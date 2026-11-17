@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { db } from "@prep-sheet/db";
-import { parseIngredient } from "@prep-sheet/db/ingredients";
+import { ingredientLines, scaleLine } from "@prep-sheet/db/ingredient-line";
 import {
   type Allocation,
   coverageInput,
@@ -10,7 +10,6 @@ import {
   mealInput,
   mealIssues,
   sameDemand,
-  scaleIngredient,
   shoppingDemands,
   tripIsStale,
 } from "@prep-sheet/db/meal-planner";
@@ -158,7 +157,10 @@ function reconcile(
     }
     const remaining = Math.max(0, demand.factor - covered);
     if (remaining > 0.000001) {
-      const scaled = scaleIngredient(demand.text, remaining);
+      const scaled = scaleLine(
+        { text: demand.text, parsed: demand.parsed ?? null },
+        remaining,
+      );
       if (scaled.uncertain) warnings.add(`${demand.title}: ${scaled.text}`);
       const id = randomUUID();
       additions.push({
@@ -166,6 +168,7 @@ function reconcile(
         householdId,
         addedBy: userId,
         text: scaled.text,
+        ingredient: scaled.ingredient,
         recipeId: demand.recipeId,
         recipeTitle: demand.title,
         servings: `${demand.servings} servings planned`,
@@ -285,6 +288,12 @@ export const plannerRouter = router({
         : [];
       return {
         ...saved,
+        // Line parses are for trips only; callers read the text.
+        meals: saved.meals.map((meal) => {
+          if (meal.kind !== "recipe") return meal;
+          const { ingredientData: _, ...rest } = meal;
+          return rest;
+        }),
         photos: Object.fromEntries(
           covers.flatMap(({ id, photo }) => (photo ? [[id, photo]] : [])),
         ),
@@ -336,6 +345,9 @@ export const plannerRouter = router({
               ...input.meal,
               title: old.title,
               ingredients: old.ingredients,
+              ...(old.ingredientData && {
+                ingredientData: old.ingredientData,
+              }),
             };
           else {
             const [source] = await tx
@@ -357,6 +369,10 @@ export const plannerRouter = router({
               ...input.meal,
               title: source.title,
               ingredients: source.content.ingredients,
+              ingredientData: ingredientLines(
+                source.content.ingredients,
+                source.ingredientData,
+              ),
             };
           }
         } else {
@@ -461,13 +477,7 @@ export const plannerRouter = router({
                 inArray(shoppingItem.id, removed),
               ),
             );
-        if (additions.length)
-          await tx.insert(shoppingItem).values(
-            additions.map((item) => ({
-              ...item,
-              ingredient: parseIngredient(item.text),
-            })),
-          );
+        if (additions.length) await tx.insert(shoppingItem).values(additions);
         const trip: MealTrip = {
           ...input.coverage,
           demands: reviewed.demands,
