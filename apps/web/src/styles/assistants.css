@@ -7,23 +7,25 @@
   margin-bottom: 24px;
 }
 .assistant-card {
-  padding: 24px;
-  margin-bottom: 20px;
+  padding: 28px;
+  margin-bottom: 24px;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--r-l);
 }
 .assistant-card h2 {
-  margin: 0 0 16px;
+  margin: 0 0 20px;
   font-size: 24px;
   font-weight: 800;
+  line-height: 1.2;
 }
 .assistant-card p {
-  line-height: 1.5;
+  margin: 0;
+  line-height: 1.6;
 }
 .assistant-link label {
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
   color: var(--ink-2);
   font-size: 14px;
 }
@@ -40,7 +42,7 @@
   color: var(--ink);
 }
 .assistant-link .button-block {
-  margin-top: 12px;
+  margin-top: 16px;
 }
 .assistant-note {
   color: var(--ink-2);
@@ -48,12 +50,12 @@
   line-height: 1.5;
 }
 .assistant-card .assistant-note {
-  margin: 16px 0 0;
+  margin: 20px 0 0;
 }
 .assistant-choices {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 12px;
 }
 .assistant-choices [aria-pressed="true"] {
   background: var(--tomato-soft);
@@ -61,13 +63,21 @@
   color: var(--tomato);
 }
 .assistant-steps {
+  list-style: decimal;
   padding-left: 24px;
-  margin: 20px 0 0;
+  margin: 24px 0 0;
 }
 .assistant-steps li {
-  padding-left: 6px;
-  margin: 0 0 12px;
-  line-height: 1.5;
+  padding-left: 8px;
+  margin: 0 0 16px;
+  line-height: 1.6;
+}
+.assistant-steps li:last-child {
+  margin-bottom: 0;
+}
+.assistant-steps li::marker {
+  color: var(--ink-2);
+  font-weight: 700;
 }
 .assistant-examples {
   list-style: none;
@@ -100,12 +110,20 @@
 .assistant-card > p + p {
   margin-top: 16px;
 }
+.assistant-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 28px;
+}
 @media (max-width: 850px) {
   .assistant-page {
     padding-top: 24px;
   }
   .assistant-card {
     padding: 20px;
+    margin-bottom: 20px;
     border-radius: var(--r-m);
   }
   .assistant-choices .button {
