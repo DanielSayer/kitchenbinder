@@ -5,9 +5,13 @@ import { db } from "@prep-sheet/db";
 import { user } from "@prep-sheet/db/schema/auth";
 import { eq } from "drizzle-orm";
 
-function assistantContext(account: typeof user.$inferSelect): Context {
-  // tRPC's protected procedures use only session.user. This request-local
-  // adapter is never persisted and cannot authenticate a browser session.
+type Account = typeof user.$inferSelect;
+
+/**
+ * tRPC's protected procedures use only `session.user`. This request-local
+ * adapter is never persisted and cannot authenticate a browser session.
+ */
+function sessionContext(account: Account): Context {
   const now = new Date();
   return {
     auth: null,
@@ -27,32 +31,40 @@ function assistantContext(account: typeof user.$inferSelect): Context {
   };
 }
 
-export async function tokenContext(request: Request): Promise<Context | null> {
-  let identity: Awaited<ReturnType<typeof auth.api.mcpIdentity>>;
+function isRejectedToken(error: unknown) {
+  return (
+    error instanceof Error &&
+    "statusCode" in error &&
+    (error.statusCode === 401 || error.statusCode === 400)
+  );
+}
+
+/** Resolve a bearer token to an existing user's context, or null if invalid. */
+export async function authenticate(request: Request) {
+  let userId: string;
   try {
-    identity = await auth.api.mcpIdentity({ headers: request.headers });
+    ({ userId } = await auth.api.mcpIdentity({ headers: request.headers }));
   } catch (error) {
-    if (
-      error instanceof Error &&
-      "statusCode" in error &&
-      (error.statusCode === 401 || error.statusCode === 400)
-    )
-      return null;
+    if (isRejectedToken(error)) return null;
     throw error;
   }
-  const [result] = await db
-    .select()
-    .from(user)
-    .where(eq(user.id, identity.userId));
-  return result ? assistantContext(result) : null;
+  const [account] = await db.select().from(user).where(eq(user.id, userId));
+  return account ? sessionContext(account) : null;
 }
-export function authenticationRequired() {
+
+const metadataUrl = new URL(
+  "/.well-known/oauth-protected-resource/api/mcp",
+  mcpResource,
+).href;
+
+/** 401 with the `WWW-Authenticate` pointer clients use to start OAuth. */
+export function unauthorized() {
   return Response.json(
     { error: "Sign in to connect your assistant to Kitchenbinder." },
     {
       status: 401,
       headers: {
-        "WWW-Authenticate": `Bearer resource_metadata="${new URL("/.well-known/oauth-protected-resource/api/mcp", mcpResource).href}", scope="kitchenbinder"`,
+        "WWW-Authenticate": `Bearer resource_metadata="${metadataUrl}", scope="kitchenbinder"`,
         "Cache-Control": "no-store",
       },
     },
