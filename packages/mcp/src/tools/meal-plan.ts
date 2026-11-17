@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { baseServings } from "@prep-sheet/db/ingredient-line";
 import {
   calendarDate,
   defaultMealServings,
   type MealInput,
-  plannerRecipeServings,
 } from "@prep-sheet/db/meal-planner";
 import { z } from "zod";
 import { thisWeek, weekRange } from "../dates";
@@ -53,19 +53,17 @@ type Plan = Awaited<ReturnType<ToolContext["api"]["planner"]["get"]>>;
 type PlannedMeal = Plan["meals"][number];
 type RecipeMeal = Extract<MealInput, { kind: "recipe" }>;
 
-/** The recipe's whole-number servings, or the planner's default. */
+/** The recipe's base servings, or the planner's default. */
 async function recipeServings(api: ToolContext["api"], recipeId: string) {
   const recipe = await api.recipes.get({ id: recipeId });
-  const parsed = portionCount.safeParse(
-    Number(plannerRecipeServings(recipe.content.servings)),
-  );
+  const parsed = portionCount.safeParse(baseServings(recipe.content.servings));
   return parsed.success ? parsed.data : defaultMealServings;
 }
 
 export const planMeal = defineTool({
   name: "plan_meal",
   description:
-    "Add a recipe to a household's meal plan on YYYY-MM-DD. Meal slot is Breakfast, Lunch, Dinner or empty for no slot. baseServings defaults to the recipe's whole-number servings, or 2 if unavailable. servings to cook/eat defaults to that base. Both can be overridden with 1 to 100. This adds a meal without replacing existing meals. Reuse mealId for identical retries. Concurrent plan changes return a conflict; read and review the new plan before retrying.",
+    "Add a recipe to a household's meal plan on YYYY-MM-DD. Meal slot is Breakfast, Lunch, Dinner or empty for no slot. baseServings defaults to the recipe's servings (first number, or lower end of a range), or 2 if unavailable. servings to cook/eat defaults to that base. Both can be overridden with 1 to 100. This adds a meal without replacing existing meals. Reuse mealId for identical retries. Concurrent plan changes return a conflict; read and review the new plan before retrying.",
   input: z.object({
     ...householdScope,
     recipeId: z.uuid(),

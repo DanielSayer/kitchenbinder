@@ -121,10 +121,21 @@ it.each(["new", "duplicate"])(
   },
 );
 
-it("opens details for ambiguous recipe servings without changing portions", () => {
+it("defaults portions to the lower end of a servings range", () => {
   const { result } = mount();
   act(() => result.current.selectRecipe(otherRecipe));
   act(() => result.current.initialiseServings("4–6 servings"));
+  expect(result.current.draft).toMatchObject({
+    baseServings: "4",
+    cook: "4",
+    eat: "4",
+  });
+});
+
+it("opens details for recipe servings without a number without changing portions", () => {
+  const { result } = mount();
+  act(() => result.current.selectRecipe(otherRecipe));
+  act(() => result.current.initialiseServings("A crowd"));
   expect(result.current.detailsOpen).toBe(true);
   expect(result.current.draft).toMatchObject({
     baseServings: "",

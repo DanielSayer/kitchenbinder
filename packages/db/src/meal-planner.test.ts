@@ -3,7 +3,6 @@ import {
   coverageInput,
   type Meal,
   mealIssues,
-  scaleIngredient,
   shoppingDemands,
   tripIsStale,
 } from "./meal-planner";
@@ -65,6 +64,39 @@ describe("meal planning rules", () => {
       ["curry:1", "200 g rice"],
     ]);
   });
+  it("uses the snapshot's line parses, falling back to the code parser", () => {
+    const [rice, salt] = shoppingDemands(
+      [
+        {
+          ...curry,
+          ingredients: ["Sauce", "200 g rice", "½ tsp salt"],
+          ingredientData: [
+            { text: "Sauce", heading: true, parsed: null, source: "ai" },
+            {
+              text: "200 g rice",
+              heading: false,
+              parsed: {
+                quantity: 200,
+                quantityMax: null,
+                unit: "g",
+                size: null,
+                item: "basmati rice",
+                detail: null,
+                optional: false,
+              },
+              source: "ai",
+            },
+          ],
+        },
+      ],
+      coverage,
+    );
+    expect(rice?.parsed?.item).toBe("basmati rice");
+    expect(salt).toMatchObject({
+      text: "½ tsp salt",
+      parsed: { item: "salt" },
+    });
+  });
   it("only marks shopping stale for ingredient-affecting changes", () => {
     const trip = {
       ...coverage,
@@ -104,34 +136,6 @@ describe("meal planning rules", () => {
         { ...leftover, id: "more", date: "2026-09-23" },
       ]),
     ).toHaveLength(2);
-  });
-  it.each([
-    ["200 g rice", 2, "400 g rice"],
-    ["½ tsp salt", 2, "1 tsp salt"],
-    ["1 1/2 cups flour", 2, "3 cups flour"],
-    ["1½ cups flour", 0.5, "0.75 cups flour"],
-    ["2 x 400 g tins", 2, "4 x 400 g tins"],
-  ])(
-    "scales %s without altering the ingredient or pack size",
-    (text, factor, expected) => {
-      expect(scaleIngredient(String(text), Number(factor))).toEqual({
-        text: expected,
-        uncertain: false,
-      });
-    },
-  );
-  it("flags ranges and unspecified amounts instead of guessing", () => {
-    expect(scaleIngredient("1-2 onions", 2).uncertain).toBe(true);
-    expect(scaleIngredient("Salt to taste", 2).uncertain).toBe(true);
-    expect(scaleIngredient("1/0 cup flour", 2).uncertain).toBe(true);
-    expect(scaleIngredient("1,000 g rice", 2)).toEqual({
-      text: "2000 g rice",
-      uncertain: false,
-    });
-    expect(scaleIngredient("Salt to taste", 1)).toEqual({
-      text: "Salt to taste",
-      uncertain: false,
-    });
   });
   it("validates real dates and shopping coverage", () => {
     expect(coverageInput.safeParse(coverage).success).toBe(true);

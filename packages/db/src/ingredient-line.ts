@@ -1,15 +1,19 @@
-// Servings scaling for free-text ingredient lines: only the leading quantity
-// ("1 1/2", "½", "2-3", "400g") is scaled; everything else is left as written.
-// A package size ("400 g tin") is kept and the number of packages scaled.
+// Ingredient lines: one line of a recipe's ingredient list as written, plus
+// its parse. This module decides which parse to trust (the recipe's stored
+// AI parse, else the code parser), which lines are headings, how a line reads
+// at a scale factor and in the user's units, and a recipe's base servings.
+// The recipe page, cook mode, shopping list and planner all go through here.
 
 import {
   containers,
   type Ingredient,
+  type IngredientLine,
+  parseIngredientLines,
   parseQuantity,
   quantityPattern,
   readUnit,
   type Unit,
-} from "@prep-sheet/db/ingredients";
+} from "./ingredients";
 import {
   convertAmount,
   dimensionOf,
@@ -20,27 +24,67 @@ import {
   preferredAmount,
   unitChoices,
   unitLabel,
-} from "@prep-sheet/db/units";
+} from "./units";
 
-export { formatQuantity };
+export type { Ingredient, IngredientLine, MeasurePreferences, Unit };
 
-const leading = new RegExp(
-  String.raw`^(\s*)(${quantityPattern})(?:(\s*(?:-|–|to)\s*)(${quantityPattern}))?`,
-);
+/**
+ * Each line with its parse and heading flag: the recipe's stored parse for
+ * that text when it has one (usually the AI's), otherwise the code parser's.
+ */
+export function ingredientLines(
+  texts: readonly string[],
+  stored?: readonly IngredientLine[] | null,
+): IngredientLine[] {
+  return parseIngredientLines(texts, stored ?? null);
+}
 
-/** First whole number in a servings string ("4", "4-6", "Serves 2"). */
-export function parseServings(servings: string | null | undefined) {
+/**
+ * A recipe's base servings: its first number, or the lower end of a range.
+ * "4-6", "Serves 4" and "4 servings" are 4; "12 cookies" is 12.
+ */
+export function baseServings(servings: string | null | undefined) {
   const match = servings?.match(/\d+/);
   const value = match ? Number(match[0]) : 0;
   return value > 0 && value <= 1000 ? value : null;
 }
 
-/** Readable servings label: bare numbers/ranges become "Serves 4"; "12 cookies" stays. */
-export function formatServings(servings: string | null | undefined) {
-  const text = servings?.trim();
-  if (!text) return null;
-  return /^\d+(\s*[-–]\s*\d+)?$/.test(text) ? `Serves ${text}` : text;
+const sameFactor = (factor: number) => Math.abs(factor - 1) < 0.000001;
+
+/**
+ * A line at a scale factor, for a shopping list: its text as the recipe page
+ * shows it and its parse multiplied out. Lines with no readable quantity keep
+ * their text with a note to check the amount.
+ */
+export function scaleLine(
+  line: Pick<IngredientLine, "text" | "parsed">,
+  factor: number,
+): { text: string; ingredient: Ingredient | null; uncertain: boolean } {
+  if (sameFactor(factor))
+    return { text: line.text, ingredient: line.parsed, uncertain: false };
+  const text = scaleText(line.text, factor);
+  return {
+    text:
+      text ??
+      `${line.text} [check quantity for ×${Number(factor.toFixed(3))} recipe]`,
+    ingredient: line.parsed && scaleParse(line.parsed, factor),
+    uncertain: text === null,
+  };
 }
+
+function scaleParse(ingredient: Ingredient, factor: number): Ingredient {
+  return {
+    ...ingredient,
+    quantity:
+      ingredient.quantity === null ? null : ingredient.quantity * factor,
+    quantityMax:
+      ingredient.quantityMax === null ? null : ingredient.quantityMax * factor,
+  };
+}
+
+const leading = new RegExp(
+  String.raw`^(\s*)(${quantityPattern})(?:(\s*(?:-|–|to)\s*)(${quantityPattern}))?`,
+);
 
 /** "400 g tin tomatoes" as "2 x 400 g tins tomatoes", or null for other lines. */
 function scalePackages(line: string, factor: number) {
@@ -60,13 +104,21 @@ function scalePackages(line: string, factor: number) {
   return `${space}${formatQuantity(factor)} x ${line.slice(space.length, end)}${before}${label}${after}`;
 }
 
-export function scaleIngredient(line: string, factor: number) {
+/**
+ * Text with its leading quantity ("1 1/2", "½", "2-3", "400g") scaled and the
+ * rest as written; a package size is kept and the packages counted. Null when
+ * the line has no readable leading quantity.
+ */
+function scaleText(line: string, factor: number) {
   if (factor === 1) return line;
   const packages = scalePackages(line, factor);
   if (packages) return packages;
   const match = line.match(leading);
-  if (!match) return line;
+  if (!match) return null;
   const [all, space = "", first = "", joiner, second] = match;
+  const values = [first, second ?? first].map(parseQuantity);
+  if (values.some((value) => !Number.isFinite(value) || value <= 0))
+    return null;
   const scaled = (text: string) => formatQuantity(parseQuantity(text) * factor);
   const quantity =
     second !== undefined
@@ -76,8 +128,8 @@ export function scaleIngredient(line: string, factor: number) {
 }
 
 /** Split a line into its (possibly scaled) leading quantity and the rest. */
-export function splitQuantity(line: string, factor = 1) {
-  const scaled = scaleIngredient(line, factor);
+function splitQuantity(line: string, factor = 1) {
+  const scaled = scaleText(line, factor) ?? line;
   const match = scaled.match(leading);
   if (!match) return { quantity: "", rest: scaled };
   const after = scaled.slice(match[0].length);
@@ -110,7 +162,7 @@ function readAlternate(text: string) {
   return { quantity, quantityMax, unit: read.unit, length };
 }
 
-type Displayed = {
+export type DisplayedQuantity = {
   quantity: string;
   rest: string;
   /** Units the quantity can switch between, when it can. */
@@ -147,9 +199,10 @@ function writtenInSystem(line: string, preferences: MeasurePreferences) {
 }
 
 /**
- * Like splitQuantity, but shows the amount in the user's units, or in
- * `unit` when they picked one. Only lines whose written amount matches the
- * parsed ingredient are converted; the rest show as written.
+ * A line at a scale factor, split into its amount and the rest, with the
+ * amount in the user's units, or in `unit` when they picked one. Only lines
+ * whose written amount matches the parse are converted; the rest show as
+ * written.
  */
 export function displayQuantity(
   line: string,
@@ -157,7 +210,7 @@ export function displayQuantity(
   ingredient: Ingredient | null | undefined,
   preferences: MeasurePreferences,
   unit?: Unit | null,
-): Displayed {
+): DisplayedQuantity {
   const plain = splitQuantity(
     writtenInSystem(line, preferences) ?? line,
     factor,
@@ -174,10 +227,11 @@ export function displayQuantity(
   const after = match ? line.slice(match[0].length) : "";
   const space = after.match(/^\s*/)?.[0] ?? "";
   const read = readUnit(after.slice(space.length));
+  // Scaled text is rounded ("⅓ cup" for 0.4 cup), so compare as written.
   if (
     !match?.[2] ||
     read?.unit !== parsed.unit ||
-    Math.abs(parseQuantity(match[2]) - parsed.quantity) > 0.001
+    formatQuantity(parseQuantity(match[2])) !== formatQuantity(parsed.quantity)
   )
     return plain;
   const amount = {
@@ -238,7 +292,10 @@ export function displayQuantity(
   };
 }
 
-/** Whole line with its amount in the user's units. */
+/**
+ * Whole line as written (already at its scale) with its amount in the
+ * user's units, as on a shopping list.
+ */
 export function displayLine(
   line: string,
   ingredient: Ingredient | null | undefined,
