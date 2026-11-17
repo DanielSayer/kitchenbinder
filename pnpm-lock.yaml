@@ -381,6 +381,9 @@ importers:
       '@prep-sheet/env':
         specifier: workspace:*
         version: link:../env
+      '@trpc/server':
+        specifier: 'catalog:'
+        version: 11.25.0(typescript@7.0.2)
       drizzle-orm:
         specifier: ^0.45.4
         version: 0.45.4(@types/pg@8.23.1)(kysely@0.29.8)(pg@8.23.1)
