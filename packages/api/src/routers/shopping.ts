@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { db } from "@prep-sheet/db";
+import { ingredientLines } from "@prep-sheet/db/ingredient-line";
 import { parseIngredient } from "@prep-sheet/db/ingredients";
 import { tripIsStale } from "@prep-sheet/db/meal-planner";
 import { mealPlanner } from "@prep-sheet/db/schema/meal-planner";
@@ -15,7 +16,6 @@ import {
   resolveHousehold,
 } from "../households/access";
 import { protectedProcedure, router } from "../index";
-import { ingredientFor, isHeadingLine } from "../recipes/ingredient-data";
 import { pickerInput, pickerRecipe, shoppingRecipePage } from "../recipes/list";
 
 const itemText = z.string().trim().min(1).max(2000);
@@ -244,16 +244,19 @@ export const shoppingRouter = router({
           (source) => !alreadyAdded.has(source.id),
         );
         const items = additions.flatMap((source) =>
-          source.content.ingredients.flatMap((text, position) =>
-            isHeadingLine(text, source.ingredientData)
+          ingredientLines(
+            source.content.ingredients,
+            source.ingredientData,
+          ).flatMap((line, position) =>
+            line.heading
               ? []
               : [
                   {
                     id: randomUUID(),
                     householdId,
                     addedBy: userId,
-                    text,
-                    ingredient: ingredientFor(text, source.ingredientData),
+                    text: line.text,
+                    ingredient: line.parsed,
                     recipeId: source.id,
                     recipeTitle: source.title,
                     servings: source.content.servings,
