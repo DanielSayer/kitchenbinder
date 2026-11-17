@@ -3,8 +3,8 @@ import { db } from "@prep-sheet/db";
 import { billingAccount } from "@prep-sheet/db/schema/billing";
 import { eq } from "drizzle-orm";
 
-// Read the same subscription state as billing.status, on EVERY tool invocation.
-export async function accountPlan(userId: string) {
+/** Reads the same subscription state and policy as `billing.status`. */
+export async function hasAssistantAccess(userId: string) {
   const [account] = await db
     .select({
       status: billingAccount.status,
@@ -12,5 +12,9 @@ export async function accountPlan(userId: string) {
     })
     .from(billingAccount)
     .where(eq(billingAccount.userId, userId));
-  return allowance(account?.status ?? "free", account?.validUntil ?? null);
+  const plan = allowance(
+    account?.status ?? "free",
+    account?.validUntil ?? null,
+  );
+  return plan.tier === "pro";
 }

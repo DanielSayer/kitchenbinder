@@ -18,6 +18,7 @@
     "@prep-sheet/auth": "workspace:*",
     "@prep-sheet/db": "workspace:*",
     "@prep-sheet/env": "workspace:*",
+    "@trpc/server": "catalog:",
     "drizzle-orm": "^0.45.4",
     "zod": "catalog:"
   },
