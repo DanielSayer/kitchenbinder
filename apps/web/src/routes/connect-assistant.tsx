@@ -34,7 +34,7 @@ function Consent() {
   return (
     <main id="main-content" className="page-width assistant-page">
       <LargeTitle>Connect your AI assistant</LargeTitle>
-      <section className="assistant-card space-y-5">
+      <section className="assistant-card">
         {isPending ? (
           <p>Checking your sign-in...</p>
         ) : session ? (
@@ -54,7 +54,7 @@ function Consent() {
               Settings at any time.
             </p>
             <ErrorNotice message={error} />
-            <div className="flex flex-wrap gap-3">
+            <div className="assistant-actions">
               <button
                 type="button"
                 className="button button-primary"
