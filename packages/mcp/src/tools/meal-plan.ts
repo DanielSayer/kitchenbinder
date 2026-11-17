@@ -79,10 +79,17 @@ export const planMeal = defineTool({
   }),
   annotations: behaviour.create,
   async run(
-    { householdId, mealId = randomUUID(), servings, ...input },
+    {
+      householdId,
+      recipeId,
+      mealId = randomUUID(),
+      date,
+      slot,
+      baseServings,
+      servings,
+    },
     { api },
   ) {
-    const { recipeId, date, slot } = input;
     const plan = await api.planner.get({ householdId });
     const existing = plan.meals.find((meal) => meal.id === mealId);
     const retry =
@@ -90,8 +97,8 @@ export const planMeal = defineTool({
         ? existing
         : undefined;
     // A retry keeps its original base even if the recipe has since changed.
-    const baseServings =
-      input.baseServings ??
+    const base =
+      baseServings ??
       retry?.baseServings ??
       (await recipeServings(api, recipeId));
     const meal: RecipeMeal = {
@@ -100,9 +107,9 @@ export const planMeal = defineTool({
       recipeId,
       date,
       slot,
-      baseServings,
-      cook: servings ?? baseServings,
-      eat: servings ?? baseServings,
+      baseServings: base,
+      cook: servings ?? base,
+      eat: servings ?? base,
     };
     const result = { mealId, date, slot };
     if (existing) {
