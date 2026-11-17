@@ -3,6 +3,7 @@ import { db } from "@prep-sheet/db";
 import type { MealInput } from "@prep-sheet/db/meal-planner";
 import { user } from "@prep-sheet/db/schema/auth";
 import { household, householdMember } from "@prep-sheet/db/schema/household";
+import { mealPlanner } from "@prep-sheet/db/schema/meal-planner";
 import {
   recipe,
   recipeCooking,
@@ -176,6 +177,89 @@ describe("personal meal planner with PostgreSQL", () => {
     expect(new Set(items.map((item) => item.plannedMealId)).size).toBe(2);
     expect((await owner.shopping.generated())?.content.groups).toHaveLength(2);
     expect((await owner.planner.get()).stale).toBe(false);
+  });
+  it("scales trip lines like the recipe page, keeping the recipe's parse", async () => {
+    const stewId = randomUUID();
+    await db.insert(recipe).values({
+      id: stewId,
+      userId: ownerId,
+      title: "Stew",
+      origin: "manual",
+      content: {
+        ...sampleRecipe,
+        ingredients: [
+          "Sauce",
+          "2-3 garlic cloves",
+          "400g tin tomatoes",
+          "1 onion",
+          "Salt, to taste",
+        ],
+      },
+      ingredientData: [
+        { text: "Sauce", heading: true, parsed: null, source: "ai" },
+        {
+          text: "1 onion",
+          heading: false,
+          parsed: {
+            quantity: 1,
+            quantityMax: null,
+            unit: null,
+            size: null,
+            item: "brown onion",
+            detail: null,
+            optional: false,
+          },
+          source: "ai",
+        },
+      ],
+    });
+    try {
+      await save({ ...meal, recipeId: stewId });
+      const [saved] = await db
+        .select()
+        .from(mealPlanner)
+        .where(eq(mealPlanner.revision, 1));
+      const snapshot = saved?.meals[0];
+      expect(snapshot?.kind === "recipe" && snapshot.ingredientData).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ text: "Sauce", heading: true }),
+          expect.objectContaining({
+            text: "2-3 garlic cloves",
+            source: "code",
+          }),
+        ]),
+      );
+      expect((await owner.planner.get()).meals[0]).not.toHaveProperty(
+        "ingredientData",
+      );
+      const preview = await generate(true);
+      expect(preview.warnings).toEqual([
+        "Stew: Salt, to taste [check quantity for ×2 recipe]",
+      ]);
+      const items = await owner.shopping.list();
+      expect(
+        Object.fromEntries(items.map((item) => [item.text, item.ingredient])),
+      ).toEqual({
+        "4-6 garlic cloves": expect.objectContaining({
+          quantity: 4,
+          quantityMax: 6,
+          unit: "clove",
+        }),
+        "2 x 400g tins tomatoes": expect.objectContaining({
+          quantity: 2,
+          unit: "tin",
+          size: { quantity: 400, unit: "g" },
+        }),
+        "2 onion": expect.objectContaining({
+          quantity: 2,
+          item: "brown onion",
+        }),
+        "Salt, to taste [check quantity for ×2 recipe]":
+          expect.objectContaining({ quantity: null, item: "salt" }),
+      });
+    } finally {
+      await db.delete(recipe).where(eq(recipe.id, stewId));
+    }
   });
   it("retains manual groceries and purchased quantities, adding only extra portions", async () => {
     const manualId = randomUUID();
