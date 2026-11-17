@@ -5,6 +5,18 @@ Kitchenbinder Pro users can connect an assistant at `/api/mcp`. The public `/mcp
 ## Architecture
 
 - `packages/mcp` defines the eleven tools, creates one SDK server per request, resolves bearer tokens to an existing user and invokes `appRouter.createCaller(context)`. Its typed, non-persisted session adapter supplies `session.user`; the household, recipe, planner, shopping, preferences and billing paths use no other session fields.
+
+### Package layout
+
+- `http.ts`: `handleMcpRequest`. Origin check, bearer auth, request admission, then the SDK handler.
+- `auth.ts`: `authenticate` resolves a token to a tRPC `Context`; `unauthorized` builds the 401 challenge.
+- `server.ts`: `createKitchenBinderServer` registers every tool from the registry against one user.
+- `tools/tool.ts`: `Tool` interface, `defineTool`, `ToolContext` (`user`, tRPC `api` caller) and `behaviour` annotation presets.
+- `tools/invoke.ts`: runs guards (tool-work rate limit, Pro entitlement) then the tool, and maps errors to results.
+- `tools/result.ts`: `ToolError` for expected failures. Non-internal tRPC errors surface; anything else becomes a generic message.
+- `tools/{account,recipes,meal-plan,shopping}.ts`: one module per domain. `tools/index.ts` lists all tools.
+
+To add a tool: write it with `defineTool` in its domain module, returning `{ summary, data }` or throwing `ToolError`; set `cost` if it does more than one unit of work; add it to `tools/index.ts`. Keep business rules in tRPC routers.
 - `apps/web/src/routes/api/mcp.ts` serves GET, POST and DELETE through `@modelcontextprotocol/server` 2.4.0 `createMcpHandler`. Legacy support stays enabled as `legacy: "stateless"`. Legacy GET/DELETE session operations return 405 because the server has no persistent MCP sessions. Modern and legacy Streamable HTTP tool calls are supported.
 - `packages/auth/src/oauth.ts` configures Better Auth's jwt plugin and `@better-auth/oauth-provider` 1.7.18. Dynamic registration, PKCE, user consent and refresh tokens use the provider. Login reuses Google/Discord on `/login`; the client plugin preserves the provider-signed authorisation query through social sign-in.
 - The provider issues tokens for the configured `BETTER_AUTH_URL` origin plus `/api/mcp`. Every HTTP request uses `requireActiveAccessToken` to verify the signature, issuer, expiry and client, then checks the audience, `kitchenbinder` scope, live consent and existing user. A signed access-token claim binds the token to its exact consent ID, so reconnecting cannot revive a revoked JWT. Cookies alone cannot authenticate an MCP request. Tokens with a `cnf` claim are rejected, since this endpoint accepts bearer tokens only.
