@@ -3,6 +3,7 @@
   "type": "module",
   "exports": {
     "./recipes/pdf": "./src/recipes/pdf.tsx",
+    "./imports": "./src/imports/index.ts",
     ".": {
       "default": "./src/index.ts"
     },

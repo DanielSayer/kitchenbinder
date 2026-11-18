@@ -9,7 +9,7 @@ import { env } from "@prep-sheet/env/server";
 import { TRPCError } from "@trpc/server";
 import { generateText, Output } from "ai";
 import { z } from "zod";
-import { type ImageCandidate, recipesPerImport } from "../import-contract";
+import { type ImageCandidate, recipesPerImport } from "../imports/contract";
 import { extractImages, extractPage } from "./extract-page";
 import { fetchPage, PAGE_ERROR, recipeUrl } from "./fetch-page";
 import { aiIngredientLines, aiIngredientSchema } from "./ingredient-data";

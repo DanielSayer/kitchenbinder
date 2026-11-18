@@ -2,7 +2,7 @@ import type { RecipePhoto } from "@prep-sheet/db/recipe-photo";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { AccountRequestLimit } from "./account-request-limit";
-import { photoImportLimits } from "./import-contract";
+import { photoImportLimits } from "./imports";
 import { failure, sniffPhotoType, statusCodes } from "./photo-upload";
 
 type Session = { user: { id: string } } | null;

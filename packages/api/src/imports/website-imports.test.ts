@@ -18,22 +18,21 @@ import {
   it,
   vi,
 } from "vitest";
-import { pricing } from "./billing/policy";
-import { usageSummary } from "./billing/usage";
+import { pricing } from "../billing/policy";
+import { usageSummary } from "../billing/summary";
+import { PAGE_ERROR } from "../recipes/fetch-page";
+import { sampleRecipe } from "../recipes/fixtures";
+import { requireRecipeProvider } from "../recipes/generate";
+import { attachRecipePhoto } from "../recipes/media";
 import {
   discardWebsiteImport,
   importStatus,
-  processNextImport,
+  processNext,
   recentImports,
   submitWebsiteImport,
-} from "./imports";
-import { PAGE_ERROR } from "./recipes/fetch-page";
-import { sampleRecipe } from "./recipes/fixtures";
-import { requireRecipeProvider } from "./recipes/generate";
-import { attachRecipePhoto } from "./recipes/media";
-import { checkRecipeUsage } from "./recipes/usage";
+} from ".";
 
-vi.mock("./recipes/media", () => ({
+vi.mock("../recipes/media", () => ({
   attachRecipePhoto: vi.fn(async () => false),
 }));
 
@@ -49,6 +48,12 @@ const output = {
   sourceUrl: null,
   imageUrl: null,
 };
+// A fresh submission is refused by the 24-hour AI attempt limit.
+const expectDailyLimit = () =>
+  expect(submitWebsiteImport(account, input())).rejects.toMatchObject({
+    code: "TOO_MANY_REQUESTS",
+    message: expect.stringContaining("in the last 24 hours"),
+  });
 
 describe("website durable imports", () => {
   afterEach(() => vi.restoreAllMocks());
@@ -115,10 +120,7 @@ describe("website durable imports", () => {
       code: "NOT_FOUND",
     });
     const generate = vi.fn().mockResolvedValue(output);
-    await Promise.all([
-      processNextImport(generate),
-      processNextImport(generate),
-    ]);
+    await Promise.all([processNext({ generate }), processNext({ generate })]);
     expect(generate).toHaveBeenCalledTimes(1);
     expect(await submitWebsiteImport(account, item)).toMatchObject({
       kind: "saved",
@@ -137,7 +139,7 @@ describe("website durable imports", () => {
     expect(await recentImports(account)).toMatchObject([
       { id: item.id, state: "queued", recipeId: null },
     ]);
-    await processNextImport(vi.fn().mockResolvedValue(output));
+    await processNext({ generate: vi.fn().mockResolvedValue(output) });
     expect(await recentImports(account)).toMatchObject([
       {
         id: item.id,
@@ -184,7 +186,7 @@ describe("website durable imports", () => {
       .values({ id: collectionId, userId: account, name: "Weeknights" });
     const item = { ...input(), householdId, collectionId };
     await submitWebsiteImport(account, item);
-    await processNextImport(vi.fn().mockResolvedValue(output));
+    await processNext({ generate: vi.fn().mockResolvedValue(output) });
     expect(await recentImports(account)).toMatchObject([
       { recipeId: item.id, title: sampleRecipe.title },
     ]);
@@ -256,11 +258,9 @@ describe("website durable imports", () => {
     expect(
       outcomes.filter((result) => result.status === "fulfilled"),
     ).toHaveLength(1);
-    await processNextImport(vi.fn().mockResolvedValue(output));
+    await processNext({ generate: vi.fn().mockResolvedValue(output) });
     await db.delete(recipe).where(eq(recipe.userId, account));
-    await expect(
-      db.transaction((tx) => checkRecipeUsage(tx, account)),
-    ).rejects.toMatchObject({ code: "TOO_MANY_REQUESTS" });
+    await expectDailyLimit();
   });
   it("saves the recipe even when copying its photo fails", async () => {
     const item = input();
@@ -270,7 +270,11 @@ describe("website durable imports", () => {
       ...output,
       imageUrl: "https://cdn.test/dish.jpg",
     }));
-    expect(await processNextImport(generate)).toBe(true);
+    expect(await processNext({ generate })).toEqual({
+      kind: "saved",
+      importId: item.id,
+      recipes: 1,
+    });
     expect(generate).toHaveBeenCalledWith(
       expect.any(String),
       expect.any(Array),
@@ -311,12 +315,10 @@ describe("website durable imports", () => {
       await gate;
       return output;
     });
-    const workers = Array.from({ length: 5 }, () =>
-      processNextImport(generate),
-    );
+    const workers = Array.from({ length: 5 }, () => processNext({ generate }));
     try {
       await vi.waitFor(() => expect(generate).toHaveBeenCalledTimes(2));
-      expect(await processNextImport(generate)).toBe(false);
+      expect(await processNext({ generate })).toEqual({ kind: "idle" });
     } finally {
       release();
       await Promise.all(workers);
@@ -327,11 +329,11 @@ describe("website durable imports", () => {
     const item = input();
     await submitWebsiteImport(account, item);
     const generate = vi.fn().mockRejectedValue(new Error("provider failure"));
-    await processNextImport(generate);
+    await processNext({ generate });
     expect(await submitWebsiteImport(account, item)).toMatchObject({
       kind: "failed",
     });
-    await processNextImport(generate);
+    await processNext({ generate });
     expect(generate).toHaveBeenCalledTimes(1);
     const [failed] = await db
       .select()
@@ -340,7 +342,7 @@ describe("website durable imports", () => {
     expect(failed?.usageReleased).toBe(false);
     const badUrl = { ...input(), input: "http://127.0.0.1/private" };
     await submitWebsiteImport(account, badUrl);
-    await processNextImport(generate);
+    await processNext({ generate });
     const [unreadable] = await db
       .select()
       .from(recipeImport)
@@ -353,7 +355,10 @@ describe("website durable imports", () => {
     await submitWebsiteImport(account, item);
     const generate = vi.fn().mockResolvedValue(output);
 
-    await processNextImport(generate, () => requireRecipeProvider(""));
+    await processNext({
+      generate,
+      requireProvider: () => requireRecipeProvider(""),
+    });
 
     expect(generate).not.toHaveBeenCalled();
     expect(await importStatus(account, item.id)).toMatchObject({
@@ -418,9 +423,7 @@ describe("website durable imports", () => {
       );
       const bad = { ...input(), input: "http://8.8.8.8/bad" };
       await submitWebsiteImport(account, bad);
-      await expect(
-        db.transaction((tx) => checkRecipeUsage(tx, account)),
-      ).rejects.toMatchObject({ code: "TOO_MANY_REQUESTS" });
+      await expectDailyLimit();
       expect((await usageSummary(db, account)).used).toBe(
         pricing.ai.dailyAttemptsPerAccount,
       );
@@ -431,7 +434,12 @@ describe("website durable imports", () => {
         sourceUrl: healthy.input,
       });
 
-      expect(await processNextImport(generate)).toBe(true);
+      expect(await processNext({ generate })).toEqual({
+        kind: "failed",
+        importId: bad.id,
+        stage: "fetching",
+        usageReleased: true,
+      });
 
       expect(generate).not.toHaveBeenCalled();
       expect(await importStatus(account, bad.id)).toEqual({
@@ -458,9 +466,6 @@ describe("website durable imports", () => {
       expect((await usageSummary(db, account)).used).toBe(
         pricing.ai.dailyAttemptsPerAccount - 1,
       );
-      await expect(
-        db.transaction((tx) => checkRecipeUsage(tx, account)),
-      ).resolves.toBeUndefined();
       expect(await submitWebsiteImport(account, bad)).toMatchObject({
         kind: "failed",
         message: PAGE_ERROR,
@@ -469,7 +474,11 @@ describe("website durable imports", () => {
         kind: "queued",
       });
 
-      expect(await processNextImport(generate)).toBe(true);
+      expect(await processNext({ generate })).toEqual({
+        kind: "saved",
+        importId: healthy.id,
+        recipes: 1,
+      });
 
       expect(generate).toHaveBeenCalledTimes(1);
       expect(generate).toHaveBeenCalledWith(
@@ -488,10 +497,8 @@ describe("website durable imports", () => {
       expect((await usageSummary(db, account)).used).toBe(
         pricing.ai.dailyAttemptsPerAccount,
       );
-      await expect(
-        db.transaction((tx) => checkRecipeUsage(tx, account)),
-      ).rejects.toMatchObject({ code: "TOO_MANY_REQUESTS" });
-      expect(await processNextImport(generate)).toBe(false);
+      await expectDailyLimit();
+      expect(await processNext({ generate })).toEqual({ kind: "idle" });
       expect(transport).toHaveBeenCalledTimes(2);
     } finally {
       await new Promise<void>((resolve, reject) => {
@@ -511,7 +518,7 @@ describe("website durable imports", () => {
       })
       .where(eq(recipeImport.id, item.id));
     const generate = vi.fn();
-    await processNextImport(generate);
+    await processNext({ generate });
     expect(await importStatus(account, item.id)).toMatchObject({
       kind: "saved",
     });
@@ -520,7 +527,7 @@ describe("website durable imports", () => {
     expect(await submitWebsiteImport(account, cancelled)).toMatchObject({
       kind: "failed",
     });
-    await processNextImport(generate);
+    await processNext({ generate });
     expect(generate).not.toHaveBeenCalled();
   });
   it("expires an interrupted AI call without replaying it", async () => {
@@ -531,7 +538,7 @@ describe("website durable imports", () => {
       .set({ state: "processing", startedAt: new Date(Date.now() - 240_000) })
       .where(eq(recipeImport.id, item.id));
     const generate = vi.fn();
-    await processNextImport(generate);
+    await processNext({ generate });
     expect(await submitWebsiteImport(account, item)).toMatchObject({
       kind: "failed",
     });

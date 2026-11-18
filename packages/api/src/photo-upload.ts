@@ -1,8 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { ZodError } from "zod";
 import { AccountRequestLimit } from "./account-request-limit";
-import { photoImportLimits } from "./import-contract";
-import { submitPhotoImport } from "./imports";
+import { photoImportLimits, submitPhotoImport } from "./imports";
 
 export type UploadedPhoto = { mediaType: string; data: Buffer };
 

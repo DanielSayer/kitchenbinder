@@ -1,8 +1,7 @@
 import { setTimeout } from "node:timers/promises";
 import { db } from "@prep-sheet/db";
 import { z } from "zod";
-import { importFailure, logImport } from "./import-diagnostics";
-import { inspectImportQueue, processNextImport } from "./imports";
+import { importFailure, inspectQueue, logImport, processNext } from "./imports";
 import { parseNextRecipeIngredients } from "./recipes/ingredient-parsing";
 import { sweepRecipeMedia } from "./recipes/media";
 import {
@@ -83,7 +82,7 @@ async function heartbeat() {
 }
 let sweeping: Promise<void> | undefined;
 async function refreshQueue() {
-  const scan = await inspectImportQueue(reconcileMs);
+  const scan = await inspectQueue(reconcileMs);
   progress = { ...progress, queue: scan.queue };
   await heartbeat();
   return scan.delayMs;
@@ -118,10 +117,8 @@ try {
       const previous = await readWorkerWakeup();
       progress = { ...progress, mode: "processing", progressAt: Date.now() };
       await heartbeat();
-      const processed = await processNextImport(
-        undefined,
-        undefined,
-        async () => {
+      const result = await processNext({
+        reportProgress: async () => {
           progress = {
             ...progress,
             mode: "processing",
@@ -137,14 +134,14 @@ try {
             });
           });
         },
-      );
+      });
       progress = {
         ...progress,
         mode: "processing",
         progressAt: Date.now(),
         failureSince: null,
       };
-      if (processed) continue;
+      if (result.kind !== "idle") continue;
       // Imports come first; ingredient parsing uses idle time.
       if (await parseNextRecipeIngredients()) continue;
       const delayMs = await refreshQueue();

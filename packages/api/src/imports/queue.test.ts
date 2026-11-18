@@ -4,7 +4,7 @@ import { user } from "@prep-sheet/db/schema/auth";
 import { recipeImport } from "@prep-sheet/db/schema/import";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
-import { inspectImportQueue } from "./imports";
+import { inspectQueue } from ".";
 
 const userId = randomUUID();
 beforeAll(async () => {
@@ -43,7 +43,7 @@ it("reports queued, ready, active and exhausted-save timestamps in the schedulin
       saveAttempts: state === "failed" ? 5 : 0,
     })),
   );
-  const scan = await inspectImportQueue(1_800_000);
+  const scan = await inspectQueue(1_800_000);
   for (const key of [
     "queuedAt",
     "readyAt",
@@ -66,7 +66,7 @@ it("keeps exhausted saves visible while allowing an otherwise idle worker to sle
     saveAttempts: 5,
     createdAt: oldest,
   });
-  const scan = await inspectImportQueue(1_800_000);
+  const scan = await inspectQueue(1_800_000);
   expect(scan.delayMs).toBe(1_800_000);
   expect(scan.queue).toMatchObject({
     queuedAt: null,
@@ -87,12 +87,12 @@ it("excludes a first save holding its lease from failure alerts and preserves re
     saveAttempts: 1,
     saveClaimedAt: new Date(now),
   });
-  expect((await inspectImportQueue(1_800_000)).queue.saveFailureAt).toBeNull();
+  expect((await inspectQueue(1_800_000)).queue.saveFailureAt).toBeNull();
   await db
     .update(recipeImport)
     .set({ saveClaimedAt: null, nextSaveAttemptAt: new Date(now + 5000) })
     .where(eq(recipeImport.userId, userId));
-  const retry = await inspectImportQueue(1_800_000);
+  const retry = await inspectQueue(1_800_000);
   expect(retry.queue.saveFailureAt).not.toBeNull();
   expect(retry.delayMs).toBeGreaterThan(100);
   expect(retry.delayMs).toBeLessThanOrEqual(5000);

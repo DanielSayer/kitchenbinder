@@ -1,4 +1,4 @@
-import type { ImportStatus } from "@prep-sheet/api/import-contract";
+import type { ImportStatus } from "@prep-sheet/api/imports";
 import type { PendingImport } from "./import-draft";
 
 export const maxPhotos = 5;

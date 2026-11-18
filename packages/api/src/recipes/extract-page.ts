@@ -1,5 +1,5 @@
 import { type CheerioAPI, load } from "cheerio";
-import { type ImageCandidate, imageCandidateSchema } from "../import-contract";
+import { type ImageCandidate, imageCandidateSchema } from "../imports/contract";
 
 function findRecipe(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(findRecipe).find(Boolean);

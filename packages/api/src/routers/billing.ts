@@ -9,7 +9,7 @@ import {
   syncBilling,
 } from "../billing/polar";
 import { pricing } from "../billing/policy";
-import { usageSummary } from "../billing/usage";
+import { usageSummary } from "../billing/summary";
 import { protectedProcedure, router } from "../index";
 
 export const billingRouter = router({
