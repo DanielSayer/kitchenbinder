@@ -18,7 +18,7 @@ The baseline is unchanged. The worker and web app require the complete matching 
 
 ## Verification
 
-`packages/api/src/import-save-retries.test.ts` uses the isolated PostgreSQL test wrapper. Database triggers inject real recipe-save and retry-state failures. The tests cover healthy ready/queued work beside a persistent failure, two-worker races, exact backoff boundaries, eventual success, five-attempt exhaustion, preserved credits/spend, request deduplication, abandoned claims, live locked saves, malformed checkpoints, the global generation limit and repeatable upgrades of legacy ready rows. Generation is replaced with local fixtures; no paid AI calls are needed.
+`packages/api/src/imports/save-retries.test.ts` uses the isolated PostgreSQL test wrapper. Database triggers inject real recipe-save and retry-state failures. The tests cover healthy ready/queued work beside a persistent failure, two-worker races, exact backoff boundaries, eventual success, five-attempt exhaustion, preserved credits/spend, request deduplication, abandoned claims, live locked saves, malformed checkpoints, the global generation limit and repeatable upgrades of legacy ready rows. Generation is replaced with local fixtures; no paid AI calls are needed.
 
 Verified on 14 October 2026 from base commit `792b312b7091cd6b55ecfec1ff9feb13b86e2aa3`:
 

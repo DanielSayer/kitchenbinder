@@ -18,21 +18,21 @@ import {
   it,
   vi,
 } from "vitest";
-import { pricing } from "./billing/policy";
-import { usageSummary } from "./billing/summary";
+import { pricing } from "../billing/policy";
+import { usageSummary } from "../billing/summary";
+import { PAGE_ERROR } from "../recipes/fetch-page";
+import { sampleRecipe } from "../recipes/fixtures";
+import { requireRecipeProvider } from "../recipes/generate";
+import { attachRecipePhoto } from "../recipes/media";
 import {
   discardWebsiteImport,
   importStatus,
   processNext,
   recentImports,
   submitWebsiteImport,
-} from "./imports";
-import { PAGE_ERROR } from "./recipes/fetch-page";
-import { sampleRecipe } from "./recipes/fixtures";
-import { requireRecipeProvider } from "./recipes/generate";
-import { attachRecipePhoto } from "./recipes/media";
+} from ".";
 
-vi.mock("./recipes/media", () => ({
+vi.mock("../recipes/media", () => ({
   attachRecipePhoto: vi.fn(async () => false),
 }));
 

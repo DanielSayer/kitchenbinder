@@ -4,7 +4,7 @@ import { user } from "@prep-sheet/db/schema/auth";
 import { recipeImport } from "@prep-sheet/db/schema/import";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
-import { inspectQueue } from "./imports";
+import { inspectQueue } from ".";
 
 const userId = randomUUID();
 beforeAll(async () => {

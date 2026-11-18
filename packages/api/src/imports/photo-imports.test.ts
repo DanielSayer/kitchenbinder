@@ -15,19 +15,19 @@ import {
   it,
   vi,
 } from "vitest";
-import { AccountRequestLimit } from "./account-request-limit";
+import { AccountRequestLimit } from "../account-request-limit";
+import {
+  handlePhotoUpload,
+  readPhotoUpload,
+  sniffPhotoType,
+} from "../photo-upload";
+import { sampleRecipe } from "../recipes/fixtures";
 import {
   discardWebsiteImport,
   importStatus,
   processNext,
   submitPhotoImport,
-} from "./imports";
-import {
-  handlePhotoUpload,
-  readPhotoUpload,
-  sniffPhotoType,
-} from "./photo-upload";
-import { sampleRecipe } from "./recipes/fixtures";
+} from ".";
 
 const owner = randomUUID();
 const png = await sharp({

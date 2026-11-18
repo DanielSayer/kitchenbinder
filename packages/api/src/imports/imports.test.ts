@@ -16,13 +16,13 @@ import {
   it,
   vi,
 } from "vitest";
+import { sampleRecipe } from "../recipes/fixtures";
 import {
   discardWebsiteImport,
   importStatus,
   processNext,
   submitWebsiteImport,
-} from "./imports";
-import { sampleRecipe } from "./recipes/fixtures";
+} from ".";
 
 const owner = randomUUID();
 const other = randomUUID();

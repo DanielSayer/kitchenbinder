@@ -16,10 +16,10 @@ import {
   it,
   vi,
 } from "vitest";
-import { pricing } from "./billing/policy";
-import { usageSummary } from "./billing/summary";
-import { importStatus, processNext, submitWebsiteImport } from "./imports";
-import { sampleRecipe } from "./recipes/fixtures";
+import { pricing } from "../billing/policy";
+import { usageSummary } from "../billing/summary";
+import { sampleRecipe } from "../recipes/fixtures";
+import { importStatus, processNext, submitWebsiteImport } from ".";
 
 const owner = randomUUID();
 // A checkpoint written before multi-recipe imports.
@@ -454,9 +454,9 @@ it("retains the claim if persisting the retry itself fails, then recovers it", a
   const now = clock();
   const id = await enqueue({ fingerprint: "fail-retry-state" });
   const generate = vi.fn().mockResolvedValue(output);
-  await expect(processNext({ generate })).rejects.toThrow(
-    "injected retry state failure",
-  );
+  await expect(processNext({ generate })).rejects.toMatchObject({
+    cause: { message: "injected retry state failure" },
+  });
   const claimed = await job(id);
   expect(claimed).toMatchObject({
     state: "ready",
@@ -594,7 +594,10 @@ it("keeps the global generation limit while permitting checkpoint saves and prev
 
 it("upgrades legacy ready checkpoints additively and can apply the SQL twice", async () => {
   const upgrade = await readFile(
-    new URL("../../db/src/upgrades/import-save-retries.sql", import.meta.url),
+    new URL(
+      "../../../db/src/upgrades/import-save-retries.sql",
+      import.meta.url,
+    ),
     "utf8",
   );
   const client = await db.$client.connect();
