@@ -5,13 +5,14 @@ import { and, isNull, lt, type SQL, sql } from "drizzle-orm";
 // and the queue scan. Every rule reads the worker's clock, never the
 // database's, so claims, scheduling and tests agree.
 
-export const saveAttemptLimit = 5;
+const saveAttemptLimit = 5;
 const claimTimeoutMs = 180_000;
 // Queued work waits for a free generation slot; look again shortly.
 const queuedRecheckMs = 2000;
 
 const ms = (value: number) => sql`(${value} * interval '1 millisecond')`;
-const activeSince = sql`coalesce(${recipeImport.startedAt}, ${recipeImport.createdAt})`;
+/** When the current fetch or generation began. */
+export const activeSince = sql`coalesce(${recipeImport.startedAt}, ${recipeImport.createdAt})`;
 
 /** The first retry waits five seconds, then each wait doubles. */
 export const saveRetryDelayMs = (attempt: number) => 5000 * 2 ** (attempt - 1);

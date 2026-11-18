@@ -26,7 +26,7 @@ import {
 } from "./lifecycle";
 import type { ProcessResult } from "./result";
 import { retrySave, type SaveClaim, saveCheckpoint } from "./save";
-import { timing } from "./timing";
+import { activeSince, timing } from "./timing";
 
 export type ProcessOptions = {
   generate?: (...args: Parameters<typeof generateRecipe>) => Promise<Generated>;
@@ -302,7 +302,6 @@ const millis = (value: SQL) =>
 export async function inspectQueue(maximumMs: number) {
   const { current, dueAt } = timing();
   const state = recipeImport.state;
-  const activeSince = sql`coalesce(${recipeImport.startedAt},${recipeImport.createdAt})`;
   // A save that failed at least once; a first save holding its claim is not a failure yet.
   const failedSave = sql`${recipeImport.saveAttempts}>0 AND (${state}='failed' OR (${state}='ready' AND (${recipeImport.saveClaimedAt} IS NULL OR ${recipeImport.saveAttempts}>1)))`;
   const [next] = await db
