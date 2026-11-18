@@ -1,4 +1,4 @@
-import type { ImportStatus } from "@prep-sheet/api/import-contract";
+import type { ImportStatus } from "@prep-sheet/api/imports";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Check, Pencil, RefreshCw, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";

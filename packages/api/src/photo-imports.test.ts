@@ -19,7 +19,7 @@ import { AccountRequestLimit } from "./account-request-limit";
 import {
   discardWebsiteImport,
   importStatus,
-  processNextImport,
+  processNext,
   submitPhotoImport,
 } from "./imports";
 import {
@@ -176,7 +176,7 @@ describe("photo imports with PostgreSQL", () => {
         tagIds: [],
       })),
     });
-    await processNextImport(generate);
+    await processNext({ generate });
     expect(generate).toHaveBeenCalledTimes(1);
     // The note is never fetched as a page.
     const [input, , sourceUrl, images, options] = generate.mock.calls[0] ?? [];
@@ -221,12 +221,14 @@ describe("photo imports with PostgreSQL", () => {
       submitPhotoImport(owner, item, [photo(), photo()]),
     ).rejects.toMatchObject({ code: "CONFLICT" });
     expect(await storedPhotos(item.id)).toHaveLength(1);
-    await processNextImport(vi.fn().mockResolvedValue(generated));
+    await processNext({ generate: vi.fn().mockResolvedValue(generated) });
   });
   it("deletes photos and keeps usage spent when generation fails", async () => {
     const item = request();
     await submitPhotoImport(owner, item, [photo()]);
-    await processNextImport(vi.fn().mockRejectedValue(new Error("boom")));
+    await processNext({
+      generate: vi.fn().mockRejectedValue(new Error("boom")),
+    });
     expect((await importStatus(owner, item.id)).kind).toBe("failed");
     expect(await storedPhotos(item.id)).toHaveLength(0);
     const [job] = await db
@@ -243,7 +245,7 @@ describe("photo imports with PostgreSQL", () => {
     ]);
     await submitPhotoImport(owner, item, [photo(broken)]);
     const generate = vi.fn();
-    await processNextImport(generate);
+    await processNext({ generate });
     expect(generate).not.toHaveBeenCalled();
     expect(await importStatus(owner, item.id)).toMatchObject({
       kind: "failed",
@@ -265,7 +267,7 @@ describe("photo imports with PostgreSQL", () => {
       .set({ state: "processing", startedAt: new Date(Date.now() - 240_000) })
       .where(eq(recipeImport.id, item.id));
     const generate = vi.fn();
-    await processNextImport(generate);
+    await processNext({ generate });
     expect(generate).not.toHaveBeenCalled();
     expect((await importStatus(owner, item.id)).kind).toBe("failed");
     expect(await storedPhotos(item.id)).toHaveLength(0);
@@ -277,7 +279,7 @@ describe("photo imports with PostgreSQL", () => {
       .update(recipeImport)
       .set({ state: "failed" })
       .where(eq(recipeImport.id, item.id));
-    await processNextImport(vi.fn());
+    await processNext({ generate: vi.fn() });
     expect(await storedPhotos(item.id)).toHaveLength(0);
   });
   it("discards by ID: tombstones unsent uploads and refuses active ones", async () => {
@@ -292,7 +294,7 @@ describe("photo imports with PostgreSQL", () => {
     await expect(
       discardWebsiteImport(owner, { id: active.id, kind: "photo" }),
     ).rejects.toMatchObject({ code: "CONFLICT" });
-    await processNextImport(vi.fn().mockResolvedValue(generated));
+    await processNext({ generate: vi.fn().mockResolvedValue(generated) });
     await discardWebsiteImport(owner, { id: active.id, kind: "photo" });
     await expect(
       discardWebsiteImport(randomUUID(), { id: active.id, kind: "photo" }),
@@ -348,6 +350,6 @@ describe("photo imports with PostgreSQL", () => {
     const limited = await handlePhotoUpload(upload(origin), signedIn, limit);
     expect(limited.status).toBe(429);
     expect(limited.headers.get("retry-after")).toBeTruthy();
-    await processNextImport(vi.fn().mockResolvedValue(generated));
+    await processNext({ generate: vi.fn().mockResolvedValue(generated) });
   });
 });

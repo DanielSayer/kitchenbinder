@@ -14,7 +14,7 @@ import { TRPCError } from "@trpc/server";
 import { eq, inArray } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Context } from "../context";
-import { processNextImport } from "../imports";
+import { processNext } from "../imports";
 import { appRouter } from "../routers/index";
 import { sampleRecipe } from "./fixtures";
 import { generateRecipe } from "./generate";
@@ -62,7 +62,7 @@ async function createAndWait(
   input: Parameters<ReturnType<typeof caller>["recipes"]["create"]>[0],
 ) {
   const status = await api.recipes.create(input);
-  if (status.kind !== "saved") await processNextImport();
+  if (status.kind !== "saved") await processNext();
   const result = await api.recipes.importStatus({ id: input.id });
   if (result.kind === "failed")
     throw new TRPCError({ code: "NOT_FOUND", message: result.message });

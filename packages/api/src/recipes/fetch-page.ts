@@ -2,7 +2,7 @@ import { lookup } from "node:dns/promises";
 import http from "node:http";
 import https from "node:https";
 import ipaddr from "ipaddr.js";
-import { logImport } from "../import-diagnostics";
+import { logImport } from "../imports/diagnostics";
 
 export const PAGE_ERROR =
   "Couldn't read this page. Paste the recipe text instead.";

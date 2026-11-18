@@ -19,11 +19,10 @@ import {
 import {
   discardWebsiteImport,
   importStatus,
-  processNextImport,
+  processNext,
   submitWebsiteImport,
 } from "./imports";
 import { sampleRecipe } from "./recipes/fixtures";
-import { checkRecipeUsage } from "./recipes/usage";
 
 const owner = randomUUID();
 const other = randomUUID();
@@ -96,11 +95,12 @@ describe("durable import concurrency and recovery with PostgreSQL", () => {
     const progress = vi.fn(
       async (_stage: "fetching" | "generating" | "saving") => {},
     );
-    await processNextImport(
-      vi.fn().mockResolvedValue(generated),
-      undefined,
-      progress,
-    );
+    expect(
+      await processNext({
+        generate: vi.fn().mockResolvedValue(generated),
+        reportProgress: progress,
+      }),
+    ).toEqual({ kind: "saved", importId: item.id, recipes: 1 });
     expect(progress.mock.calls.map(([stage]) => stage)).toEqual([
       "fetching",
       "generating",
@@ -140,16 +140,18 @@ describe("durable import concurrency and recovery with PostgreSQL", () => {
     const item = { ...input(), householdId };
     await submitWebsiteImport(owner, item);
     const titles = ["Soup", "Bread", "Salad"];
-    await processNextImport(
-      vi.fn().mockResolvedValue({
-        ...generated,
-        origin: "imported",
-        recipes: titles.map((title) => ({
-          content: { ...sampleRecipe, title },
-          tagIds: [],
-        })),
+    expect(
+      await processNext({
+        generate: vi.fn().mockResolvedValue({
+          ...generated,
+          origin: "imported",
+          recipes: titles.map((title) => ({
+            content: { ...sampleRecipe, title },
+            tagIds: [],
+          })),
+        }),
       }),
-    );
+    ).toEqual({ kind: "saved", importId: item.id, recipes: 3 });
     const status = await importStatus(owner, item.id);
     if (status.kind !== "saved") throw new Error(`Import ${status.kind}`);
     expect(status.recipeId).toBe(item.id);
@@ -200,10 +202,7 @@ describe("durable import concurrency and recovery with PostgreSQL", () => {
       ...generated,
       recipes: [{ content: sampleRecipe, tagIds: [tagId, foreignTagId] }],
     });
-    await Promise.all([
-      processNextImport(generate),
-      processNextImport(generate),
-    ]);
+    await Promise.all([processNext({ generate }), processNext({ generate })]);
     expect(generate).toHaveBeenCalledTimes(1);
     expect(generate).toHaveBeenCalledWith(
       item.input,
@@ -228,7 +227,7 @@ describe("durable import concurrency and recovery with PostgreSQL", () => {
         .where(eq(recipeTag.recipeId, item.id)),
     ).toEqual([{ id: tagId }]);
     expect((await submitWebsiteImport(owner, item)).kind).toBe("saved");
-    await processNextImport(generate);
+    await processNext({ generate });
     expect(generate).toHaveBeenCalledTimes(1);
     await db.delete(recipe).where(eq(recipe.id, item.id));
     expect((await submitWebsiteImport(owner, item)).kind).toBe("failed");
@@ -248,7 +247,7 @@ describe("durable import concurrency and recovery with PostgreSQL", () => {
         );
       return generated;
     });
-    await processNextImport(generate);
+    await processNext({ generate });
     expect((await importStatus(owner, item.id)).kind).toBe("failed");
     expect(
       await db.select().from(recipe).where(eq(recipe.id, item.id)),
@@ -276,8 +275,8 @@ describe("durable import concurrency and recovery with PostgreSQL", () => {
       .set({ state: "processing", startedAt: new Date(Date.now() - 240_000) })
       .where(eq(recipeImport.id, interrupted.id));
     const generate = vi.fn();
-    await processNextImport(generate);
-    await processNextImport(generate);
+    await processNext({ generate });
+    await processNext({ generate });
     expect(generate).not.toHaveBeenCalled();
     expect((await importStatus(owner, ready.id)).kind).toBe("saved");
     expect((await submitWebsiteImport(owner, interrupted)).kind).toBe("failed");
@@ -288,11 +287,11 @@ describe("durable import concurrency and recovery with PostgreSQL", () => {
     const generate = vi
       .fn()
       .mockRejectedValue(new Error("private internal error"));
-    await processNextImport(generate);
+    await processNext({ generate });
     const result = await submitWebsiteImport(other, item);
     expect(result.kind).toBe("failed");
     expect(JSON.stringify(result)).not.toContain("private internal");
-    await processNextImport(generate);
+    await processNext({ generate });
     expect(generate).toHaveBeenCalledTimes(1);
   });
   it("reserves the remaining daily allowance atomically and counts it for website saves", async () => {
@@ -315,13 +314,15 @@ describe("durable import concurrency and recovery with PostgreSQL", () => {
     expect(
       results.filter((result) => result.status === "fulfilled"),
     ).toHaveLength(1);
-    await expect(
-      db.transaction((tx) => checkRecipeUsage(tx, other)),
-    ).rejects.toMatchObject({ code: "TOO_MANY_REQUESTS" });
-    await processNextImport(vi.fn().mockResolvedValue(generated));
-    await expect(
-      db.transaction((tx) => checkRecipeUsage(tx, other)),
-    ).rejects.toMatchObject({ code: "TOO_MANY_REQUESTS" });
+    await expect(submitWebsiteImport(other, input())).rejects.toMatchObject({
+      code: "TOO_MANY_REQUESTS",
+      message: expect.stringContaining("in the last 24 hours"),
+    });
+    await processNext({ generate: vi.fn().mockResolvedValue(generated) });
+    await expect(submitWebsiteImport(other, input())).rejects.toMatchObject({
+      code: "TOO_MANY_REQUESTS",
+      message: expect.stringContaining("in the last 24 hours"),
+    });
   });
   it("limits new imports per minute while allowing identical retries", async () => {
     const item = input();
@@ -333,14 +334,14 @@ describe("durable import concurrency and recovery with PostgreSQL", () => {
     });
     expect((await submitWebsiteImport(owner, item)).kind).toBe("queued");
     for (let index = 0; index < 5; index++)
-      await processNextImport(vi.fn().mockResolvedValue(generated));
+      await processNext({ generate: vi.fn().mockResolvedValue(generated) });
   });
   it("tombstones a lost request before local reset so a late submission cannot import it", async () => {
     const item = input();
     await discardWebsiteImport(owner, item);
     expect((await submitWebsiteImport(owner, item)).kind).toBe("failed");
     const generate = vi.fn();
-    await processNextImport(generate);
+    await processNext({ generate });
     expect(generate).not.toHaveBeenCalled();
     await expect(discardWebsiteImport(other, item)).rejects.toMatchObject({
       code: "CONFLICT",
@@ -353,7 +354,7 @@ describe("durable import concurrency and recovery with PostgreSQL", () => {
       code: "CONFLICT",
     });
     const generate = vi.fn().mockResolvedValue(generated);
-    await processNextImport(generate);
+    await processNext({ generate });
     await discardWebsiteImport(owner, item);
     expect((await submitWebsiteImport(owner, item)).kind).toBe("saved");
     expect(generate).toHaveBeenCalledTimes(1);
@@ -365,7 +366,7 @@ describe("durable import concurrency and recovery with PostgreSQL", () => {
     const raced = await importStatus(owner, race.id);
     expect(["queued", "failed"]).toContain(raced.kind);
     const racedGenerate = vi.fn().mockResolvedValue(generated);
-    await processNextImport(racedGenerate);
+    await processNext({ generate: racedGenerate });
     expect(racedGenerate).toHaveBeenCalledTimes(
       raced.kind === "queued" ? 1 : 0,
     );

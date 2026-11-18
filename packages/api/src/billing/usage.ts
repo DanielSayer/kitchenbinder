@@ -1,12 +1,13 @@
 import { user } from "@prep-sheet/db/schema/auth";
 import { aiSpend, billingAccount } from "@prep-sheet/db/schema/billing";
-import { recipeImport } from "@prep-sheet/db/schema/import";
 import { recipe } from "@prep-sheet/db/schema/recipe";
 import { providerConfiguration } from "@prep-sheet/env/server";
 import { TRPCError } from "@trpc/server";
-import { and, count, eq, gte, inArray, isNull, sql, sum } from "drizzle-orm";
+import { and, count, eq, gte, isNull, sql, sum } from "drizzle-orm";
 import type { Database } from "../households/access";
 import { allowance, pricing } from "./policy";
+
+// Plan rules only. Import counts come from the import module (see ./summary).
 
 export async function lockAccount(tx: Database, userId: string) {
   await tx
@@ -16,7 +17,12 @@ export async function lockAccount(tx: Database, userId: string) {
     .for("update");
 }
 
-async function getAllowance(tx: Database, userId: string) {
+export type AccountPlan = ReturnType<typeof allowance>;
+
+export async function accountPlan(
+  tx: Database,
+  userId: string,
+): Promise<AccountPlan> {
   const [account] = await tx
     .select()
     .from(billingAccount)
@@ -24,61 +30,36 @@ async function getAllowance(tx: Database, userId: string) {
   return allowance(account?.status ?? "free", account?.validUntil ?? null);
 }
 
-export async function usageSummary(tx: Database, userId: string) {
-  const plan = await getAllowance(tx, userId);
-  const [used] = await tx
-    .select({ total: count() })
-    .from(recipeImport)
-    .where(
-      and(
-        eq(recipeImport.userId, userId),
-        eq(recipeImport.usageReleased, false),
-        eq(recipeImport.usageBucket, plan.bucket),
-        plan.since ? gte(recipeImport.createdAt, plan.since) : undefined,
-      ),
-    );
+export async function savedRecipeCount(tx: Database, userId: string) {
   const [saved] = await tx
     .select({ total: count() })
     .from(recipe)
     .where(and(eq(recipe.userId, userId), isNull(recipe.deletedAt)));
-  return { ...plan, used: used?.total ?? 0, saved: saved?.total ?? 0 };
+  return saved?.total ?? 0;
 }
 
-// Caller holds the account lock until its insert or restore commits.
-export async function checkRecipeCapacity(tx: Database, userId: string) {
-  await lockAccount(tx, userId);
-  const plan = await usageSummary(tx, userId);
-  if (plan.recipes === null) return;
-  const [pending] = await tx
-    .select({ total: count() })
-    .from(recipeImport)
-    .where(
-      and(
-        eq(recipeImport.userId, userId),
-        inArray(recipeImport.state, [
-          "queued",
-          "fetching",
-          "processing",
-          "ready",
-        ]),
-      ),
-    );
-  if (plan.saved + (pending?.total ?? 0) >= plan.recipes)
+/** Imports in progress hold a place, so they count as saved recipes. */
+export function requireRecipeRoom(
+  plan: AccountPlan,
+  saved: number,
+  inFlight: number,
+) {
+  if (plan.recipes !== null && saved + inFlight >= plan.recipes)
     throw new TRPCError({
       code: "FORBIDDEN",
       message: `Your ${plan.tier === "free" ? "Free" : "Pro"} plan allows ${plan.recipes} saved recipes, including imports in progress. Upgrade in Settings or remove a recipe to make room.`,
     });
 }
 
-export async function checkAiAllowance(tx: Database, userId: string) {
-  const plan = await usageSummary(tx, userId);
+/** Returns the bucket a new AI attempt is charged to. */
+export function requireAiCredit(plan: AccountPlan, used: number) {
   if (!pricing.ai.enabled || !providerConfiguration.aiEnabled)
     throw new TRPCError({
       code: "PRECONDITION_FAILED",
       message:
         "AI recipe creation is paused. You can still add recipes manually.",
     });
-  if (plan.used >= plan.credits)
+  if (used >= plan.credits)
     throw new TRPCError({
       code: "FORBIDDEN",
       message:
@@ -90,7 +71,7 @@ export async function checkAiAllowance(tx: Database, userId: string) {
 }
 
 export async function requireHouseholdPlan(tx: Database, userId: string) {
-  if (!(await getAllowance(tx, userId)).createHousehold)
+  if (!(await accountPlan(tx, userId)).createHousehold)
     throw new TRPCError({
       code: "FORBIDDEN",
       message:

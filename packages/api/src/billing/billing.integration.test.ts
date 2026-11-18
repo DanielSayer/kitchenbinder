@@ -13,7 +13,8 @@ import { submitWebsiteImport } from "../imports";
 import { sampleRecipe } from "../recipes/fixtures";
 import { appRouter } from "../routers";
 import { pricing } from "./policy";
-import { checkAiAllowance, reserveAiSpend, usageSummary } from "./usage";
+import { usageSummary } from "./summary";
+import { requireAiCredit, reserveAiSpend } from "./usage";
 
 const ids: string[] = [];
 const spendIds: string[] = [];
@@ -212,11 +213,11 @@ describe("billing enforcement with PostgreSQL", () => {
         createdAt: start,
       })),
     );
-    await expect(
-      db.transaction((tx) => checkAiAllowance(tx, id)),
-    ).rejects.toMatchObject({
-      code: "FORBIDDEN",
-    });
+    const spent = await usageSummary(db, id);
+    expect(spent).toMatchObject({ used: 50, credits: 50 });
+    expect(() => requireAiCredit(spent, spent.used)).toThrow(
+      "You've used your monthly AI credits.",
+    );
     const previousMonth = new Date(start.getTime() - 2 * 86400000);
     await db
       .update(recipeImport)

@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import { imageCandidateSchema } from "../import-contract";
+import { imageCandidateSchema } from "../imports";
 import { extractImages } from "./extract-page";
 import { fetchImage } from "./fetch-page";
 import { preferredImage, withImageChoices } from "./generate";

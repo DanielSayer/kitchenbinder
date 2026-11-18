@@ -10,7 +10,7 @@ import { env, providerConfiguration } from "@prep-sheet/env/server";
 import { generateText, Output } from "ai";
 import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
 import { z } from "zod";
-import { importFailure, logImport } from "../import-diagnostics";
+import { importFailure, logImport } from "../imports";
 import {
   type AiIngredient,
   aiIngredientLines,

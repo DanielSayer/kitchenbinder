@@ -17,12 +17,8 @@ import {
   vi,
 } from "vitest";
 import { pricing } from "./billing/policy";
-import { usageSummary } from "./billing/usage";
-import {
-  importStatus,
-  processNextImport,
-  submitWebsiteImport,
-} from "./imports";
+import { usageSummary } from "./billing/summary";
+import { importStatus, processNext, submitWebsiteImport } from "./imports";
 import { sampleRecipe } from "./recipes/fixtures";
 
 const owner = randomUUID();
@@ -156,7 +152,7 @@ it("releases usage and reserves no spend for an oversized durable input", async 
     input: "x".repeat(aiPolicy.maxContentBytes + 1),
   });
   const generate = vi.fn().mockResolvedValue(output);
-  await processNextImport(generate);
+  await processNext({ generate });
   expect(generate).not.toHaveBeenCalled();
   expect(await job(id)).toMatchObject({ state: "failed", usageReleased: true });
   expect(
@@ -198,8 +194,8 @@ it("lets healthy ready and queued jobs finish beside a persistently failing chec
     },
   ]);
   const generate = vi.fn().mockResolvedValue(output);
-  await Promise.all([processNextImport(generate), processNextImport(generate)]);
-  await processNextImport(generate);
+  await Promise.all([processNext({ generate }), processNext({ generate })]);
+  await processNext({ generate });
   expect(
     await db
       .select({ id: recipe.id })
@@ -218,15 +214,19 @@ it("lets healthy ready and queued jobs finish beside a persistently failing chec
   expect((await job(failing)).nextSaveAttemptAt.getTime()).toBeGreaterThan(
     Date.now(),
   );
-  expect(await processNextImport(generate)).toBe(false);
+  expect(await processNext({ generate })).toEqual({ kind: "idle" });
 });
 
 it("retries only after backoff, then saves the checkpoint without another AI call or charge", async () => {
   const now = clock();
   const id = await enqueue({ fingerprint: "fail-save" });
   const generate = vi.fn().mockResolvedValue(output);
-  const write = vi.spyOn(process.stdout, "write");
-  await processNextImport(generate);
+  expect(await processNext({ generate })).toEqual({
+    kind: "retrying",
+    importId: id,
+    attempt: 1,
+    delayMs: 5000,
+  });
   const spent = await db.select().from(aiSpend).where(eq(aiSpend.importId, id));
   const allowance = await usageSummary(db, owner);
   expect(spent).toHaveLength(1);
@@ -238,19 +238,16 @@ it("retries only after backoff, then saves the checkpoint without another AI cal
     nextSaveAttemptAt: new Date(now + 5000),
     generated: { recipes: [{ content: sampleRecipe }] },
   });
-  expect(
-    write.mock.calls.some(
-      ([line]) =>
-        String(line).includes('"event":"import_save_retry"') &&
-        String(line).includes(id) &&
-        String(line).includes('"delayMs":5000'),
-    ),
-  ).toBe(true);
-  expect(await processNextImport(generate)).toBe(false);
+  expect(await processNext({ generate })).toEqual({ kind: "idle" });
   vi.setSystemTime(now + 4999);
-  expect(await processNextImport(generate)).toBe(false);
+  expect(await processNext({ generate })).toEqual({ kind: "idle" });
   vi.setSystemTime(now + 5000);
-  await processNextImport(generate);
+  expect(await processNext({ generate })).toEqual({
+    kind: "retrying",
+    importId: id,
+    attempt: 2,
+    delayMs: 10000,
+  });
   expect(await job(id)).toMatchObject({
     state: "ready",
     saveAttempts: 2,
@@ -261,9 +258,16 @@ it("retries only after backoff, then saves the checkpoint without another AI cal
     .set({ fingerprint: "healthy" })
     .where(eq(recipeImport.id, id));
   vi.setSystemTime(now + 14999);
-  expect(await processNextImport(generate)).toBe(false);
+  expect(await processNext({ generate })).toEqual({ kind: "idle" });
   vi.setSystemTime(now + 15000);
-  await Promise.all([processNextImport(generate), processNextImport(generate)]);
+  expect(
+    await Promise.all([processNext({ generate }), processNext({ generate })]),
+  ).toEqual(
+    expect.arrayContaining([
+      { kind: "saved", importId: id, recipes: 1 },
+      { kind: "idle" },
+    ]),
+  );
   expect(await job(id)).toMatchObject({
     state: "saved",
     saveAttempts: 3,
@@ -297,13 +301,17 @@ it("stops after five failed saves, retains output and spent credits, and dedupli
     .set({ fingerprint: "fail-save" })
     .where(eq(recipeImport.id, input.id));
   const generate = vi.fn().mockResolvedValue(output);
-  await processNextImport(generate);
-  for (const delayMs of [5000, 10000, 20000, 40000]) {
+  await processNext({ generate });
+  for (const [index, delayMs] of [5000, 10000, 20000, 40000].entries()) {
     const previous = await job(input.id);
     expect(previous.nextSaveAttemptAt.getTime() - Date.now()).toBe(delayMs);
-    expect(await processNextImport(generate)).toBe(false);
+    expect(await processNext({ generate })).toEqual({ kind: "idle" });
     vi.setSystemTime(previous.nextSaveAttemptAt);
-    await processNextImport(generate);
+    expect(await processNext({ generate })).toMatchObject(
+      index < 3
+        ? { kind: "retrying", attempt: index + 2 }
+        : { kind: "failed", stage: "saving", usageReleased: false },
+    );
   }
   expect(await job(input.id)).toMatchObject({
     state: "failed",
@@ -324,7 +332,7 @@ it("stops after five failed saves, retains output and spent credits, and dedupli
     .where(eq(recipeImport.id, input.id));
   expect((await submitWebsiteImport(owner, input)).kind).toBe("failed");
   vi.setSystemTime(Date.now() + 86400000);
-  expect(await processNextImport(generate)).toBe(false);
+  expect(await processNext({ generate })).toEqual({ kind: "idle" });
   expect(generate).toHaveBeenCalledTimes(1);
 });
 
@@ -358,7 +366,7 @@ it("recovers abandoned save and fetch claims even with eligible ready work, with
   });
   const healthy = await enqueue({ state: "ready", generated });
   const generate = vi.fn().mockResolvedValue(output);
-  await processNextImport(generate);
+  await processNext({ generate });
   expect(await job(abandoned)).toMatchObject({
     state: "ready",
     saveAttempts: 1,
@@ -377,10 +385,10 @@ it("recovers abandoned save and fetch claims even with eligible ready work, with
     usageReleased: false,
   });
   expect((await job(fetch)).state).toBe("saved");
-  await processNextImport(generate);
+  await processNext({ generate });
   expect((await job(healthy)).state).toBe("saved");
   vi.setSystemTime(now + 5000);
-  await processNextImport(generate);
+  await processNext({ generate });
   expect(await job(abandoned)).toMatchObject({
     state: "saved",
     saveAttempts: 2,
@@ -411,7 +419,7 @@ it("fails missing or malformed checkpoints explicitly and continues with healthy
   const healthy = await enqueue({ state: "ready", generated });
   const generate = vi.fn();
   for (let iteration = 0; iteration < 3; iteration++)
-    await processNextImport(generate);
+    await processNext({ generate });
   for (const id of [missing, malformed]) {
     expect(await job(id)).toMatchObject({
       state: "failed",
@@ -430,7 +438,7 @@ it("fails missing or malformed checkpoints explicitly and continues with healthy
     tagIds: [],
   });
   expect((await job(healthy)).state).toBe("saved");
-  expect(await processNextImport(generate)).toBe(false);
+  expect(await processNext({ generate })).toEqual({ kind: "idle" });
   expect(generate).not.toHaveBeenCalled();
 });
 
@@ -442,12 +450,13 @@ function deferred() {
   return { promise, resolve };
 }
 
-it("retains the claim and import diagnostic if persisting the retry itself fails, then recovers it", async () => {
+it("retains the claim if persisting the retry itself fails, then recovers it", async () => {
   const now = clock();
   const id = await enqueue({ fingerprint: "fail-retry-state" });
   const generate = vi.fn().mockResolvedValue(output);
-  const write = vi.spyOn(process.stdout, "write");
-  await expect(processNextImport(generate)).rejects.toThrow();
+  await expect(processNext({ generate })).rejects.toThrow(
+    "injected retry state failure",
+  );
   const claimed = await job(id);
   expect(claimed).toMatchObject({
     state: "ready",
@@ -456,20 +465,12 @@ it("retains the claim and import diagnostic if persisting the retry itself fails
     usageReleased: false,
   });
   expect(claimed.workerToken).not.toBeNull();
-  expect(
-    write.mock.calls.some(
-      ([line]) =>
-        String(line).includes('"event":"import_save_retry_failed"') &&
-        String(line).includes(id) &&
-        String(line).includes('"saveFailure"'),
-    ),
-  ).toBe(true);
   await db
     .update(recipeImport)
     .set({ fingerprint: "healthy" })
     .where(eq(recipeImport.id, id));
   vi.setSystemTime(now + 240000);
-  expect(await processNextImport(generate)).toBe(false);
+  expect(await processNext({ generate })).toEqual({ kind: "idle" });
   expect(await job(id)).toMatchObject({
     state: "ready",
     saveClaimedAt: null,
@@ -477,7 +478,7 @@ it("retains the claim and import diagnostic if persisting the retry itself fails
     nextSaveAttemptAt: new Date(now + 245000),
   });
   vi.setSystemTime(now + 245000);
-  await processNextImport(generate);
+  await processNext({ generate });
   expect((await job(id)).state).toBe("saved");
   expect(generate).toHaveBeenCalledTimes(1);
   expect(
@@ -508,7 +509,7 @@ it("skips a live locked save during stale recovery and lets the second worker fi
   });
   await held.promise;
   const generate = vi.fn().mockResolvedValue(output);
-  const saver = processNextImport(generate);
+  const saver = processNext({ generate });
   try {
     await vi.waitFor(
       async () => {
@@ -525,8 +526,8 @@ it("skips a live locked save during stale recovery and lets the second worker fi
     const claimed = await job(blocked);
     expect(claimed.saveAttempts).toBe(1);
     vi.setSystemTime(now + 240000);
-    await processNextImport(generate);
-    await processNextImport(generate);
+    await processNext({ generate });
+    await processNext({ generate });
     expect((await job(ready)).state).toBe("saved");
     expect((await job(queued)).state).toBe("saved");
     expect(await job(blocked)).toMatchObject({
@@ -558,18 +559,15 @@ it("keeps the global generation limit while permitting checkpoint saves and prev
   });
   const workers = Array.from(
     { length: pricing.ai.concurrentAttempts + 1 },
-    () => processNextImport(generate),
+    () => processNext({ generate }),
   );
   try {
     await vi.waitFor(() =>
       expect(generate).toHaveBeenCalledTimes(pricing.ai.concurrentAttempts),
     );
-    expect(await processNextImport(generate)).toBe(false);
+    expect(await processNext({ generate })).toEqual({ kind: "idle" });
     const ready = await enqueue({ state: "ready", generated });
-    await Promise.all([
-      processNextImport(generate),
-      processNextImport(generate),
-    ]);
+    await Promise.all([processNext({ generate }), processNext({ generate })]);
     expect(await job(ready)).toMatchObject({ state: "saved", saveAttempts: 1 });
     expect(
       await db.select().from(recipe).where(eq(recipe.id, ready)),
@@ -587,7 +585,7 @@ it("keeps the global generation limit while permitting checkpoint saves and prev
     release.resolve();
     await Promise.all(workers);
   }
-  await processNextImport(generate);
+  await processNext({ generate });
   expect(generate).toHaveBeenCalledTimes(queued.length);
   expect(
     await db.select().from(aiSpend).where(inArray(aiSpend.importId, queued)),

@@ -21,7 +21,7 @@ import {
 import { boundedRequest } from "../../../../scripts/http-body.mjs";
 import { submitWebsiteImport } from "../imports";
 import { sampleRecipe } from "../recipes/fixtures";
-import { usageSummary } from "./usage";
+import { usageSummary } from "./summary";
 
 const { productId, secret } = vi.hoisted(() => {
   const productId = "11111111-1111-4111-8111-111111111111";
