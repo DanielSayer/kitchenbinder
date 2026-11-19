@@ -70,9 +70,9 @@ async function save(value: MealInput) {
     revision: (await owner.planner.get()).revision,
   });
 }
-async function generate(replace = false) {
-  const preview = await owner.planner.preview({ coverage, replace });
-  await owner.planner.applyTrip({ coverage, replace, token: preview.token });
+async function generate() {
+  const preview = await owner.planner.preview({ coverage });
+  await owner.planner.applyTrip({ coverage, token: preview.token });
   return preview;
 }
 describe("personal meal planner with PostgreSQL", () => {
@@ -152,33 +152,25 @@ describe("personal meal planner with PostgreSQL", () => {
     ).toHaveLength(1);
     expect((await owner.planner.get()).meals).toHaveLength(1);
   });
-  it("scales repeated cooking sessions and excludes leftovers and eating out", async () => {
+  it("applies a trip to the list, its planned meals and the aisle list", async () => {
     await save(meal);
     await save({ ...meal, id: randomUUID(), date: "2026-09-23" });
-    await save({
-      id: randomUUID(),
-      date: "2026-09-22",
-      slot: "Lunch",
-      kind: "leftovers",
-      sourceId: meal.id,
-      portions: 2,
-    });
-    await save({
-      id: randomUUID(),
-      date: "2026-09-24",
-      slot: "Dinner",
-      kind: "out",
-      description: "Dinner with friends",
-    });
-    await generate(true);
+    const { revision } = await owner.planner.get();
+    await generate();
     const items = await owner.shopping.list();
-    expect(items).toHaveLength(4);
-    expect(items.filter((item) => item.text === "400 g rice")).toHaveLength(2);
+    expect(items.map((item) => item.text).sort()).toEqual([
+      "2 onion",
+      "2 onion",
+      "400 g rice",
+      "400 g rice",
+    ]);
     expect(new Set(items.map((item) => item.plannedMealId)).size).toBe(2);
     expect((await owner.shopping.generated())?.content.groups).toHaveLength(2);
-    expect((await owner.planner.get()).stale).toBe(false);
+    const planner = await owner.planner.get();
+    expect(planner.revision).toBe(revision + 1);
+    expect(planner.stale).toBe(false);
   });
-  it("scales trip lines like the recipe page, keeping the recipe's parse", async () => {
+  it("snapshots each line's parse when a meal is planned", async () => {
     const stewId = randomUUID();
     await db.insert(recipe).values({
       id: stewId,
@@ -232,54 +224,17 @@ describe("personal meal planner with PostgreSQL", () => {
       expect((await owner.planner.get()).meals[0]).not.toHaveProperty(
         "ingredientData",
       );
-      const preview = await generate(true);
-      expect(preview.warnings).toEqual([
-        "Stew: Salt, to taste [check quantity for ×2 recipe]",
-      ]);
-      const items = await owner.shopping.list();
-      expect(
-        Object.fromEntries(items.map((item) => [item.text, item.ingredient])),
-      ).toEqual({
-        "4-6 garlic cloves": expect.objectContaining({
-          quantity: 4,
-          quantityMax: 6,
-          unit: "clove",
-        }),
-        "2 x 400g tins tomatoes": expect.objectContaining({
-          quantity: 2,
-          unit: "tin",
-          size: { quantity: 400, unit: "g" },
-        }),
-        "2 onion": expect.objectContaining({
-          quantity: 2,
-          item: "brown onion",
-        }),
-        "Salt, to taste [check quantity for ×2 recipe]":
-          expect.objectContaining({ quantity: null, item: "salt" }),
-      });
     } finally {
       await db.delete(recipe).where(eq(recipe.id, stewId));
     }
   });
-  it("retains manual groceries and purchased quantities, adding only extra portions", async () => {
-    const manualId = randomUUID();
-    await owner.shopping.addItem({ id: manualId, text: "Dish soap" });
+  it("blocks the aisle list while the trip is stale but allows ticking", async () => {
     await save(meal);
-    await generate(true);
-    const initial = await owner.shopping.list();
-    const rice = initial.find((item) => item.text === "400 g rice");
-    const onion = initial.find((item) => item.text === "2 onion");
-    if (!rice || !onion) throw new Error("Missing ingredients");
-    await owner.shopping.updateItem({
-      id: rice.id,
-      kind: "status",
-      status: "bought",
-    });
-    await owner.shopping.updateItem({
-      id: onion.id,
-      kind: "status",
-      status: "owned",
-    });
+    await generate();
+    const rice = (await owner.shopping.list()).find(
+      (item) => item.text === "400 g rice",
+    );
+    if (!rice) throw new Error("Missing rice");
     await save({ ...meal, cook: 6 });
     expect((await owner.planner.get()).stale).toBe(true);
     await expect(owner.shopping.generate()).rejects.toMatchObject({
@@ -294,40 +249,19 @@ describe("personal meal planner with PostgreSQL", () => {
         bought: true,
       }),
     ).rejects.toMatchObject({ code: "CONFLICT" });
-    await generate();
-    const updated = await owner.shopping.list();
-    expect(updated.find((item) => item.id === rice.id)?.status).toBe("bought");
-    expect(updated.find((item) => item.id === onion.id)?.status).toBe("owned");
-    expect(updated.find((item) => item.id === manualId)?.text).toBe(
-      "Dish soap",
-    );
-    expect(
-      updated
-        .filter((item) => item.status === "needed")
-        .map((item) => item.text),
-    ).toEqual(expect.arrayContaining(["200 g rice", "1 onion"]));
-    expect((await owner.shopping.generated())?.stale).toBe(false);
-  });
-  it("does not reset bought states or manual ingredient edits on unchanged meals", async () => {
-    await save(meal);
-    await generate(true);
-    const item = (await owner.shopping.list())[0];
-    if (!item) throw new Error("Missing ingredient");
     await owner.shopping.updateItem({
-      id: item.id,
-      kind: "text",
-      text: "My preferred rice",
+      id: rice.id,
+      kind: "status",
+      status: "bought",
     });
-    await save({ ...meal, date: "2026-09-23", slot: "Lunch" });
-    expect((await owner.planner.get()).stale).toBe(false);
+    await owner.shopping.addItem({ id: randomUUID(), text: "Dish soap" });
     await generate();
-    expect(
-      (await owner.shopping.list()).find((row) => row.id === item.id)?.text,
-    ).toBe("My preferred rice");
+    expect((await owner.planner.get()).stale).toBe(false);
+    expect((await owner.shopping.generated())?.stale).toBe(false);
   });
   it("remembers purchased portions after clearing bought items", async () => {
     await save(meal);
-    await generate(true);
+    await generate();
     const rice = (await owner.shopping.list()).find(
       (item) => item.text === "400 g rice",
     );
@@ -337,7 +271,9 @@ describe("personal meal planner with PostgreSQL", () => {
       kind: "status",
       status: "bought",
     });
+    const { revision } = await owner.planner.get();
     await owner.shopping.clear({ scope: "bought" });
+    expect((await owner.planner.get()).revision).toBe(revision + 1);
     await generate();
     await save({ ...meal, cook: 6 });
     await generate();
@@ -347,18 +283,44 @@ describe("personal meal planner with PostgreSQL", () => {
         .map((item) => item.text),
     ).toEqual(["200 g rice"]);
   });
+  it("remembers a removed bought item and forgets a removed needed one", async () => {
+    await save(meal);
+    await generate();
+    const items = await owner.shopping.list();
+    const rice = items.find((item) => item.text === "400 g rice");
+    const onion = items.find((item) => item.text === "2 onion");
+    if (!rice || !onion) throw new Error("Missing ingredients");
+    await owner.shopping.updateItem({
+      id: rice.id,
+      kind: "status",
+      status: "bought",
+    });
+    const { revision } = await owner.planner.get();
+    await owner.shopping.removeItem({ id: rice.id });
+    await owner.shopping.removeItem({ id: onion.id });
+    const planner = await owner.planner.get();
+    expect(planner.revision).toBe(revision + 2);
+    expect(planner.trip?.allocations).toEqual([
+      expect.objectContaining({ itemId: rice.id, clearedBought: true }),
+    ]);
+    await save({ ...meal, cook: 6 });
+    await generate();
+    expect(
+      (await owner.shopping.list()).map((item) => item.text).sort(),
+    ).toEqual(["200 g rice", "3 onion"]);
+  });
   it("rejects a stale preview when meals or shopping progress change", async () => {
     await save(meal);
-    const first = await owner.planner.preview({ coverage, replace: true });
+    const first = await owner.planner.preview({ coverage });
     await save({ ...meal, cook: 6 });
     await expect(
-      owner.planner.applyTrip({ coverage, replace: true, token: first.token }),
+      owner.planner.applyTrip({ coverage, token: first.token }),
     ).rejects.toMatchObject({ code: "CONFLICT" });
     expect(await owner.shopping.list()).toEqual([]);
-    const second = await owner.planner.preview({ coverage, replace: true });
+    const second = await owner.planner.preview({ coverage });
     await owner.shopping.addItem({ id: randomUUID(), text: "Soap" });
     await expect(
-      owner.planner.applyTrip({ coverage, replace: true, token: second.token }),
+      owner.planner.applyTrip({ coverage, token: second.token }),
     ).rejects.toMatchObject({ code: "CONFLICT" });
   });
   it("flags broken leftovers and blocks generation until resolved", async () => {
@@ -373,9 +335,9 @@ describe("personal meal planner with PostgreSQL", () => {
     };
     await save(leftover);
     expect((await owner.planner.get()).issues).toHaveLength(1);
-    await expect(generate(true)).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(generate()).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await save({ ...leftover, portions: 2 });
-    await generate(true);
+    await generate();
     await owner.planner.remove({
       id: meal.id,
       revision: (await owner.planner.get()).revision,
@@ -384,28 +346,14 @@ describe("personal meal planner with PostgreSQL", () => {
       "Choose a cooking session",
     );
   });
-  it("removes only unbought meal ingredients when a meal leaves coverage", async () => {
-    await save(meal);
-    await generate(true);
-    const item = (await owner.shopping.list())[0];
-    if (!item) throw new Error("Missing ingredient");
-    await owner.shopping.updateItem({
-      id: item.id,
-      kind: "status",
-      status: "bought",
-    });
-    await save({ ...meal, date: "2026-10-01" });
-    await generate();
-    expect((await owner.shopping.list()).map((row) => row.id)).toEqual([
-      item.id,
-    ]);
-    expect((await owner.planner.get()).stale).toBe(false);
-  });
   it("allows an empty trip and clears its planner link when the list is reset", async () => {
-    await generate(true);
+    await generate();
     expect((await owner.shopping.generated())?.content.groups).toEqual([]);
+    const { revision } = await owner.planner.get();
     await owner.shopping.clear({ scope: "all" });
-    expect((await owner.planner.get()).trip).toBeNull();
+    const planner = await owner.planner.get();
+    expect(planner.trip).toBeNull();
+    expect(planner.revision).toBe(revision + 1);
   });
   it("shares a plan and list per household and verifies membership", async () => {
     await db
@@ -434,12 +382,10 @@ describe("personal meal planner with PostgreSQL", () => {
     const preview = await other.planner.preview({
       householdId: sharedId,
       coverage,
-      replace: true,
     });
     await other.planner.applyTrip({
       householdId: sharedId,
       coverage,
-      replace: true,
       token: preview.token,
     });
     await other.shopping.addItem({

@@ -184,7 +184,7 @@ describe("personal shopping list with PostgreSQL", () => {
     await owner.addRecipes({ recipeIds: [sharedId] });
     expect(await owner.list()).toHaveLength(2);
   });
-  it("generates private groups, excludes owned/bought items and synchronises checkboxes", async () => {
+  it("generates private groups from items not owned and synchronises checkboxes", async () => {
     await owner.clear({ scope: "all" });
     await expect(owner.generate()).rejects.toMatchObject({
       code: "BAD_REQUEST",
@@ -203,22 +203,24 @@ describe("personal shopping list with PostgreSQL", () => {
     const plan = await owner.generated();
     if (!plan) throw new Error("Missing generated list");
     expect(plan.stale).toBe(false);
-    expect(plan.content.groups).toHaveLength(1);
-    expect(plan.content.groups[0]?.itemIds.sort()).toEqual(
-      [flourA, flourB].sort(),
-    );
+    expect(
+      plan.content.groups.map((group) => [group.name, group.itemIds.sort()]),
+    ).toEqual([
+      ["Butter", [butter]],
+      ["Flour", [flourA, flourB].sort()],
+    ]);
     expect(await other.generated()).toBeNull();
     await expect(
       other.checkGroup({ planId: plan.id, groupIndex: 0, bought: true }),
     ).rejects.toMatchObject({ code: "CONFLICT" });
-    await owner.checkGroup({ planId: plan.id, groupIndex: 0, bought: true });
+    await owner.checkGroup({ planId: plan.id, groupIndex: 1, bought: true });
     expect(
       (await owner.list())
         .filter((item) => item.id === flourA || item.id === flourB)
         .every((item) => item.status === "bought"),
     ).toBe(true);
     expect((await owner.generated())?.stale).toBe(false);
-    await owner.checkGroup({ planId: plan.id, groupIndex: 0, bought: false });
+    await owner.checkGroup({ planId: plan.id, groupIndex: 1, bought: false });
     await owner.updateItem({ kind: "text", id: flourA, text: "300g flour" });
     expect((await owner.generated())?.stale).toBe(true);
     await expect(
