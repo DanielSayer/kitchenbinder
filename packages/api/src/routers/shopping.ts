@@ -2,11 +2,8 @@ import { randomUUID } from "node:crypto";
 import { db } from "@prep-sheet/db";
 import { ingredientLines } from "@prep-sheet/db/ingredient-line";
 import { parseIngredient } from "@prep-sheet/db/ingredients";
-import { tripIsStale } from "@prep-sheet/db/meal-planner";
-import { mealPlanner } from "@prep-sheet/db/schema/meal-planner";
 import { recipe } from "@prep-sheet/db/schema/recipe";
-import { shoppingItem, shoppingPlan } from "@prep-sheet/db/schema/shopping";
-import { generateShoppingPlan } from "@prep-sheet/db/shopping-plan";
+import { shoppingItem } from "@prep-sheet/db/schema/shopping";
 import { TRPCError } from "@trpc/server";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -17,6 +14,15 @@ import {
 } from "../households/access";
 import { protectedProcedure, router } from "../index";
 import { pickerInput, pickerRecipe, shoppingRecipePage } from "../recipes/list";
+import {
+  aisleList,
+  checkAisleGroup,
+  checkCapacity,
+  clearList,
+  generateAisleList,
+  plannedMeals,
+  removeListItem,
+} from "../shopping/trip";
 
 const itemText = z.string().trim().min(1).max(2000);
 // Omitted householdId = the caller's personal household.
@@ -27,60 +33,12 @@ const itemId = z.object({ ...householdInput, id: z.uuid() });
 function lockList(tx: Database, userId: string, householdId?: string) {
   return resolveHousehold(tx, userId, householdId, { lock: true });
 }
-function checkCapacity(count: number) {
-  if (count > 1000)
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message:
-        "Your list can hold up to 1,000 items. Clear some items before adding more.",
-    });
-}
-async function requireCurrentMeals(tx: Database, householdId: string) {
-  const [planner] = await tx
-    .select()
-    .from(mealPlanner)
-    .where(eq(mealPlanner.householdId, householdId));
-  if (planner?.trip && tripIsStale(planner.meals, planner.trip))
-    throw new TRPCError({
-      code: "CONFLICT",
-      message:
-        "Your meals have changed. Review meal-plan changes before updating or checking off this trip.",
-    });
-}
-
 export const shoppingRouter = router({
   generate: protectedProcedure.input(householdOnly).mutation(({ ctx, input }) =>
     db.transaction(async (tx) => {
       const userId = ctx.session.user.id;
       const householdId = await lockList(tx, userId, input.householdId);
-      await requireCurrentMeals(tx, householdId);
-      const items = await tx
-        .select()
-        .from(shoppingItem)
-        .where(
-          and(
-            eq(shoppingItem.householdId, householdId),
-            eq(shoppingItem.status, "needed"),
-          ),
-        )
-        .for("update");
-      if (!items.length)
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Add some items you still need before generating a list.",
-        });
-      const saved = {
-        id: randomUUID(),
-        householdId,
-        content: generateShoppingPlan(items),
-        sources: items.map(({ id, text }) => ({ id, text })),
-        generatedAt: new Date(),
-      };
-      await tx
-        .insert(shoppingPlan)
-        .values(saved)
-        .onConflictDoUpdate({ target: shoppingPlan.householdId, set: saved });
-      return { id: saved.id };
+      return generateAisleList(tx, householdId);
     }),
   ),
   generated: protectedProcedure
@@ -91,24 +49,7 @@ export const shoppingRouter = router({
         ctx.session.user.id,
         input.householdId,
       );
-      const [plan] = await db
-        .select()
-        .from(shoppingPlan)
-        .where(eq(shoppingPlan.householdId, householdId));
-      if (!plan) return null;
-      const items = await db
-        .select()
-        .from(shoppingItem)
-        .where(eq(shoppingItem.householdId, householdId));
-      const current = new Map(items.map((item) => [item.id, item]));
-      const sources = new Set(plan.sources.map((item) => item.id));
-      const stale =
-        plan.sources.some((source) => {
-          const item = current.get(source.id);
-          return !item || item.text !== source.text || item.status === "owned";
-        }) ||
-        items.some((item) => item.status === "needed" && !sources.has(item.id));
-      return { ...plan, items, stale };
+      return aisleList(db, householdId);
     }),
   checkGroup: protectedProcedure
     .input(
@@ -123,55 +64,7 @@ export const shoppingRouter = router({
       db.transaction(async (tx) => {
         const userId = ctx.session.user.id;
         const householdId = await lockList(tx, userId, input.householdId);
-        await requireCurrentMeals(tx, householdId);
-        const [plan] = await tx
-          .select()
-          .from(shoppingPlan)
-          .where(
-            and(
-              eq(shoppingPlan.householdId, householdId),
-              eq(shoppingPlan.id, input.planId),
-            ),
-          );
-        const selected = plan?.content.groups[input.groupIndex];
-        if (!plan || !selected)
-          throw new TRPCError({
-            code: "CONFLICT",
-            message:
-              "This generated list has changed. Refresh the page to continue.",
-          });
-        const items = await tx
-          .select()
-          .from(shoppingItem)
-          .where(eq(shoppingItem.householdId, householdId))
-          .for("update");
-        const current = new Map(items.map((item) => [item.id, item]));
-        const sourceIds = new Set(plan.sources.map((source) => source.id));
-        if (
-          plan.sources.some(
-            (source) =>
-              current.get(source.id)?.text !== source.text ||
-              current.get(source.id)?.status === "owned",
-          ) ||
-          items.some(
-            (item) => item.status === "needed" && !sourceIds.has(item.id),
-          )
-        ) {
-          throw new TRPCError({
-            code: "CONFLICT",
-            message:
-              "Your ingredients have changed. Generate the list again before checking off items.",
-          });
-        }
-        await tx
-          .update(shoppingItem)
-          .set({ status: input.bought ? "bought" : "needed" })
-          .where(
-            and(
-              eq(shoppingItem.householdId, householdId),
-              inArray(shoppingItem.id, selected.itemIds),
-            ),
-          );
+        await checkAisleGroup(tx, householdId, input);
       }),
     ),
   list: protectedProcedure
@@ -182,16 +75,7 @@ export const shoppingRouter = router({
         ctx.session.user.id,
         input.householdId,
       );
-      const [planner] = await db
-        .select()
-        .from(mealPlanner)
-        .where(eq(mealPlanner.householdId, householdId));
-      const plannedSources = new Map(
-        planner?.trip?.allocations.map((allocation) => [
-          allocation.itemId,
-          allocation.key.split(":")[0] ?? null,
-        ]),
-      );
+      const plannedSources = await plannedMeals(db, householdId);
       const items = await db
         .select()
         .from(shoppingItem)
@@ -349,14 +233,7 @@ export const shoppingRouter = router({
         ctx.session.user.id,
         input.householdId,
       );
-      await tx
-        .delete(shoppingItem)
-        .where(
-          and(
-            eq(shoppingItem.id, input.id),
-            eq(shoppingItem.householdId, householdId),
-          ),
-        );
+      await removeListItem(tx, householdId, input.id);
     }),
   ),
   clear: protectedProcedure
@@ -368,48 +245,7 @@ export const shoppingRouter = router({
           ctx.session.user.id,
           input.householdId,
         );
-        const removed = await tx
-          .delete(shoppingItem)
-          .where(
-            and(
-              eq(shoppingItem.householdId, householdId),
-              input.scope === "bought"
-                ? eq(shoppingItem.status, "bought")
-                : undefined,
-            ),
-          )
-          .returning({ id: shoppingItem.id });
-        if (input.scope === "bought") {
-          const [planner] = await tx
-            .select()
-            .from(mealPlanner)
-            .where(eq(mealPlanner.householdId, householdId));
-          if (planner?.trip) {
-            const removedIds = new Set(removed.map((item) => item.id));
-            await tx
-              .update(mealPlanner)
-              .set({
-                trip: {
-                  ...planner.trip,
-                  allocations: planner.trip.allocations.map((allocation) =>
-                    removedIds.has(allocation.itemId)
-                      ? { ...allocation, clearedBought: true }
-                      : allocation,
-                  ),
-                },
-              })
-              .where(eq(mealPlanner.householdId, householdId));
-          }
-        }
-        if (input.scope === "all") {
-          await tx
-            .delete(shoppingPlan)
-            .where(eq(shoppingPlan.householdId, householdId));
-          await tx
-            .update(mealPlanner)
-            .set({ trip: null })
-            .where(eq(mealPlanner.householdId, householdId));
-        }
+        await clearList(tx, householdId, input.scope);
       }),
     ),
 });

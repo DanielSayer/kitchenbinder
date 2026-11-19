@@ -94,7 +94,7 @@ export function PlanShop({
   const reviewed = parsed.success ? parsed.data : null;
   const preview = useQuery(
     trpc.planner.preview.queryOptions(
-      { householdId, coverage: reviewed ?? coverage, replace: false },
+      { householdId, coverage: reviewed ?? coverage },
       { enabled: reviewed !== null, staleTime: 0 },
     ),
   );
@@ -147,7 +147,6 @@ export function PlanShop({
                 apply.mutate({
                   householdId,
                   coverage: reviewed,
-                  replace: false,
                   token: data.token,
                 });
             }}

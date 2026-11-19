@@ -1,9 +1,5 @@
 import { z } from "zod";
-import {
-  type Ingredient,
-  type IngredientLine,
-  ingredientLines,
-} from "./ingredient-line";
+import type { Ingredient, IngredientLine } from "./ingredient-line";
 
 export const calendarDate = z.iso
   .date()
@@ -127,51 +123,4 @@ export function mealIssues(meals: Meal[]) {
       });
   }
   return issues;
-}
-
-export function shoppingDemands(meals: Meal[], coverage: Coverage): Demand[] {
-  return meals
-    .flatMap((meal) =>
-      meal.kind === "recipe" &&
-      meal.date >= coverage.start &&
-      meal.date <= coverage.end
-        ? ingredientLines(meal.ingredients, meal.ingredientData).flatMap(
-            (line, position) =>
-              // Headings such as "For the sauce:" aren't things to buy.
-              line.heading
-                ? []
-                : [
-                    {
-                      key: `${meal.id}:${position}`,
-                      mealId: meal.id,
-                      recipeId: meal.recipeId,
-                      title: meal.title,
-                      text: line.text,
-                      parsed: line.parsed,
-                      factor: meal.cook / meal.baseServings,
-                      servings: meal.cook,
-                    },
-                  ],
-          )
-        : [],
-    )
-    .sort((a, b) => a.key.localeCompare(b.key));
-}
-export function sameDemand(a: Demand, b: Demand) {
-  return (
-    a.key === b.key &&
-    a.recipeId === b.recipeId &&
-    a.text === b.text &&
-    a.factor === b.factor
-  );
-}
-export function tripIsStale(meals: Meal[], trip: MealTrip) {
-  const current = shoppingDemands(meals, trip);
-  return (
-    current.length !== trip.demands.length ||
-    current.some((demand, index) => {
-      const previous = trip.demands[index];
-      return !previous || !sameDemand(demand, previous);
-    })
-  );
 }
