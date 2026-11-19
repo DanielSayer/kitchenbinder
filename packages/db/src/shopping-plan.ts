@@ -189,22 +189,69 @@ export function groceryGroup(text: string, ingredient?: Ingredient | null) {
     : { category, key: null, name: text };
 }
 
-export function generateShoppingPlan(
-  items: { id: string; text: string; ingredient?: Ingredient | null }[],
-): ShoppingPlan {
-  const groups = new Map<string, ShoppingPlan["groups"][number]>();
+type AisleLine = { id: string; text: string; ingredient?: Ingredient | null };
+export type AisleGroup<T extends AisleLine> = {
+  category: Category;
+  key: string;
+  name: string;
+  items: T[];
+  /** Total in the user's units, or null if the lines don't add up. */
+  quantity: string | null;
+};
+
+/** Total for lines of one aisle group, in the user's units. */
+export function aisleQuantity(
+  items: readonly Omit<AisleLine, "id">[],
+  preferences: MeasurePreferences = defaultMeasurePreferences,
+) {
+  return combinedQuantity(
+    items.map(({ text, ingredient }) => ({ text, ingredient })),
+    preferences,
+  );
+}
+
+/**
+ * Lines grouped by aisle: lines of one item that add up share a group.
+ * Sorted by category, then name.
+ */
+export function aisleGroups<T extends AisleLine>(
+  items: readonly T[],
+  preferences: MeasurePreferences = defaultMeasurePreferences,
+): AisleGroup<T>[] {
+  const groups = new Map<string, AisleGroup<T>>();
   for (const item of items) {
     const { category, key, name } = groceryGroup(item.text, item.ingredient);
-    const existing = groups.get(key ?? item.id);
-    if (existing) existing.itemIds.push(item.id);
-    else groups.set(key ?? item.id, { category, name, itemIds: [item.id] });
+    const id = key ?? `line:${item.id}`;
+    const existing = groups.get(id);
+    if (existing) existing.items.push(item);
+    else
+      groups.set(id, {
+        category,
+        key: id,
+        name,
+        items: [item],
+        quantity: null,
+      });
   }
-  return {
-    groups: [...groups.values()].sort(
+  return [...groups.values()]
+    .map((group) => ({
+      ...group,
+      quantity: aisleQuantity(group.items, preferences),
+    }))
+    .sort(
       (a, b) =>
         shoppingCategories.indexOf(a.category) -
           shoppingCategories.indexOf(b.category) ||
         a.name.localeCompare(b.name),
-    ),
+    );
+}
+
+export function generateShoppingPlan(items: AisleLine[]): ShoppingPlan {
+  return {
+    groups: aisleGroups(items).map(({ category, name, items }) => ({
+      category,
+      name,
+      itemIds: items.map((item) => item.id),
+    })),
   };
 }

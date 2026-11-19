@@ -1,5 +1,5 @@
 import {
-  combinedQuantity,
+  aisleQuantity,
   shoppingCategories,
 } from "@prep-sheet/db/shopping-plan";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -203,13 +203,7 @@ export function GeneratedShoppingList() {
         });
         const needed = items.filter((item) => item.status === "needed");
         const bought = items.length > 0 && !needed.length;
-        const quantity = combinedQuantity(
-          (bought ? items : needed).map(({ text, ingredient }) => ({
-            text,
-            ingredient,
-          })),
-          measures,
-        );
+        const quantity = aisleQuantity(bought ? items : needed, measures);
         return { ...group, index, items, bought, quantity };
       })
       .filter((row) => row.items.length) ?? [];
