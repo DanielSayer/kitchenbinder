@@ -76,6 +76,20 @@ it("restores failed quick entry with the original retry ID", async () => {
   expect(localStorage.getItem("shopping:user-a:new")).toBeNull();
 });
 
+it("uses a new ID when failed entry is edited before retrying", async () => {
+  addItem.mockRejectedValueOnce(new Error("Offline")).mockResolvedValueOnce();
+  const { result } = mount();
+  act(() => result.current.setText("Milk"));
+  act(() => result.current.submit());
+  await waitFor(() => expect(result.current.text).toBe("Milk"));
+  await waitFor(() => expect(result.current.add.isPending).toBe(false));
+  act(() => result.current.setText("Oat milk"));
+  act(() => result.current.submit());
+  await waitFor(() => expect(addItem).toHaveBeenCalledTimes(2));
+  expect(addItem.mock.calls[1]?.[0]).toMatchObject({ text: "Oat milk" });
+  expect(addItem.mock.calls[1]?.[0].id).not.toBe(addItem.mock.calls[0]?.[0].id);
+});
+
 it.each(["success", "failure"])(
   "keeps newer text when an earlier add ends in %s",
   async (outcome) => {

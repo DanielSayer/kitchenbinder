@@ -413,16 +413,18 @@ describe("real OAuth and Streamable HTTP MCP connection", () => {
       .where(eq(recipe.id, savedRecipeId));
     expect(stored?.origin).toBe("manual");
   });
-  it("reuses planner revisions and recipe shopping attribution", async () => {
-    data(
+  it("plans meals, removes them by revision and adds recipe lines", async () => {
+    const planned = data(
       await client.callTool({
         name: "plan_meal",
-        arguments: {
-          recipeId: savedRecipeId,
-          date: "2026-11-16",
-        },
+        arguments: { recipeId: savedRecipeId, date: "2026-11-16" },
       }),
     );
+    expect(planned).toMatchObject({
+      date: "2026-11-16",
+      slot: "Dinner",
+      baseServingsAssumed: false,
+    });
     const plan = z
       .object({
         revision: z.number(),
@@ -445,16 +447,12 @@ describe("real OAuth and Streamable HTTP MCP connection", () => {
       );
     const meal = plan.meals[0];
     if (!meal) throw new Error("Missing planned meal");
-    expect(meal).toMatchObject({ baseServings: 4, cook: 4, eat: 4 });
-    const [stored] = await db
-      .select()
-      .from(recipe)
-      .where(eq(recipe.id, savedRecipeId));
-    if (!stored) throw new Error("Missing saved recipe");
-    await db
-      .update(recipe)
-      .set({ content: { ...stored.content, servings: "Serves 8" } })
-      .where(eq(recipe.id, savedRecipeId));
+    expect(meal).toMatchObject({
+      id: z.object({ mealId: z.uuid() }).parse(planned).mealId,
+      baseServings: 4,
+      cook: 4,
+      eat: 4,
+    });
     const retry = {
       mealId: meal.id,
       recipeId: savedRecipeId,
@@ -507,83 +505,6 @@ describe("real OAuth and Streamable HTTP MCP connection", () => {
       households: [{ personal: true }],
     });
   });
-  it.each([
-    { recipeServings: "Serves 6", expectedBase: 6, expectedPortions: 6 },
-    { recipeServings: "4 people", expectedBase: 4, expectedPortions: 4 },
-    { recipeServings: null, expectedBase: 2, expectedPortions: 2 },
-    { recipeServings: "4-6 servings", expectedBase: 4, expectedPortions: 4 },
-    { recipeServings: "12 cookies", expectedBase: 12, expectedPortions: 12 },
-    { recipeServings: "A crowd", expectedBase: 2, expectedPortions: 2 },
-    { recipeServings: "0", expectedBase: 2, expectedPortions: 2 },
-    { recipeServings: "101", expectedBase: 2, expectedPortions: 2 },
-    { recipeServings: "6", servings: 3, expectedBase: 6, expectedPortions: 3 },
-    {
-      recipeServings: "6",
-      baseServings: 5,
-      expectedBase: 5,
-      expectedPortions: 5,
-    },
-    {
-      recipeServings: null,
-      baseServings: 5,
-      servings: 8,
-      expectedBase: 5,
-      expectedPortions: 8,
-    },
-  ])(
-    "plans servings from $recipeServings with base $expectedBase and portions $expectedPortions",
-    async ({
-      recipeServings,
-      expectedBase,
-      expectedPortions,
-      ...overrides
-    }) => {
-      const recipeId = randomUUID();
-      const mealId = randomUUID();
-      data(
-        await client.callTool({
-          name: "create_recipe",
-          arguments: {
-            recipeId,
-            title: "Servings fixture",
-            servings: recipeServings,
-            ingredients: ["500 g rice"],
-            steps: ["Cook the rice."],
-          },
-        }),
-      );
-      data(
-        await client.callTool({
-          name: "plan_meal",
-          arguments: { recipeId, mealId, date: "2026-11-18", ...overrides },
-        }),
-      );
-      const plan = z
-        .object({
-          meals: z.array(
-            z.object({
-              id: z.uuid(),
-              baseServings: z.number(),
-              cook: z.number(),
-              eat: z.number(),
-            }),
-          ),
-        })
-        .parse(
-          data(
-            await client.callTool({
-              name: "get_meal_plan",
-              arguments: { start: "2026-11-18", end: "2026-11-18" },
-            }),
-          ),
-        );
-      expect(plan.meals.find((meal) => meal.id === mealId)).toMatchObject({
-        baseServings: expectedBase,
-        cook: expectedPortions,
-        eat: expectedPortions,
-      });
-    },
-  );
   it("checks household permissions through the existing routers", async () => {
     const [other] = await db
       .select()

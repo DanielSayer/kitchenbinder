@@ -1,22 +1,24 @@
 import { db } from "@prep-sheet/db";
-import { ingredientLines } from "@prep-sheet/db/ingredient-line";
 import {
   coverageInput,
   type Meal,
   mealInput,
   mealIssues,
 } from "@prep-sheet/db/meal-planner";
-import { mealPlanner } from "@prep-sheet/db/schema/meal-planner";
 import { recipe } from "@prep-sheet/db/schema/recipe";
 import { TRPCError } from "@trpc/server";
-import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, inArray, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
-import {
-  accessibleRecipe,
-  type Database,
-  resolveHousehold,
-} from "../households/access";
+import { resolveHousehold } from "../households/access";
 import { protectedProcedure, router } from "../index";
+import { addMeal, addMealInput } from "../planner/add-meal";
+import {
+  conflict,
+  recipeSnapshot,
+  saveState,
+  state,
+  withMeal,
+} from "../planner/state";
 import { mealSuggestions, suggestionsInput } from "../recipes/suggestions";
 import { applyTrip, previewTrip, tripIsStale } from "../shopping/trip";
 
@@ -26,29 +28,6 @@ const tripInput = z.object({
   ...householdInput,
   coverage: coverageInput,
 });
-async function state(tx: Database, householdId: string) {
-  const [saved] = await tx
-    .select()
-    .from(mealPlanner)
-    .where(eq(mealPlanner.householdId, householdId));
-  return saved ?? { householdId, meals: [], revision: 0, trip: null };
-}
-function conflict() {
-  return new TRPCError({
-    code: "CONFLICT",
-    message:
-      "Your plan or shopping list changed. Refresh and review it again before saving.",
-  });
-}
-async function saveState(
-  tx: Database,
-  saved: Awaited<ReturnType<typeof state>>,
-) {
-  await tx
-    .insert(mealPlanner)
-    .values(saved)
-    .onConflictDoUpdate({ target: mealPlanner.householdId, set: saved });
-}
 export const plannerRouter = router({
   get: protectedProcedure
     .input(z.object(householdInput).prefault({}))
@@ -142,32 +121,12 @@ export const plannerRouter = router({
                 ingredientData: old.ingredientData,
               }),
             };
-          else {
-            const [source] = await tx
-              .select()
-              .from(recipe)
-              .where(
-                and(
-                  eq(recipe.id, input.meal.recipeId),
-                  accessibleRecipe(userId),
-                ),
-              );
-            if (!source)
-              throw new TRPCError({
-                code: "NOT_FOUND",
-                message:
-                  "That recipe is no longer available. Choose another recipe.",
-              });
+          else
             meal = {
               ...input.meal,
-              title: source.title,
-              ingredients: source.content.ingredients,
-              ingredientData: ingredientLines(
-                source.content.ingredients,
-                source.ingredientData,
-              ),
+              ...(await recipeSnapshot(tx, userId, input.meal.recipeId))
+                .snapshot,
             };
-          }
         } else {
           meal = input.meal;
           if (meal.kind === "leftovers") {
@@ -183,20 +142,14 @@ export const plannerRouter = router({
               });
           }
         }
-        const meals = [
-          ...saved.meals.filter((entry) => entry.id !== meal.id),
-          meal,
-        ].sort(
-          (a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id),
-        );
-        if (meals.length > 1000)
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message:
-              "Your planner is full. Remove older meals before adding more.",
-          });
+        const meals = withMeal(saved.meals, meal);
         await saveState(tx, { ...saved, meals, revision: saved.revision + 1 });
       }),
+    ),
+  addMeal: protectedProcedure
+    .input(addMealInput)
+    .mutation(({ ctx, input }) =>
+      db.transaction((tx) => addMeal(tx, ctx.session.user.id, input)),
     ),
   remove: protectedProcedure
     .input(

@@ -5,7 +5,7 @@ import { parseIngredient } from "@prep-sheet/db/ingredients";
 import { recipe } from "@prep-sheet/db/schema/recipe";
 import { shoppingItem } from "@prep-sheet/db/schema/shopping";
 import { TRPCError } from "@trpc/server";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import {
   accessibleRecipe,
@@ -14,6 +14,7 @@ import {
 } from "../households/access";
 import { protectedProcedure, router } from "../index";
 import { pickerInput, pickerRecipe, shoppingRecipePage } from "../recipes/list";
+import { addLines, addLinesInput, itemText } from "../shopping/add-lines";
 import {
   aisleList,
   checkAisleGroup,
@@ -24,7 +25,6 @@ import {
   removeListItem,
 } from "../shopping/trip";
 
-const itemText = z.string().trim().min(1).max(2000);
 // Omitted householdId = the caller's personal household.
 const householdInput = { householdId: z.uuid().optional() };
 const householdOnly = z.object(householdInput).prefault({});
@@ -154,38 +154,20 @@ export const shoppingRouter = router({
         return { addedRecipes: additions.length, addedItems: items.length };
       }),
     ),
+  addLines: protectedProcedure
+    .input(addLinesInput)
+    .mutation(({ ctx, input }) =>
+      db.transaction((tx) => addLines(tx, ctx.session.user.id, input)),
+    ),
   addItem: protectedProcedure
     .input(itemId.extend({ text: itemText }))
-    .mutation(({ ctx, input }) =>
-      db.transaction(async (tx) => {
-        const userId = ctx.session.user.id;
-        const householdId = await lockList(tx, userId, input.householdId);
-        const existing = await tx
-          .select({
-            id: shoppingItem.id,
-            householdId: shoppingItem.householdId,
-          })
-          .from(shoppingItem)
-          .where(eq(shoppingItem.id, input.id));
-        if (existing.some((item) => item.householdId === householdId)) return;
-        if (existing.length)
-          throw new TRPCError({
-            code: "CONFLICT",
-            message: "This item ID has already been used.",
-          });
-        const [count] = await tx
-          .select({ total: sql<number>`count(*)::int` })
-          .from(shoppingItem)
-          .where(eq(shoppingItem.householdId, householdId));
-        checkCapacity((count?.total ?? 0) + 1);
-        await tx.insert(shoppingItem).values({
-          id: input.id,
-          text: input.text,
-          ingredient: parseIngredient(input.text),
+    .mutation(({ ctx, input: { id, text, householdId } }) =>
+      db.transaction((tx) =>
+        addLines(tx, ctx.session.user.id, {
           householdId,
-          addedBy: userId,
-        });
-      }),
+          lines: [{ id, text }],
+        }),
+      ),
     ),
   updateItem: protectedProcedure
     .input(

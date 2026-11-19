@@ -1,15 +1,9 @@
-import { randomUUID } from "node:crypto";
-import { baseServings } from "@prep-sheet/db/ingredient-line";
-import {
-  calendarDate,
-  defaultMealServings,
-  type MealInput,
-} from "@prep-sheet/db/meal-planner";
+import { calendarDate } from "@prep-sheet/db/meal-planner";
 import { z } from "zod";
 import { thisWeek, weekRange } from "../dates";
 import { ToolError } from "./result";
 import { householdScope, mealSlot, portionCount, retryId } from "./schemas";
-import { behaviour, defineTool, type ToolContext } from "./tool";
+import { behaviour, defineTool } from "./tool";
 
 export const getMealPlan = defineTool({
   name: "get_meal_plan",
@@ -49,21 +43,10 @@ export const getMealPlan = defineTool({
   },
 });
 
-type Plan = Awaited<ReturnType<ToolContext["api"]["planner"]["get"]>>;
-type PlannedMeal = Plan["meals"][number];
-type RecipeMeal = Extract<MealInput, { kind: "recipe" }>;
-
-/** The recipe's base servings, or the planner's default. */
-async function recipeServings(api: ToolContext["api"], recipeId: string) {
-  const recipe = await api.recipes.get({ id: recipeId });
-  const parsed = portionCount.safeParse(baseServings(recipe.content.servings));
-  return parsed.success ? parsed.data : defaultMealServings;
-}
-
 export const planMeal = defineTool({
   name: "plan_meal",
   description:
-    "Add a recipe to a household's meal plan on YYYY-MM-DD. Meal slot is Breakfast, Lunch, Dinner or empty for no slot. baseServings defaults to the recipe's servings (first number, or lower end of a range), or 2 if unavailable. servings to cook/eat defaults to that base. Both can be overridden with 1 to 100. This adds a meal without replacing existing meals. Reuse mealId for identical retries. Concurrent plan changes return a conflict; read and review the new plan before retrying.",
+    "Add a recipe to a household's meal plan on YYYY-MM-DD. Meal slot is Breakfast, Lunch, Dinner or empty for no slot. baseServings defaults to the recipe's servings (first number, or lower end of a range); if those can't be read, it uses 2 and returns baseServingsAssumed=true, so tell the user. servings to cook/eat defaults to that base. Both can be overridden with 1 to 100. This adds a meal without replacing existing meals and needs no revision. Reuse mealId for identical retries; a different meal with the same mealId is a conflict.",
   input: z.object({
     ...householdScope,
     recipeId: z.uuid(),
@@ -76,68 +59,24 @@ export const planMeal = defineTool({
     servings: portionCount.optional(),
   }),
   annotations: behaviour.create,
-  async run(
-    {
-      householdId,
-      recipeId,
-      mealId = randomUUID(),
-      date,
-      slot,
-      baseServings,
-      servings,
-    },
-    { api },
-  ) {
-    const plan = await api.planner.get({ householdId });
-    const existing = plan.meals.find((meal) => meal.id === mealId);
-    const retry =
-      existing?.kind === "recipe" && existing.recipeId === recipeId
-        ? existing
-        : undefined;
-    // A retry keeps its original base even if the recipe has since changed.
-    const base =
-      baseServings ??
-      retry?.baseServings ??
-      (await recipeServings(api, recipeId));
-    const meal: RecipeMeal = {
-      id: mealId,
-      kind: "recipe",
-      recipeId,
-      date,
-      slot,
-      baseServings: base,
-      cook: servings ?? base,
-      eat: servings ?? base,
-    };
-    const result = { mealId, date, slot };
-    if (existing) {
-      if (!sameMeal(existing, meal))
-        throw new ToolError(
-          "CONFLICT",
-          "This meal ID belongs to an earlier plan. Review that meal and use a new mealId for a different addition.",
-          { mealId },
-        );
-      return { summary: "This meal is already planned.", data: result };
-    }
-    await api.planner.save({ householdId, revision: plan.revision, meal });
+  async run({ mealId, ...meal }, { api }) {
+    const result = await api.planner.addMeal({ id: mealId, ...meal });
+    const { date, slot } = meal;
     return {
-      summary: `Meal planned for ${date}${slot ? `, ${slot}` : ""}.`,
-      data: result,
+      summary: `Meal planned for ${date}${slot ? `, ${slot}` : ""}.${
+        result.baseServingsAssumed
+          ? " The recipe's servings couldn't be read, so 2 base servings were assumed."
+          : ""
+      }`,
+      data: {
+        mealId: result.mealId,
+        date,
+        slot,
+        baseServingsAssumed: result.baseServingsAssumed,
+      },
     };
   },
 });
-
-function sameMeal(existing: PlannedMeal, meal: RecipeMeal) {
-  return (
-    existing.kind === "recipe" &&
-    existing.recipeId === meal.recipeId &&
-    existing.date === meal.date &&
-    existing.slot === meal.slot &&
-    existing.baseServings === meal.baseServings &&
-    existing.cook === meal.cook &&
-    existing.eat === meal.eat
-  );
-}
 
 export const removePlannedMeal = defineTool({
   name: "remove_planned_meal",
