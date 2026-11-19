@@ -1,6 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
-import { ToolError, toToolError } from "./result";
 import { householdScope, retryId, textLines } from "./schemas";
 import { behaviour, defineTool } from "./tool";
 
@@ -35,7 +34,7 @@ function batchItemId(requestId: string, index: number, text: string) {
 export const addShoppingItems = defineTool({
   name: "add_shopping_items",
   description:
-    "Add free-text ingredient or shopping lines, such as '6 eggs' or '500 g plain flour'. Kitchenbinder parses quantities and units. Supply a stable requestId to make identical retries safe. If only some items succeed, the result identifies them; retry the unchanged full input with the same requestId.",
+    "Add free-text ingredient or shopping lines, such as '6 eggs' or '500 g plain flour'. Kitchenbinder parses quantities and units. All lines are added together or none are. Supply a stable requestId to make identical retries safe; retry the unchanged full input with the same requestId.",
   input: z.object({
     ...householdScope,
     items: textLines,
@@ -46,24 +45,14 @@ export const addShoppingItems = defineTool({
   annotations: behaviour.create,
   cost: ({ items }) => items.length,
   async run({ householdId, items, requestId = randomUUID() }, { api }) {
-    const added: { id: string; text: string }[] = [];
-    for (const [index, text] of items.entries()) {
-      const id = batchItemId(requestId, index, text);
-      try {
-        await api.shopping.addItem({ householdId, id, text });
-      } catch (error) {
-        const cause = toToolError(error);
-        throw new ToolError(
-          cause.code,
-          `${added.length} item(s) added before an error: ${cause.message} Retry the unchanged full request with this requestId to avoid duplicates.`,
-          { requestId, added, failedIndex: index },
-        );
-      }
-      added.push({ id, text });
-    }
+    const lines = items.map((text, index) => ({
+      id: batchItemId(requestId, index, text),
+      text,
+    }));
+    await api.shopping.addLines({ householdId, lines });
     return {
-      summary: `${added.length} shopping item(s) added.`,
-      data: { requestId, items: added },
+      summary: `${lines.length} shopping item(s) added.`,
+      data: { requestId, items: lines },
     };
   },
 });
