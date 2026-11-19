@@ -14,3 +14,7 @@ Words for recipes, meal plans and shopping lists in Kitchenbinder.
   _Avoid_: draft
 - **AI attempt**: One model call that counts against an account's limits, whether or not it produces a recipe.
   _Avoid_: generation, credit use
+- **Shopping trip**: The planned meals a shopping list covers, and how their ingredient lines map to list items.
+  _Avoid_: meal trip, plan shop
+- **Aisle list**: A shopping list grouped by aisle for ticking off in the shop.
+  _Avoid_: generated list, shopping plan
