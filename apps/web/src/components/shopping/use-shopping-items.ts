@@ -19,7 +19,13 @@ export function useShoppingItems(userId: string) {
   const list = useQuery(trpc.shopping.list.queryOptions({ householdId }));
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
   const draftKey = `shopping:${userId}:new`;
-  const [draft, setDraft] = useState<{ text: string; id: string }>(() => {
+  // `sent` is the text a restored id was first sent with: only that exact
+  // text may reuse it, since the server rejects an id with different text.
+  const [draft, setDraft] = useState<{
+    text: string;
+    id: string;
+    sent?: string;
+  }>(() => {
     let text = "";
     try {
       text = localStorage.getItem(draftKey) ?? "";
@@ -28,7 +34,7 @@ export function useShoppingItems(userId: string) {
     }
     return { text, id: crypto.randomUUID() };
   });
-  const { text, id: newId } = draft;
+  const { text, id: draftId, sent } = draft;
   function updateDraft(next: typeof draft) {
     setDraft(next);
     try {
@@ -128,7 +134,7 @@ export function useShoppingItems(userId: string) {
       // unless the next item has been started.
       onError: (_, input) => {
         if (textRef.current) return;
-        updateDraft({ text: input.text, id: input.id });
+        updateDraft({ text: input.text, id: input.id, sent: input.text });
       },
     }),
   );
@@ -138,7 +144,9 @@ export function useShoppingItems(userId: string) {
   // focused (keyboard open) while the add saves.
   const submit = () => {
     if (!text.trim() || add.isPending) return;
-    add.mutate({ householdId, id: newId, text });
+    const id =
+      sent === undefined || sent === text ? draftId : crypto.randomUUID();
+    add.mutate({ householdId, id, text });
     updateDraft({ text: "", id: crypto.randomUUID() });
   };
   const items = (list.data ?? []).filter((item) => !hidden.has(item.id));
