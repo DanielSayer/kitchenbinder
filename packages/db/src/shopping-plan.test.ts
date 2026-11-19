@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  aisleGroups,
   categoriseGrocery,
   combinedQuantity,
   generateShoppingPlan,
@@ -141,6 +142,59 @@ describe("garlic and other counted lines", () => {
     expect(plan.groups).toEqual([
       { category: "Produce", name: "Garlic", itemIds: ["a", "b"] },
     ]);
+  });
+});
+
+describe("aisleGroups", () => {
+  const lines = (...texts: string[]) =>
+    texts.map((text, index) => ({ id: String(index), text }));
+  const view = (texts: string[]) =>
+    aisleGroups(lines(...texts)).map(({ category, name, items, quantity }) => [
+      category,
+      name,
+      items.map((item) => item.id),
+      quantity,
+    ]);
+  it.each([
+    {
+      case: "merges lines that add up, with their total",
+      texts: ["200g plain flour", "0.5kg plain flour"],
+      groups: [["Pantry", "Plain flour", ["0", "1"], "700 g"]],
+    },
+    {
+      case: "keeps lines that can't be added apart",
+      texts: ["1 red onion", "2 onions", "salt to taste"],
+      groups: [
+        ["Produce", "Onion", ["1"], "2"],
+        ["Produce", "Red onion", ["0"], "1"],
+        ["Pantry", "salt to taste", ["2"], null],
+      ],
+    },
+    {
+      case: "sorts by aisle, then name, whatever the list order",
+      texts: ["laundry detergent", "2 tomatoes", "1 apple"],
+      groups: [
+        ["Produce", "Apple", ["2"], "1"],
+        ["Produce", "Tomato", ["1"], "2"],
+        ["Cleaning & household", "laundry detergent", ["0"], null],
+      ],
+    },
+    {
+      case: "leaves packaged amounts out of totals",
+      texts: ["2 tins tomatoes", "1 tin tomatoes"],
+      groups: [
+        ["Pantry", "1 tin tomatoes", ["1"], null],
+        ["Pantry", "2 tins tomatoes", ["0"], null],
+      ],
+    },
+  ])("$case", ({ texts, groups }) => {
+    expect(view(texts)).toEqual(groups);
+  });
+  it("shows totals in the user's units", () => {
+    expect(
+      aisleGroups(lines("½ cup flour", "1 1/2 cups flour"), imperial)[0]
+        ?.quantity,
+    ).toBe(combinedQuantity(["½ cup flour", "1 1/2 cups flour"], imperial));
   });
 });
 
