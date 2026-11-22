@@ -11,18 +11,18 @@ overrides:
   "cheerio>undici": ^7.30.2
   "@ts-morph/common>minimatch": ^11.0.5
 catalog:
-  dotenv: ^18.0.9
+  dotenv: ^18.0.10
   zod: ^4.6.7
   typescript: ^7.0.2
   "@types/node": ^26.6.6
-  lucide-react: ^1.70.0
+  lucide-react: ^1.77.0
   next-themes: ^0.4.6
   react: ^19.3.1
   react-dom: ^19.3.1
-  sonner: ^2.0.7
+  sonner: ^2.0.8
   tailwindcss: ^4.3.5
-  "@trpc/server": ^11.25.0
-  "@trpc/client": ^11.25.0
+  "@trpc/server": ^11.29.5
+  "@trpc/client": ^11.29.5
   better-auth: 1.7.18
   "@types/react": ^19.3.0
   "@types/react-dom": ^19.3.0
