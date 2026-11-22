@@ -15,16 +15,17 @@
     "@prep-sheet/auth": "workspace:*",
     "@prep-sheet/db": "workspace:*",
     "@prep-sheet/env": "workspace:*",
+    "@prep-sheet/mcp": "workspace:*",
     "@prep-sheet/ui": "workspace:*",
     "@react-pdf/renderer": "^4.9.0",
     "@tailwindcss/vite": "^4.3.5",
-    "@tanstack/react-query": "^5.107.1",
+    "@tanstack/react-query": "^5.108.2",
     "@tanstack/react-router": "^1.170.46",
     "@tanstack/react-router-ssr-query": "^1.167.3",
-    "@tanstack/react-start": "^1.169.4",
+    "@tanstack/react-start": "^1.169.7",
     "@trpc/client": "catalog:",
     "@trpc/server": "catalog:",
-    "@trpc/tanstack-react-query": "^11.25.0",
+    "@trpc/tanstack-react-query": "^11.29.5",
     "better-auth": "catalog:",
     "dotenv": "catalog:",
     "lucide-react": "catalog:",
@@ -34,19 +35,18 @@
     "sharp": "^0.35.5",
     "sonner": "catalog:",
     "tailwindcss": "catalog:",
-    "zod": "catalog:",
-    "@prep-sheet/mcp": "workspace:*"
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@prep-sheet/config": "workspace:*",
-    "@tanstack/react-router-devtools": "^1.167.2",
+    "@tanstack/react-router-devtools": "^1.167.4",
     "@testing-library/dom": "^10.4.2",
-    "@testing-library/react": "^16.3.2",
+    "@testing-library/react": "^16.3.3",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "@vitejs/plugin-react": "^6.2.1",
-    "jsdom": "^31.0.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "jsdom": "^31.0.1",
     "typescript": "catalog:",
-    "vite": "^8.3.6"
+    "vite": "^8.3.8"
   }
 }
