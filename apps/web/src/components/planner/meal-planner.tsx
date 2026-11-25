@@ -428,7 +428,16 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
             <ChevronRight size={18} />
           </button>
         </div>
-        <PlanDrag board={board} onDrop={drop} overlay={dragOverlay}>
+        <PlanDrag
+          board={board}
+          onDrop={drop}
+          overlay={dragOverlay}
+          mealName={(id) => {
+            const meal = meals.find((entry) => entry.id === id);
+            return meal ? mealTitle(meal, meals) : "meal";
+          }}
+          dayName={(date) => `${weekday(date)} ${shortDate(date)}`}
+        >
           {!board && (
             <ol className="plan-strip" aria-label="Days this week">
               {days.map((day) => (
@@ -486,7 +495,9 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
               retry={() => void query.refetch()}
             />
             {query.isSuccess && board && (
-              <div className="plan-board">{days.map(boardDay)}</div>
+              <div className="plan-board plan-stacked">
+                {days.map(boardDay)}
+              </div>
             )}
             {query.isSuccess && !board && (
               <div className="plan-agenda">

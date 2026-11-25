@@ -1,9 +1,11 @@
 import {
+  type Announcements,
   type CollisionDetection,
   DndContext,
   type DragEndEvent,
   type DraggableSyntheticListeners,
   DragOverlay,
+  type Modifier,
   MouseSensor,
   pointerWithin,
   TouchSensor,
@@ -41,6 +43,9 @@ const collide: CollisionDetection = (args) => {
   return meal ? [meal] : hits.slice(0, 1);
 };
 
+/** Phone cards only travel up and down the agenda. */
+const vertical: Modifier = ({ transform }) => ({ ...transform, x: 0 });
+
 /** A click straight after a drop belongs to the drag, not the card. */
 function swallowNextClick() {
   const swallow = (event: MouseEvent) => {
@@ -63,9 +68,14 @@ export function PlanDrag({
   board,
   onDrop,
   overlay,
+  mealName,
+  dayName,
   children,
 }: {
   board: boolean;
+  /** For screen reader announcements. */
+  mealName: (id: string) => string;
+  dayName: (date: string) => string;
   onDrop: (id: string, target: DropTarget) => void;
   overlay: (id: string) => ReactNode;
   children: ReactNode;
@@ -81,6 +91,30 @@ export function PlanDrag({
     () => (board ? [mouse, touch] : [touch]),
     [board, mouse, touch],
   );
+  const targetName = (target?: DropTarget) =>
+    !target
+      ? null
+      : target.kind === "day"
+        ? dayName(target.date)
+        : mealName(target.id);
+  const announcements: Announcements = {
+    onDragStart: ({ active }) => `Picked up ${mealName(String(active.id))}.`,
+    onDragOver: ({ active, over }) => {
+      const name = targetName(over?.data.current as DropTarget | undefined);
+      const meal = mealName(String(active.id));
+      if (!name) return `${meal} is not over a day.`;
+      return over?.data.current?.kind === "meal"
+        ? `Drop to swap ${meal} with ${name}.`
+        : `Drop to move ${meal} to ${name}.`;
+    },
+    onDragEnd: ({ active, over }) => {
+      const name = targetName(over?.data.current as DropTarget | undefined);
+      const meal = mealName(String(active.id));
+      return name ? `Dropped ${meal} on ${name}.` : `${meal} was not moved.`;
+    },
+    onDragCancel: ({ active }) =>
+      `Cancelled. ${mealName(String(active.id))} was not moved.`,
+  };
   const end = (event: DragEndEvent) => {
     setActive(null);
     swallowNextClick();
@@ -97,7 +131,9 @@ export function PlanDrag({
       }}
       onDragEnd={end}
       onDragCancel={() => setActive(null)}
+      modifiers={board ? undefined : [vertical]}
       accessibility={{
+        announcements,
         screenReaderInstructions: {
           draggable:
             "Drag to another day to move this meal, or onto a meal to swap them.",
@@ -106,13 +142,19 @@ export function PlanDrag({
     >
       {children}
       {active && !board && (
-        <p className="plan-drag-hint" role="status">
+        <p className="plan-drag-hint" aria-hidden="true">
           Drop on a day to move · on a meal to swap
         </p>
       )}
       <DragOverlay dropAnimation={null}>
         {active ? (
-          <div className="plan-drag-overlay">{overlay(active)}</div>
+          <div
+            className={
+              board ? "plan-drag-overlay plan-stacked" : "plan-drag-overlay"
+            }
+          >
+            {overlay(active)}
+          </div>
         ) : null}
       </DragOverlay>
     </DndContext>
