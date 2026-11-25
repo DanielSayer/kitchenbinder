@@ -12,6 +12,7 @@ import { z } from "zod";
 import { resolveHousehold } from "../households/access";
 import { protectedProcedure, router } from "../index";
 import { addMeal, addMealInput } from "../planner/add-meal";
+import { moveMeals, moveMealsInput } from "../planner/move-meals";
 import {
   conflict,
   recipeSnapshot,
@@ -150,6 +151,11 @@ export const plannerRouter = router({
     .input(addMealInput)
     .mutation(({ ctx, input }) =>
       db.transaction((tx) => addMeal(tx, ctx.session.user.id, input)),
+    ),
+  move: protectedProcedure
+    .input(moveMealsInput)
+    .mutation(({ ctx, input }) =>
+      db.transaction((tx) => moveMeals(tx, ctx.session.user.id, input)),
     ),
   remove: protectedProcedure
     .input(

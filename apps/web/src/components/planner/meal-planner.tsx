@@ -29,6 +29,14 @@ import {
   weekStart,
 } from "./dates";
 import { MealEditor } from "./meal-editor";
+import {
+  type DropTarget,
+  dropMoves,
+  type MealMove,
+  undoMoves,
+  withMoves,
+} from "./meal-moves";
+import { DragMeal, DropDay, PlanDrag, useBoard } from "./plan-drag";
 import { MealListNotice, mealTitle, PlanShop } from "./plan-shop";
 
 type Editor = {
@@ -118,6 +126,43 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
       },
     );
   };
+  const planKey = trpc.planner.get.queryKey({ householdId });
+  /** Shows the moves at once, then saves them; false when saving failed. */
+  const sendMoves = async (moves: MealMove[]) => {
+    await client.cancelQueries({ queryKey: planKey });
+    client.setQueryData(
+      planKey,
+      (old) => old && { ...old, meals: withMoves(old.meals, moves) },
+    );
+    try {
+      await trpcClient.planner.move.mutate({ householdId, moves });
+      return true;
+    } catch (cause) {
+      toast.error(
+        cause instanceof Error ? cause.message : "Couldn't move that meal.",
+      );
+      return false;
+    } finally {
+      await refresh();
+    }
+  };
+  const drop = async (id: string, target: DropTarget) => {
+    const all = query.data?.meals ?? [];
+    const moves = dropMoves(all, id, target);
+    if (!moves.length || !(await sendMoves(moves))) return;
+    const title = (mealId: string) => {
+      const meal = all.find((entry) => entry.id === mealId);
+      return meal ? mealTitle(meal, all) : "meal";
+    };
+    const [first, second] = moves;
+    undoToast(
+      second
+        ? `Swapped ${title(first.id)} and ${title(second.id)}`
+        : `Moved ${title(first.id)} to ${weekday(first.to)}`,
+      { onUndo: () => void sendMoves(undoMoves(moves)) },
+    );
+  };
+  const board = useBoard();
   const days = weekDays(week);
   const meals = (query.data?.meals ?? []).filter(
     (meal) => !removing.has(meal.id),
@@ -138,9 +183,8 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
   const issuesFor = (id: string) =>
     query.data?.issues.filter((issue) => issue.id === id) ?? [];
 
-  const mealCard = (meal: Meal, day: string, compact = false) => {
-    const isToday = day === today;
-    const past = day < today;
+  /** Cover, title and details; static in the drag overlay. */
+  const mealFace = (meal: Meal, day: string, compact: boolean) => {
     const title = mealTitle(meal, meals);
     const detail =
       meal.kind === "recipe"
@@ -149,65 +193,94 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
           ? `Leftovers · ${meal.portions} portions`
           : "Note";
     return (
-      <li key={meal.id}>
-        <div
-          className="plan-meal"
-          data-today={(isToday && !compact) || undefined}
-          data-past={past || undefined}
-          data-kind={meal.kind}
-        >
-          <button
-            type="button"
-            className="plan-meal-main"
-            onClick={() => openEditor({ date: meal.date, meal })}
-          >
-            {meal.kind === "recipe" ? (
-              <RecipeCover
-                id={meal.recipeId}
-                title={meal.title}
-                photo={query.data?.photos[meal.recipeId]}
-                size={compact ? "thumb" : "list"}
-              />
+      <>
+        {meal.kind === "recipe" ? (
+          <RecipeCover
+            id={meal.recipeId}
+            title={meal.title}
+            photo={query.data?.photos[meal.recipeId]}
+            size={compact || board ? "thumb" : "list"}
+          />
+        ) : (
+          <span className="plan-meal-icon" aria-hidden="true">
+            {meal.kind === "leftovers" ? (
+              <RotateCcw size={20} />
             ) : (
-              <span className="plan-meal-icon" aria-hidden="true">
-                {meal.kind === "leftovers" ? (
-                  <RotateCcw size={20} />
-                ) : (
-                  <NotebookPen size={20} />
-                )}
+              <NotebookPen size={20} />
+            )}
+          </span>
+        )}
+        <span className="plan-meal-text">
+          <b>{title}</b>{" "}
+          <small>
+            {listed.has(meal.id) && (
+              <span className="plan-pill" data-tone="olive">
+                On list
               </span>
             )}
-            <span className="plan-meal-text">
-              <b>{title}</b>{" "}
-              <small>
-                {listed.has(meal.id) && (
-                  <span className="plan-pill" data-tone="olive">
-                    On list
-                  </span>
-                )}
-                {compact
-                  ? `${weekday(day, "short")} · ${meal.kind === "out" ? "note" : meal.kind === "leftovers" ? "leftovers" : "cooked"}`
-                  : [meal.slot, detail].filter(Boolean).join(" · ")}
-              </small>
-            </span>
-          </button>
-          {isToday && meal.kind === "recipe" && !compact && (
-            <Link
-              className="plan-cook"
-              to="/recipes/$recipeId"
-              params={{ recipeId: meal.recipeId }}
-              aria-label={`Open ${meal.title}`}
+            {compact
+              ? `${weekday(day, "short")} · ${meal.kind === "out" ? "note" : meal.kind === "leftovers" ? "leftovers" : "cooked"}`
+              : [meal.slot, detail].filter(Boolean).join(" · ")}
+          </small>
+        </span>
+      </>
+    );
+  };
+
+  const mealCard = (meal: Meal, day: string, compact = false) => {
+    const isToday = day === today;
+    const past = day < today;
+    return (
+      <DragMeal key={meal.id} id={meal.id}>
+        {(drag) => (
+          <li ref={drag.dropRef}>
+            <div
+              ref={drag.dragRef}
+              {...drag.listeners}
+              className="plan-meal"
+              data-today={(isToday && !compact) || undefined}
+              data-past={past || undefined}
+              data-kind={meal.kind}
+              data-dragging={drag.dragging || undefined}
+              data-swap={drag.swap || undefined}
             >
-              <Play size={18} aria-hidden="true" />
-            </Link>
-          )}
-        </div>
-        {issuesFor(meal.id).map((issue) => (
-          <p className="meal-warning" key={issue.message}>
-            {issue.message}
-          </p>
-        ))}
-      </li>
+              <button
+                type="button"
+                className="plan-meal-main"
+                onClick={() => openEditor({ date: meal.date, meal })}
+              >
+                {mealFace(meal, day, compact)}
+              </button>
+              {isToday && meal.kind === "recipe" && !compact && (
+                <Link
+                  className="plan-cook"
+                  to="/recipes/$recipeId"
+                  params={{ recipeId: meal.recipeId }}
+                  aria-label={`Open ${meal.title}`}
+                >
+                  <Play size={18} aria-hidden="true" />
+                </Link>
+              )}
+            </div>
+            {issuesFor(meal.id).map((issue) => (
+              <p className="meal-warning" key={issue.message}>
+                {issue.message}
+              </p>
+            ))}
+          </li>
+        )}
+      </DragMeal>
+    );
+  };
+  const dragOverlay = (id: string) => {
+    const meal = meals.find((entry) => entry.id === id);
+    if (!meal) return null;
+    return (
+      <div className="plan-meal" data-kind={meal.kind} aria-hidden="true">
+        <span className="plan-meal-main">
+          {mealFace(meal, meal.date, false)}
+        </span>
+      </div>
     );
   };
 
@@ -216,56 +289,107 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
     const isToday = day === today;
     const past = day < today;
     return (
-      <section
-        key={day}
-        id={`plan-day-${day}`}
-        className="plan-day"
-        data-past={past || undefined}
-        aria-labelledby={`plan-day-${day}-title`}
-      >
-        <h2 id={`plan-day-${day}-title`} className="plan-day-title">
-          {weekday(day)}
-          {isToday ? (
-            <span className="plan-tonight">Today</span>
-          ) : (
-            <small>{shortDate(day)}</small>
-          )}
-          {entries.length > 0 && (
+      <DropDay key={day} id={`day:${day}`} date={day}>
+        {(target) => (
+          <section
+            ref={target.ref}
+            id={`plan-day-${day}`}
+            className="plan-day"
+            data-past={past || undefined}
+            data-over={target.over || undefined}
+            aria-labelledby={`plan-day-${day}-title`}
+          >
+            <h2 id={`plan-day-${day}-title`} className="plan-day-title">
+              {weekday(day)}
+              {isToday ? (
+                <span className="plan-tonight">Today</span>
+              ) : (
+                <small>{shortDate(day)}</small>
+              )}
+              {entries.length > 0 && (
+                <button
+                  type="button"
+                  className="icon-button plan-day-add"
+                  aria-label={`Add another meal on ${weekday(day)} ${shortDate(day)}`}
+                  onClick={() => openEditor({ date: day })}
+                >
+                  <Plus size={18} />
+                </button>
+              )}
+            </h2>
+            {entries.length ? (
+              <ul className="plan-meals">
+                {entries.map((meal) => mealCard(meal, day))}
+              </ul>
+            ) : (
+              <button
+                type="button"
+                className="plan-add"
+                aria-label={`Add a meal on ${weekday(day)} ${shortDate(day)}`}
+                onClick={() => openEditor({ date: day })}
+              >
+                <span aria-hidden="true">
+                  <Plus size={16} />
+                </span>
+                Add a meal
+              </button>
+            )}
+          </section>
+        )}
+      </DropDay>
+    );
+  };
+
+  /** A board column (wide screens): every day of the week, past ones faded. */
+  const boardDay = (day: string) => {
+    const entries = mealsOn(day);
+    const isToday = day === today;
+    return (
+      <DropDay key={day} id={`day:${day}`} date={day}>
+        {(target) => (
+          <section
+            ref={target.ref}
+            className="plan-column"
+            data-past={day < today || undefined}
+            data-today={isToday || undefined}
+            data-over={target.over || undefined}
+            aria-labelledby={`plan-day-${day}-title`}
+          >
+            <h2 id={`plan-day-${day}-title`} className="plan-column-title">
+              <small>{weekday(day, "short")}</small>
+              <b className="plan-column-num">{dayOfMonth(day)}</b>
+              {isToday && <span className="plan-tonight">Today</span>}
+            </h2>
+            {entries.length > 0 && (
+              <ul className="plan-meals">
+                {entries.map((meal) => mealCard(meal, day))}
+              </ul>
+            )}
             <button
               type="button"
-              className="icon-button plan-day-add"
-              aria-label={`Add another meal on ${weekday(day)} ${shortDate(day)}`}
+              className="plan-add plan-add-compact"
+              aria-label={`Add a meal on ${weekday(day)} ${shortDate(day)}`}
               onClick={() => openEditor({ date: day })}
             >
-              <Plus size={18} />
+              <span aria-hidden="true">
+                <Plus size={16} />
+              </span>
+              Add
             </button>
-          )}
-        </h2>
-        {entries.length ? (
-          <ul className="plan-meals">
-            {entries.map((meal) => mealCard(meal, day))}
-          </ul>
-        ) : (
-          <button
-            type="button"
-            className="plan-add"
-            aria-label={`Add a meal on ${weekday(day)} ${shortDate(day)}`}
-            onClick={() => openEditor({ date: day })}
-          >
-            <span aria-hidden="true">
-              <Plus size={16} />
-            </span>
-            Add a meal
-          </button>
+          </section>
         )}
-      </section>
+      </DropDay>
     );
   };
 
   return (
     <>
       <PageBar />
-      <main id="main-content" className="plan-page page-width">
+      <main
+        id="main-content"
+        className="plan-page page-width"
+        data-board={board || undefined}
+      >
         <div className="plan-week-nav">
           <button
             type="button"
@@ -304,73 +428,99 @@ export function MealPlanner({ recipeId }: { recipeId?: string }) {
             <ChevronRight size={18} />
           </button>
         </div>
-        <ol className="plan-strip" aria-label="Days this week">
-          {days.map((day) => (
-            <li key={day}>
-              <a
-                className="plan-strip-day"
-                href={`#plan-day-${day}`}
-                aria-current={day === today ? "date" : undefined}
-                data-past={day < today || undefined}
-                aria-label={`${weekday(day)} ${shortDate(day)}, ${mealsOn(day).length ? `${mealsOn(day).length} planned` : "nothing planned"}`}
-                onClick={(event) => {
-                  const target = document.getElementById(`plan-day-${day}`);
-                  event.preventDefault();
-                  if (target)
-                    target.scrollIntoView({
-                      behavior: "smooth",
-                      block: "start",
-                    });
-                  else openEditor({ date: day });
-                }}
-              >
-                <small>{weekday(day, "short")}</small>
-                <b className="plan-strip-num">{dayOfMonth(day)}</b>
-                <i data-empty={!mealsOn(day).length || undefined} />
-              </a>
-            </li>
-          ))}
-        </ol>
-        {query.isSuccess && (
-          <div className="plan-progress">
-            <span>
-              <b>{planned} of 7</b> days planned
-            </span>
-            <span className="plan-progress-bar" aria-hidden="true">
-              <i style={{ width: `${(planned / 7) * 100}%` }} />
-            </span>
-          </div>
-        )}
-        {query.isSuccess && <MealListNotice />}
-        <LoadingState
-          pending={query.isPending}
-          label="Loading your meal plan..."
+        <PlanDrag
+          board={board}
+          onDrop={drop}
+          overlay={dragOverlay}
+          mealName={(id) => {
+            const meal = meals.find((entry) => entry.id === id);
+            return meal ? mealTitle(meal, meals) : "meal";
+          }}
+          dayName={(date) => `${weekday(date)} ${shortDate(date)}`}
         >
-          <ErrorNotice
-            message={query.error?.message}
-            retry={() => void query.refetch()}
-          />
+          {!board && (
+            <ol className="plan-strip" aria-label="Days this week">
+              {days.map((day) => (
+                <DropDay key={day} id={`strip:${day}`} date={day}>
+                  {(target) => (
+                    <li>
+                      <a
+                        ref={target.ref}
+                        className="plan-strip-day"
+                        data-over={target.over || undefined}
+                        href={`#plan-day-${day}`}
+                        aria-current={day === today ? "date" : undefined}
+                        data-past={day < today || undefined}
+                        aria-label={`${weekday(day)} ${shortDate(day)}, ${mealsOn(day).length ? `${mealsOn(day).length} planned` : "nothing planned"}`}
+                        onClick={(event) => {
+                          const target = document.getElementById(
+                            `plan-day-${day}`,
+                          );
+                          event.preventDefault();
+                          if (target)
+                            target.scrollIntoView({
+                              behavior: "smooth",
+                              block: "start",
+                            });
+                          else openEditor({ date: day });
+                        }}
+                      >
+                        <small>{weekday(day, "short")}</small>
+                        <b className="plan-strip-num">{dayOfMonth(day)}</b>
+                        <i data-empty={!mealsOn(day).length || undefined} />
+                      </a>
+                    </li>
+                  )}
+                </DropDay>
+              ))}
+            </ol>
+          )}
           {query.isSuccess && (
-            <div className="plan-agenda">
-              {upcoming.map(agendaDay)}
-              {earlier.length > 0 && (
-                <section
-                  className="plan-day plan-earlier"
-                  aria-labelledby="plan-earlier"
-                >
-                  <h2 id="plan-earlier" className="plan-day-title">
-                    Earlier this week
-                  </h2>
-                  <ul className="plan-meals">
-                    {earlier.flatMap((day) =>
-                      mealsOn(day).map((meal) => mealCard(meal, day, true)),
-                    )}
-                  </ul>
-                </section>
-              )}
+            <div className="plan-progress">
+              <span>
+                <b>{planned} of 7</b> days planned
+              </span>
+              <span className="plan-progress-bar" aria-hidden="true">
+                <i style={{ width: `${(planned / 7) * 100}%` }} />
+              </span>
             </div>
           )}
-        </LoadingState>
+          {query.isSuccess && <MealListNotice />}
+          <LoadingState
+            pending={query.isPending}
+            label="Loading your meal plan..."
+          >
+            <ErrorNotice
+              message={query.error?.message}
+              retry={() => void query.refetch()}
+            />
+            {query.isSuccess && board && (
+              <div className="plan-board plan-stacked">
+                {days.map(boardDay)}
+              </div>
+            )}
+            {query.isSuccess && !board && (
+              <div className="plan-agenda">
+                {upcoming.map(agendaDay)}
+                {earlier.length > 0 && (
+                  <section
+                    className="plan-day plan-earlier"
+                    aria-labelledby="plan-earlier"
+                  >
+                    <h2 id="plan-earlier" className="plan-day-title">
+                      Earlier this week
+                    </h2>
+                    <ul className="plan-meals">
+                      {earlier.flatMap((day) =>
+                        mealsOn(day).map((meal) => mealCard(meal, day, true)),
+                      )}
+                    </ul>
+                  </section>
+                )}
+              </div>
+            )}
+          </LoadingState>
+        </PlanDrag>
         <StickyCta>
           <button
             type="button"
